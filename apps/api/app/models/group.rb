@@ -36,6 +36,15 @@ class Group < ApplicationRecord
     Time.current.in_time_zone(time_zone).to_date
   end
 
+  # A group JIT-created from a WorkOS token has no timezone in the token to take, so it is created
+  # as UTC — a guess. That guess drives `send_hour` for every reminder, so a London house created as
+  # UTC would text everyone an hour early once BST begins, silently and forever. `timezone_confirmed_at`
+  # is NULL until a human sets the timezone (BLO-1047's settings API stamps it); while it is NULL,
+  # the timezone is provisional and the dashboard warns (BLO-1053). Never stamped on JIT insert.
+  def timezone_confirmed?
+    timezone_confirmed_at.present?
+  end
+
   private
 
   def timezone_must_be_recognised

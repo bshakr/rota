@@ -90,6 +90,18 @@ RSpec.describe Group do
     end
   end
 
+  describe "#timezone_confirmed?" do
+    # NULL means "we guessed" — the timezone came from a JIT insert, not a human. A group is only
+    # confirmed once someone stamps timezone_confirmed_at (BLO-1047's settings API).
+    it "is false while timezone_confirmed_at is NULL" do
+      expect(build(:group, timezone_confirmed_at: nil).timezone_confirmed?).to be(false)
+    end
+
+    it "is true once a human has confirmed the timezone" do
+      expect(build(:group, timezone_confirmed_at: Time.current).timezone_confirmed?).to be(true)
+    end
+  end
+
   describe "destroying" do
     # Members cannot be destroyed while a shift still names them, so the group has to clear its
     # rotas — and therefore their shifts — before it can clear its members. That ordering is
