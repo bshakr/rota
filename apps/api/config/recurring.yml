@@ -15,6 +15,16 @@ default: &default
     queue: default
     schedule: every day at 3am
 
+  # THE most important job in the system, and a reconciliation loop rather than a trigger. It does
+  # not fire AT a group's send_hour — it runs every hour and asks "what reminders should have gone
+  # out by now, and haven't?", so a worker that was down, a deploy on the hour, and a spring-forward
+  # that skipped the hour all become a late text rather than a lost one. Idempotent: a claimed
+  # reminder is skipped, so a doubled or missed run costs nothing. See ReminderSweep.
+  reminder_sweep:
+    class: ReminderSweepJob
+    queue: default
+    schedule: every hour
+
   clear_solid_queue_finished_jobs:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12
