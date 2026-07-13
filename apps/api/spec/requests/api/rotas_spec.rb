@@ -118,6 +118,21 @@ RSpec.describe "Api::Rotas" do
       expect(rota.reload.active).to be(false)
       expect(rota.shifts.count).to eq(shift_count) # history stands
     end
+
+    # Deactivation is reversible and lossless: the sweep and the daily top-up both scope to
+    # Rota.active, so a deactivated rota simply goes quiet — its already-generated shifts are left
+    # exactly where they are, and flipping active back on brings the whole thing back untouched.
+    it "is reversible via PATCH active: true, with its future shifts intact" do
+      rota = rostered_rota
+      delete "/api/rotas/#{rota.id}", headers: headers
+      shift_ids = rota.shifts.order(:due_on).pluck(:id)
+
+      patch "/api/rotas/#{rota.id}", params: { active: true }, headers: headers
+
+      expect(response).to have_http_status(:ok)
+      expect(rota.reload.active).to be(true)
+      expect(rota.shifts.order(:due_on).pluck(:id)).to eq(shift_ids)
+    end
   end
 
   describe "POST /api/rotas/:id/preview_message" do
