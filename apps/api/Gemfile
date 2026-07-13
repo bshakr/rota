@@ -30,6 +30,23 @@ gem "rack-cors"
 # E.164 and validated at entry rather than discovered three weeks later. See Member.
 gem "phonelib", "~> 0.10.22"
 
+# Added up front, deliberately, rather than by the three tickets that need them (BLO-1044/1045/1046).
+# Those run in parallel, and three agents each running `bundle add` would produce three competing
+# Gemfile.lock diffs — the worst merge conflict available to us, and one nobody learns anything from.
+
+# WorkOS AuthKit. Rails never calls WorkOS to check a session: it verifies the JWT that Next.js
+# forwards, against the JWKS. `workos` supplies the JWKS URL, `jwt` does the verification. BLO-1045.
+gem "workos", "~> 9.5"
+gem "jwt", "~> 3.1"
+
+# Twilio. Dev and test never send a real SMS — test credentials plus magic numbers exercise the
+# whole path, and WebMock blocks the network besides. BLO-1046.
+gem "twilio-ruby", "~> 7.10"
+
+# Rate limiting for the member magic-link routes. The token is a permanent bearer credential, so
+# the one attack that matters is enumeration. BLO-1048.
+gem "rack-attack"
+
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
