@@ -26,38 +26,50 @@ module Api
       shift = group_shifts.find(params[:id])
       cover = group_members.find_by(id: cover_params[:covering_member_id])
 
-      if (code = assignment_error(shift, cover))
-        return render_cover_error(code)
-      end
-
-      hand_over(shift, to: cover)
+      hand_over(shift, to: cover) { assignment_error(shift, cover) }
     end
 
     # Cancel a cover (rule 2).
     def destroy
       shift = group_shifts.find(params[:id])
 
-      if (code = cancellation_error(shift))
-        return render_cover_error(code)
-      end
-
-      hand_over(shift, to: nil)
+      hand_over(shift, to: nil) { cancellation_error(shift) }
     end
 
     private
 
-    # Set the override, then text everyone whose turn actually changed — excluding the caller, who is
-    # acting from the page and already sees the result. Comparing responsibility before and after
-    # covers every case in one line: on assign it is the new cover; on cancel it is the person who was
-    # covering; on a re-assignment it is the newcomer, since only the outgoing cover could have
-    # triggered it.
+    # Set the override under a row lock, then text everyone whose turn actually changed — excluding
+    # the caller, who is acting from the page and already sees the result.
+    #
+    # The lock is load-bearing, not decorative. Without it the flow is read-check-update, and two
+    # requests racing the same shift (a double-tap, or the current cover handing on while the original
+    # cancels) can BOTH pass their guard against the old state and BOTH update — a lost update, and
+    # worse, TWO unrecallable "you're covering" texts to two different people. `with_lock` reloads the
+    # row under `SELECT ... FOR UPDATE` and re-runs the guard against the current committed state, so
+    # the second request sees the first's change and is rejected (e.g. :not_responsible). Exactly one
+    # hand-over wins. The guard is passed as a block precisely so it is re-evaluated INSIDE the lock,
+    # not once before it.
+    #
+    # Comparing responsibility before and after covers every case in one line: on assign it is the new
+    # cover; on cancel the person who was covering; on a re-assignment the newcomer. Notices are
+    # enqueued only AFTER the transaction commits, so a rolled-back change never texts anyone.
     def hand_over(shift, to:)
-      before = shift.responsible_member
-      shift.update!(covering_member: to)
+      error_code = nil
+      affected = []
 
-      affected = [ before, shift.responsible_member ].uniq - [ current_member ]
+      shift.with_lock do
+        if (error_code = yield)
+          next # guard failed against the locked, current state — change nothing
+        end
+
+        before = shift.responsible_member
+        shift.update!(covering_member: to)
+        affected = [ before, shift.responsible_member ].uniq - [ current_member ]
+      end
+
+      return render_cover_error(error_code) if error_code
+
       CoverNotice.deliver(shift: shift, to: affected)
-
       render json: { shift: serialize_shift(shift) }
     end
 

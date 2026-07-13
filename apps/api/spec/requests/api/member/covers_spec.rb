@@ -276,4 +276,35 @@ RSpec.describe "Member cover assignment" do
       }).to have_been_made.once
     end
   end
+
+  describe "the row lock (two concurrent hand-overs cannot both win)" do
+    # A real two-thread race is non-deterministic under transactional fixtures, so we simulate the
+    # losing side precisely: a competing request commits its cover in the instant our request takes
+    # the row lock. The guard MUST be re-evaluated against that committed state INSIDE the lock — not
+    # against the state we read before acquiring it. Without the lock (a plain read-check-update),
+    # both requests pass their guard against the old state and both update: a lost update, and two
+    # unrecallable "you're covering" texts to two different people. This example fails against the
+    # unlocked controller and passes once the guard runs under with_lock.
+    it "rejects a hand-on whose target was made responsible by a concurrent request first" do
+      shift = future_shift(assigned: alice)
+
+      # The moment our request acquires the lock, pretend Bob's cover already committed.
+      first = true
+      allow_any_instance_of(Shift).to receive(:with_lock).and_wrap_original do |original, &block|
+        if first
+          first = false
+          Shift.where(id: shift.id).update_all(covering_member_id: bob.id)
+        end
+        original.call(&block)
+      end
+
+      expect { assign_cover(shift, alice, covering_member_id: cara.id) }
+        .not_to have_enqueued_job(SendSmsJob)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body["error"]).to eq("not_responsible")
+      # Bob's concurrent win stands; our racing update did not overwrite it.
+      expect(shift.reload.covering_member).to eq(bob)
+    end
+  end
 end
