@@ -36,7 +36,7 @@ jobs:
       QUEUE_DATABASE_URL: postgres://postgres:postgres@localhost:5432/houserota_api_test_queue
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: ruby/setup-ruby@v1
         with:
