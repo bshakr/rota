@@ -9,6 +9,14 @@ class Group < ApplicationRecord
   has_many :group_admins, dependent: :destroy
   has_many :admins, through: :group_admins, source: :user
 
+  # A shift belongs to a rota, and a rota to a group, so a group's shifts are its rotas' shifts.
+  # This is the seam the admin API scopes a single shift through — `group_scope(:shifts).find(id)`
+  # — so a cross-tenant shift id can never be reached (see Api::ShiftsController, TenantScoped).
+  has_many :shifts, through: :rotas
+  # Every text names a member, and every member belongs to a group, so the delivery log scopes
+  # cleanly through members — a group only ever sees its own house's texts.
+  has_many :sms_messages, through: :members
+
   validates :workos_organization_id, presence: true, uniqueness: true
   validates :name, presence: true
   validates :timezone, presence: true

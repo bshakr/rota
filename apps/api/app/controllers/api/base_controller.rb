@@ -9,5 +9,6 @@ module Api
 
     include Authenticatable
     include TenantScoped
+    include ApiErrorRendering
   end
 end
