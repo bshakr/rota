@@ -111,7 +111,8 @@ RSpec.describe GroupAdmin do
       group_admin = described_class.provision!(claims)
 
       expect(group_admin.group).to eq(winner)
-      expect(Group.count).to eq(1)
+      # Scoped to this org — the seeded demo house means the test database is never empty.
+      expect(Group.where(workos_organization_id: "org_01FLAT").count).to eq(1)
     end
 
     it "finds the user a concurrent request created between the lookup and the insert" do

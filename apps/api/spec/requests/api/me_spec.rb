@@ -8,17 +8,23 @@ RSpec.describe "GET /api/me" do
     get "/api/me", headers: workos_headers(sub: "user_01ALICE", org_id: "org_01FLAT", role: "admin", email: "alice@example.com", name: "Alice")
 
     expect(response).to have_http_status(:ok)
+
+    # Scoped to the provisioned records by their WorkOS ids, not User.sole/Group.sole — the seeded
+    # demo house means the test database is never empty.
+    user = User.find_by!(workos_user_id: "user_01ALICE")
+    group = Group.find_by!(workos_organization_id: "org_01FLAT")
+
     expect(response.parsed_body).to eq(
       "user" => {
-        "id" => User.sole.id,
+        "id" => user.id,
         "workos_user_id" => "user_01ALICE",
         "email" => "alice@example.com",
         "name" => "Alice"
       },
       "group" => {
-        "id" => Group.sole.id,
+        "id" => group.id,
         "workos_organization_id" => "org_01FLAT",
-        "name" => Group.sole.name,
+        "name" => group.name,
         "timezone" => "UTC"
       },
       "role" => "admin"

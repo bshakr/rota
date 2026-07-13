@@ -128,9 +128,11 @@ RSpec.describe "WorkOS JWT authentication" do
         get "/api/me", headers: workos_headers(sub: "user_01ALICE", org_id: "org_01FLAT", role: "admin")
       }.to change(User, :count).by(1).and change(Group, :count).by(1).and change(GroupAdmin, :count).by(1)
 
-      expect(User.last.workos_user_id).to eq("user_01ALICE")
-      expect(Group.last.workos_organization_id).to eq("org_01FLAT")
-      expect(GroupAdmin.last).to have_attributes(user: User.last, group: Group.last, role: "admin")
+      # Found by their WorkOS ids, not User.last/Group.last — the seeded demo house means the test
+      # database is never empty, so "the newest row" is not necessarily the one this request made.
+      user = User.find_by!(workos_user_id: "user_01ALICE")
+      group = Group.find_by!(workos_organization_id: "org_01FLAT")
+      expect(GroupAdmin.find_by(user: user, group: group)).to have_attributes(role: "admin")
     end
 
     it "creates nothing on the second request" do
@@ -165,7 +167,8 @@ RSpec.describe "WorkOS JWT authentication" do
 
       get "/api/me", headers: workos_headers(org_id: "org_01FLAT")
 
-      expect(Group.sole).to have_attributes(name: "Flat 3, Alma Road", timezone: "Europe/London")
+      expect(Group.find_by!(workos_organization_id: "org_01FLAT"))
+        .to have_attributes(name: "Flat 3, Alma Road", timezone: "Europe/London")
     end
 
     it "takes the user's email and name from the claims when WorkOS's JWT template supplies them" do
