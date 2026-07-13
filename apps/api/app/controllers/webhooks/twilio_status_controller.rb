@@ -6,12 +6,15 @@ module Webhooks
   # What it has instead is a signature: an HMAC of the exact URL it called plus every parameter it
   # posted, keyed by our auth token. Without a valid one, this endpoint changes nothing — an
   # unsigned caller could otherwise mark every reminder in the house `delivered`.
+  #
+  # There is deliberately no rate limit here yet: the endpoint fails closed (403) and touches no
+  # database row before the signature check, so the only unauthenticated cost is HMAC CPU.
+  # BLO-1048 adds the Rack::Attack throttle alongside the member routes.
   class TwilioStatusController < ApplicationController
     before_action :verify_twilio_signature
 
     # Twilio's MessageStatus values that are worth recording. `queued`, `sending` and `sent` say
-    # nothing the row does not already say, and callbacks can arrive out of order — applying them
-    # could walk a `delivered` row backwards into `sent`.
+    # nothing the row does not already say.
     TERMINAL_STATUSES = {
       "delivered" => "delivered",
       "undelivered" => "failed",
@@ -19,13 +22,25 @@ module Webhooks
     }.freeze
 
     def create
-      message = SmsMessage.find_by(twilio_sid: params[:MessageSid])
-      status = TERMINAL_STATUSES[params[:MessageStatus].to_s]
+      # Act ONLY on the exact parameters the signature covered. `params` merges the query string
+      # OVER the request body, but the signature is computed against the body alone
+      # (request.request_parameters). Reading the SID or status from `params` would let anyone take
+      # one validly body-signed callback, append `?MessageSid=<victim>&MessageStatus=failed`, and
+      # flip a message they hold no signature for — the signature check would pass and change the
+      # wrong row. The signed set is the only trustworthy input.
+      callback = request.request_parameters
+      message = SmsMessage.find_by(twilio_sid: callback["MessageSid"])
+      status = TERMINAL_STATUSES[callback["MessageStatus"].to_s]
 
       # An unknown SID (a message from another environment sharing this Twilio account, say) and an
-      # intermediate status are both "nothing to do", not errors. A 4xx would only make Twilio
-      # retry the same callback for hours.
-      message&.update!(status: status, error_code: params[:ErrorCode].presence) if status
+      # intermediate status are both "nothing to do", not errors — a 4xx would only make Twilio
+      # retry the same callback for hours. And status only ever advances: once a row is delivered or
+      # failed it is terminal. Twilio signatures carry no nonce, so a captured callback can be
+      # replayed verbatim; refusing to move a terminal row is what stops a replayed `failed` from
+      # undoing a real delivery.
+      if message && status && !message.delivered? && !message.failed?
+        message.update!(status: status, error_code: callback["ErrorCode"].presence)
+      end
 
       head :no_content
     end

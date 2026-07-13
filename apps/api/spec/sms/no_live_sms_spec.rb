@@ -46,5 +46,15 @@ RSpec.describe "no live SMS" do
 
       expect(Rails.logger).to have_received(:info).with(/Bins tomorrow/)
     end
+
+    it "redacts the magic-link token so a shipped log is not a set of live credentials" do
+      allow(Rails.logger).to receive(:info)
+      body = "Bins tomorrow\nManage: http://localhost:3001/s/x7Kd2p-secret-token"
+
+      described_class.new.deliver(to: "+447700900123", body: body, status_callback: "x")
+
+      expect(Rails.logger).to have_received(:info).with(/\/s\/\[redacted\]/)
+      expect(Rails.logger).not_to have_received(:info).with(/x7Kd2p-secret-token/)
+    end
   end
 end

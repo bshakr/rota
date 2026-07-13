@@ -97,5 +97,37 @@ RSpec.describe "POST /webhooks/twilio/status" do
       expect(response).to have_http_status(:forbidden)
       expect(sms_message.reload.status).to eq("sent")
     end
+
+    it "acts on the signed body, ignoring a query-string override of the SID and status" do
+      # The signature covers the POST body only. `params` merges the query string OVER the body, so
+      # acting on `params` would let anyone take one validly body-signed callback, append
+      # `?MessageSid=<victim>&MessageStatus=failed`, and flip a message they never had a signature
+      # for. The controller must read the exact set it validated, never `params`.
+      victim = create(:sms_message, :sent, twilio_sid: "SM00000000000000000000000000000002")
+      body = { "MessageSid" => sms_message.twilio_sid, "MessageStatus" => "delivered" }
+
+      post "#{twilio_status_webhook_path}?MessageSid=#{victim.twilio_sid}&MessageStatus=failed",
+        params: body,
+        headers: { "X-Twilio-Signature" => twilio_signature_for(body) }
+
+      expect(response).to have_http_status(:no_content)
+      expect(victim.reload.status).to eq("sent")           # the query override touched nothing
+      expect(sms_message.reload.status).to eq("delivered")  # the signed body is what was applied
+    end
+
+    it "does not walk a delivered row back to failed on a replayed callback" do
+      # Twilio signatures carry no nonce, so any captured callback can be replayed verbatim. A
+      # `failed` replay arriving after the message already delivered must not undo the delivery.
+      sms_message.update!(status: :delivered)
+
+      post_callback({
+        "MessageSid" => sms_message.twilio_sid,
+        "MessageStatus" => "failed",
+        "ErrorCode" => "30008"
+      })
+
+      expect(response).to have_http_status(:no_content)
+      expect(sms_message.reload).to have_attributes(status: "delivered", error_code: nil)
+    end
   end
 end
