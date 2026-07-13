@@ -60,6 +60,12 @@ export function ConfirmDialog({
       setPending(true);
       await onConfirm();
       setOpen(false);
+    } catch (error) {
+      // Leave the dialog open so the user can retry or cancel. The caller owns
+      // telling them what failed (a toast); we only make sure a rejected
+      // onConfirm doesn't surface as an unhandled promise rejection, since this
+      // runs from an onClick React does not await.
+      console.error(error);
     } finally {
       setPending(false);
     }

@@ -109,11 +109,26 @@ function oklchToLinear({ L, C, H }) {
   ].map((x) => Math.min(1, Math.max(0, x)));
 }
 
-/** src (may be translucent) over an already-linear opaque dst. Linear light. */
+const encodeGamma = (c) =>
+  c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
+const decodeGamma = (c) =>
+  c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+
+/**
+ * `src` (possibly translucent) composited over an already-linear OPAQUE dst,
+ * returned as linear sRGB. The blend happens in GAMMA-ENCODED sRGB, not linear,
+ * because that is what a browser actually does: CSS alpha compositing is defined
+ * in the non-linear display space. The canonical proof is `rgba(0,0,0,.5)` over
+ * white rendering `#808080` — the gamma midpoint — not the linear `#bcbcbc`.
+ * Blending in linear light was the first rewrite's bug: it over-reported a
+ * dark-text-on-light-tint pair and green-ticked two sub-AA status badges, the
+ * exact false-pass this file exists to catch.
+ */
 function over(src, dstLinear) {
-  const s = oklchToLinear(src);
+  const s = oklchToLinear(src).map(encodeGamma);
+  const d = dstLinear.map(encodeGamma);
   const a = src.alpha;
-  return [0, 1, 2].map((k) => s[k] * a + dstLinear[k] * (1 - a));
+  return [0, 1, 2].map((k) => decodeGamma(s[k] * a + d[k] * (1 - a)));
 }
 
 function relLuminance(lin) {
@@ -180,10 +195,13 @@ const PAIRS = [
   { fg: "--destructive-foreground", bg: "--destructive", min: TEXT, note: "destructive button" },
 
   // Tinted status badges: text-STATUS over STATUS@10% over the surface. The pair
-  // the first checker never modelled.
+  // the first checker never modelled. The Alert's description is a TRANSLUCENT
+  // foreground (text-STATUS/90) over that tint — strictly lower, and it composites
+  // the foreground too.
   ...["--success", "--warning", "--info", "--destructive"].flatMap((s) => [
     { fg: s, bg: [`${s} 0.10`, "--card"], min: TEXT, note: "tinted badge on card" },
     { fg: s, bg: [`${s} 0.10`, "--background"], min: TEXT, note: "tinted badge on page" },
+    { fg: `${s} 0.90`, bg: [`${s} 0.10`, "--card"], min: TEXT, note: "alert description on card" },
   ]),
 
   // Control borders — real UI boundary.

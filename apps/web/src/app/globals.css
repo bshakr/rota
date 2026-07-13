@@ -82,13 +82,13 @@
   /* Status. Muted and earthy so they sit beside clay rather than shout over it.
      These carry the SMS delivery log: delivered / queued / failed. */
   --sage-400: oklch(0.75 0.11 152);
-  --sage-600: oklch(0.505 0.1 150);
+  --sage-600: oklch(0.47 0.1 150);
   --amber-400: oklch(0.8 0.11 76);
-  --amber-600: oklch(0.535 0.115 70);
+  --amber-600: oklch(0.485 0.11 66);
   --rust-400: oklch(0.77 0.145 25);
-  --rust-600: oklch(0.515 0.175 27);
+  --rust-600: oklch(0.5 0.18 27);
   --dusk-400: oklch(0.79 0.085 235);
-  --dusk-600: oklch(0.52 0.09 240);
+  --dusk-600: oklch(0.478 0.095 245);
 }
 
 /* --- 2. SEMANTIC: light --------------------------------------------------- */
