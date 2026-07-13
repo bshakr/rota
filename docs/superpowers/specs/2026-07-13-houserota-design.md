@@ -97,6 +97,22 @@ maps to one member record. These routes bypass JWT auth entirely and authenticat
 lookup. The path can only ever see one member's own shifts and perform one action (assign or
 cancel a cover). Keeping it narrow is what makes it safe to hand out over SMS.
 
+**The token is never a path segment in Rails.** `/s/<token>` exists only as the Next.js page the
+SMS points at. Next.js reads the token from its route param server-side and forwards it to Rails
+as `Authorization: Bearer <token>`; the Rails endpoints are `/api/member/*` and carry no token in
+the URL.
+
+This is not cosmetic. Rails' `filter_parameters` redacts query strings and request bodies but
+**not path segments** — `filtered_path` passes the path through verbatim, and Rails logs it at
+`info` on every request. A token in the path would therefore be written to production logs in
+plaintext on every member request, and because that token is a permanent, non-expiring credential
+by design, anyone with log-read access would hold a working set of member credentials. Moving it
+to a bearer header puts it inside the filter that already exists, and makes the member path
+structurally symmetric with the admin path.
+
+For the same reason `config.active_job.log_arguments` is `false`: job arguments carry tokens and
+phone numbers, and ActiveJob logs them at `info` too.
+
 WorkOS Organizations is the source of truth for admin identity; Rails keeps a local `groups`
 table with a `workos_organization_id`. Members and rotas are never stored in WorkOS.
 
@@ -253,7 +269,7 @@ nothing to cancel.
 - **SMS log with delivery status.** Unglamorous, but it is the screen that answers "why didn't
   Alice get her text". Without it you are guessing.
 
-**Member (Next.js, `/s/[token]`, no login)**
+**Member (Next.js page at `/s/[token]`, no login; Rails API at `/api/member/*` via bearer token)**
 
 - Upcoming shifts across all rotas.
 - Per shift: *"Can't make it? Ask someone to cover."* → pick a member → confirm.
@@ -275,7 +291,14 @@ Three taps from an SMS. That is the entire surface.
   carrier error code and surface on the dashboard as a warning; a silently failed text is worse
   than no rota at all.
 - **Magic-link enumeration** is blocked by 32-byte URL-safe tokens plus Rack::Attack rate
-  limiting on the `/s/` routes.
+  limiting on the `/api/member/*` routes.
+- **Token leakage into logs** is prevented by keeping the token out of every Rails path segment
+  (see "The member auth path is a deliberate exception"), and by `log_arguments = false` on
+  ActiveJob. Both matter because the token never expires.
+- **Secrets baked into a Docker image**: the repo root holds the single `.env`, and a monorepo
+  build with a root context plus `COPY . .` would copy it into a layer. A root `.dockerignore`
+  excludes it. Note that BuildKit reads `.dockerignore` from the *build context root*, not from
+  beside the Dockerfile — so `apps/api/.dockerignore` alone does not protect it.
 - **`APP_URL` is baked into every magic link we send.** Texts are permanent in a way deploys are
   not — a link pointing at a dead host cannot be recalled. Links are always built from config,
   never hardcoded, and no real SMS is sent to a real phone until the host is settled. Local
@@ -299,6 +322,11 @@ In priority order:
    assigns a cover → cover notice fires.
 
 Seed data creates a demo group so the app is clickable from minute one.
+
+**CI runs Brakeman (SAST) and bundler-audit (CVEs) on every PR**, not merely as configured
+binstubs. This system grows JWT verification, tenancy scoping, a Twilio webhook and a permanent
+bearer credential — none of which should reach `main` without a security gate having actually
+executed.
 
 ## Open decisions
 
