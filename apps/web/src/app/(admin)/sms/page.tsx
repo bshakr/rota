@@ -183,16 +183,25 @@ export default async function SmsLogPage({
   );
 }
 
+// Everything the table and the card need to read off a message, derived once so
+// the two presentations cannot drift. `error` is resolved only for a failed row.
+function viewFor(m: SmsMessage) {
+  const failed = m.status === "failed";
+  return {
+    status: statusDisplay(m.status),
+    failed,
+    timing: m.kind === "reminder" ? reminderTiming(m.days_before) : null,
+    error: failed ? explainError(m.error_code) : null,
+  };
+}
+
 // A message renders as two rows: the scannable summary, and a detail row that
 // always shows the exact body that was sent (magic link included) plus the send
 // metadata. A failed message is loud — the whole group is tinted, carries a left
 // accent, and its detail row leads with a bordered Alert explaining the failure
 // in plain words, not a bare code.
 function MessageRows({ message: m }: { message: SmsMessage }) {
-  const s = statusDisplay(m.status);
-  const failed = m.status === "failed";
-  const timing = m.kind === "reminder" ? reminderTiming(m.days_before) : null;
-  const error = failed ? explainError(m.error_code) : null;
+  const { status: s, failed, timing, error } = viewFor(m);
 
   const tint = failed ? "bg-destructive/5 hover:bg-destructive/10" : undefined;
   const accent = failed ? "border-l-2 border-l-destructive" : undefined;
@@ -242,10 +251,7 @@ function MessageRows({ message: m }: { message: SmsMessage }) {
 }
 
 function MessageCard({ message: m }: { message: SmsMessage }) {
-  const s = statusDisplay(m.status);
-  const failed = m.status === "failed";
-  const timing = m.kind === "reminder" ? reminderTiming(m.days_before) : null;
-  const error = failed ? explainError(m.error_code) : null;
+  const { status: s, failed, timing, error } = viewFor(m);
 
   return (
     <Card size="sm" className={failed ? "border-destructive/40 bg-destructive/5" : undefined}>
@@ -282,7 +288,7 @@ function MessageCard({ message: m }: { message: SmsMessage }) {
 function MessageBody({ body }: { body: string }) {
   return (
     <div>
-      <p className="text-muted-foreground mb-1 text-xs font-medium">Message sent</p>
+      <p className="text-muted-foreground mb-1 text-xs font-medium">Message</p>
       <p className="bg-muted/40 text-foreground rounded-md px-3 py-2 font-mono text-xs break-words whitespace-pre-wrap">
         {body}
       </p>

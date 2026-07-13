@@ -135,8 +135,12 @@ function FilterSelect({
   disabled: boolean;
   onValueChange: (value: string) => void;
 }) {
+  // A stale or hand-edited URL can carry a value that no longer matches any
+  // option (a removed member, a status the page validated away). Show "All …"
+  // for it rather than an empty trigger — the page ignores it too.
+  const selected = options.some((o) => o.value === value) ? value : ALL;
   return (
-    <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+    <Select value={selected} onValueChange={onValueChange} disabled={disabled}>
       <SelectTrigger size="sm" aria-label={ariaLabel} className="w-auto min-w-36">
         <SelectValue />
       </SelectTrigger>
