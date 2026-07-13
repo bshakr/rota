@@ -33,14 +33,23 @@ function sourceFiles(dir: string): string[] {
 }
 
 function isClientModule(source: string): boolean {
-  const head = source.trimStart();
-  return head.startsWith('"use client"') || head.startsWith("'use client'");
+  // The "use client" directive may sit after leading comments (e.g. a license
+  // header), so strip those before checking — otherwise a commented file would be
+  // mistaken for a server module and skip the guard.
+  const withoutLeadingComments = source.replace(
+    /^\s*(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/\s*)*/,
+    "",
+  );
+  return /^["']use client["']/.test(withoutLeadingComments);
 }
 
 function importSources(source: string): string[] {
-  return [...source.matchAll(/from\s+["']([^"']+)["']|import\s+["']([^"']+)["']/g)].map(
-    (match) => match[1] ?? match[2],
-  );
+  // Static `from "…"`, side-effect `import "…"`, and dynamic `import("…")`.
+  return [
+    ...source.matchAll(
+      /from\s+["']([^"']+)["']|import\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g,
+    ),
+  ].map((match) => match[1] ?? match[2] ?? match[3]);
 }
 
 describe("bundle safety: the member token never reaches the client", () => {

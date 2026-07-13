@@ -11,7 +11,12 @@ import { assignCover, cancelCover, getMemberShifts } from "./member";
 const TOKEN = "6f1e2d3c4b5a69788796a5b4c3d2e1f0aabbccddeeff0011";
 
 function okJson(body: unknown) {
-  return { ok: true, status: 200, json: async () => body } as unknown as Response;
+  return {
+    ok: true,
+    status: 200,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  } as unknown as Response;
 }
 
 function lastFetchCall() {

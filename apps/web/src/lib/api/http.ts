@@ -61,12 +61,11 @@ export async function requestJson<T>(
     throw buildApiError(response.status, await safeJson(response));
   }
 
-  // 204 (and any empty body) has nothing to parse; the caller types these as void.
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
+  // Parse via text() so an empty 2xx body (204, or an endpoint that returns no
+  // content) yields undefined rather than throwing a SyntaxError the caller can't
+  // switch on. Callers type those responses as void.
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 async function safeJson(response: Response): Promise<unknown> {

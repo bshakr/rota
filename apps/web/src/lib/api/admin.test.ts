@@ -22,7 +22,12 @@ import { ApiError } from "./errors";
 const redirectMock = redirect as unknown as ReturnType<typeof vi.fn>;
 
 function respond(status: number, body: unknown) {
-  return { ok: status >= 200 && status < 300, status, json: async () => body } as unknown as Response;
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  } as unknown as Response;
 }
 
 function lastFetchCall() {
