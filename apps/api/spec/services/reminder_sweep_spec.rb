@@ -75,6 +75,31 @@ RSpec.describe ReminderSweep do
         expect(reminder_for(shift, 3)).to be_present
       end
     end
+
+    it "still fires the day-of reminder after a same-day outage" do
+      # The boundary the design cares about most: a day-of (offset 0) reminder for a shift due TODAY,
+      # whose 09:00 send hour passed while the worker was down. At 12:00 BST — three hours late — the
+      # shift is still today's (due_on == group.today, so a candidate) and the moment is three hours
+      # old, not stale. It heals. This is the "send" side of the today/yesterday edge; the "never for
+      # a past shift" example below is the "don't send" side, one day later.
+      travel_to(Time.utc(2026, 7, 17, 11, 0)) do
+        expect { sweep }.to have_enqueued_job(SendSmsJob)
+        expect(reminder_for(shift, 0)).to be_present
+      end
+    end
+
+    it "does NOT heal a day-of reminder once its calendar day is over" do
+      # The honest edge of the day-of contract, and the "don't send" companion to the same-day heal
+      # above. The offset-0 moment was 17 Jul 08:00 UTC; sweeping at 06:00 UTC on the 18th is only
+      # 22 hours later — still inside the 24h staleness window, so the staleness guard ALONE would
+      # send it. It does not, because the shift's own day is over (due_on < group.today): "it's your
+      # turn today" about a day already gone is worse than silence. Unlike a multi-day reminder, the
+      # day-of reminder's heal window is capped at its calendar midnight, not a flat 24h.
+      travel_to(Time.utc(2026, 7, 18, 6, 0)) do
+        expect { sweep }.not_to have_enqueued_job(SendSmsJob)
+        expect(reminder_for(shift, 0)).to be_nil
+      end
+    end
   end
 
   describe "the staleness guard" do
@@ -83,6 +108,26 @@ RSpec.describe ReminderSweep do
 
       # The 3-day moment was 14 Jul 08:00 UTC; 15 Jul 09:00 UTC is 25 hours past it.
       travel_to(Time.utc(2026, 7, 15, 9, 0)) do
+        expect { sweep }.not_to have_enqueued_job(SendSmsJob)
+        expect(reminder_for(shift, 3)).to be_nil
+      end
+    end
+
+    # The boundary itself, pinned on both sides so flipping `>=` to `>` (or 24.hours to 23) turns a
+    # test red. The 3-day moment is 14 Jul 08:00 UTC.
+    it "sends a reminder whose moment is exactly 24 hours old" do
+      shift = create(:shift, rota: rota, due_on: Date.new(2026, 7, 17))
+
+      travel_to(Time.utc(2026, 7, 15, 8, 0)) do # exactly 24h after the moment
+        expect { sweep }.to have_enqueued_job(SendSmsJob)
+        expect(reminder_for(shift, 3)).to be_present
+      end
+    end
+
+    it "refuses a reminder one minute past 24 hours old" do
+      shift = create(:shift, rota: rota, due_on: Date.new(2026, 7, 17))
+
+      travel_to(Time.utc(2026, 7, 15, 8, 1)) do # 24h and one minute
         expect { sweep }.not_to have_enqueued_job(SendSmsJob)
         expect(reminder_for(shift, 3)).to be_nil
       end
@@ -138,13 +183,22 @@ RSpec.describe ReminderSweep do
 
     it "does not double-send across a repeated local hour (clocks fall back)" do
       # 25 Oct 2026: 02:00 BST falls back to 01:00 GMT, so 01:00 local happens twice — once at
-      # 00:00 UTC, once at 01:00 UTC. `local` resolves to the earlier instant, so both sweeps compute
-      # the same moment and the second finds the reminder already claimed.
+      # 00:00 UTC (BST), once at 01:00 UTC (GMT). `local` resolves the ambiguous hour to the earlier
+      # instant, so the FIRST sweep at 00:30 UTC already sends. The second sweep at 01:30 UTC is the
+      # genuine repeat of 01:00 local: it must recompute the SAME instant and find the reminder
+      # claimed. Asserting the first fires and the second is a no-op proves the two instants agree —
+      # not merely that the timezone-independent (shift_id, days_before) index deduped a double-send
+      # that was structurally impossible anyway.
       shift = create(:shift, rota: rota, due_on: Date.new(2026, 10, 25))
 
-      travel_to(Time.utc(2026, 10, 25, 0, 30)) { sweep } # first 01:xx local
-      travel_to(Time.utc(2026, 10, 25, 1, 30)) { sweep } # the repeated 01:xx local
+      travel_to(Time.utc(2026, 10, 25, 0, 30)) do # first 01:xx local
+        expect { sweep }.to have_enqueued_job(SendSmsJob)
+      end
+      expect(shift.sms_messages.reminder.where(days_before: 0).count).to eq(1)
 
+      travel_to(Time.utc(2026, 10, 25, 1, 30)) do # the repeated 01:xx local
+        expect { sweep }.not_to have_enqueued_job(SendSmsJob)
+      end
       expect(shift.sms_messages.reminder.where(days_before: 0).count).to eq(1)
     end
 
@@ -219,6 +273,33 @@ RSpec.describe ReminderSweep do
         expect { described_class.new(past_rota).call }.not_to have_enqueued_job(SendSmsJob)
         expect(reminder_for(shift, 0)).to be_nil
       end
+    end
+  end
+
+  describe "a full sweep across shifts and offsets" do
+    it "accrues both the 3-day and the day-of row for one shift across its life" do
+      # No single earlier example proves one shift collects more than one offset row — each suppresses
+      # the other by construction. Sweep at both moments and both rows should be on record.
+      shift = create(:shift, rota: rota, due_on: Date.new(2026, 7, 17))
+
+      travel_to(Time.utc(2026, 7, 14, 8, 0)) { sweep } # the 3-day moment
+      travel_to(Time.utc(2026, 7, 17, 8, 0)) { sweep } # the day-of moment
+
+      expect(shift.sms_messages.reminder.pluck(:days_before)).to contain_exactly(3, 0)
+    end
+
+    it "claims every shift that is due in a single pass" do
+      # Two shifts of the same rota fall due at the same instant — one via its day-of offset, the other
+      # via its 3-day offset — so the per-shift loop runs with more than one element in one sweep.
+      day_of = create(:shift, rota: rota, due_on: Date.new(2026, 7, 14))
+      three_day = create(:shift, rota: rota, due_on: Date.new(2026, 7, 17))
+
+      travel_to(Time.utc(2026, 7, 14, 8, 0)) do
+        expect { sweep }.to have_enqueued_job(SendSmsJob).exactly(2).times
+      end
+
+      expect(reminder_for(day_of, 0)).to be_present
+      expect(reminder_for(three_day, 3)).to be_present
     end
   end
 

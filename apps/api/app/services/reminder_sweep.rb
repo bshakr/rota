@@ -4,8 +4,13 @@
 # `send_hour` and texts whoever is due, which silently drops a reminder whenever the worker is down
 # on the hour, a deploy lands on the hour, or the clocks skip the hour in spring. Instead this asks a
 # declarative question every hour (ReminderSweepJob) and answers it by comparing each shift's
-# scheduled send moment against the sms_messages already on record. An outage becomes a late text,
-# never a lost one.
+# scheduled send moment against the sms_messages already on record.
+#
+# For a MULTI-DAY reminder (offset ≥ 1) an outage becomes a late text, never a lost one: it stays
+# deliverable for the full 24 hours of the staleness window. The DAY-OF reminder (offset 0) is
+# best-effort within its own calendar day — see #candidate_shifts. "It's your turn today" that heals
+# across midnight would be a lie, so once the shift's day is over the day-of reminder is dropped, not
+# sent late. A late `send_hour` therefore shrinks the day-of heal window to `send_hour → midnight`.
 #
 # It does not call Twilio. For each reminder that is due and unclaimed it INSERTS a `pending`
 # sms_messages row — which *claims* that reminder through the partial unique index on
@@ -27,8 +32,12 @@ class ReminderSweep
   def call
     return if rota.reminder_offsets.empty?
 
+    # One clock per sweep. `now` and the group's `today` are read from the same instant, so a sweep
+    # firing microseconds either side of local midnight cannot land the window test and the candidate
+    # bound on opposite days — which would either drop a live reminder or resurrect a past one.
     now = Time.current
-    shifts = candidate_shifts
+    today = now.in_time_zone(group.time_zone).to_date
+    shifts = candidate_shifts(today)
     return if shifts.empty?
 
     already = claimed_reminders(shifts)
@@ -50,12 +59,18 @@ class ReminderSweep
   # Only shifts whose reminders could plausibly be live right now. A reminder for offset d fires at
   # `due_on - d`, and a moment more than a day old is stale, so a shift due further out than the
   # furthest offset (plus a day of slack for send_hour and timezone) cannot have a live reminder.
-  # The lower bound is the group's own today, which is also what enforces "never for a past shift":
-  # a shift that has already come due is history and is never texted about.
-  def candidate_shifts
-    horizon = group.today + rota.reminder_offsets.max + 1
+  #
+  # The lower bound is the group's own today, and it does double duty as the "never for a past shift"
+  # guarantee: a shift that has already come due is history and is never texted about. For a
+  # multi-day reminder this is invisible — its moment goes stale (`> 24h` old) before the shift falls
+  # out of the window, so staleness, not this bound, is what retires it. For the DAY-OF reminder the
+  # two lines differ: this bound retires it at local midnight, which can be sooner than 24h. That is
+  # deliberate (a day-of reminder about a day already over is worse than silence), and it means a
+  # late `send_hour` leaves the day-of reminder only `send_hour → midnight` to heal in.
+  def candidate_shifts(today)
+    horizon = today + rota.reminder_offsets.max + 1
     rota.shifts
-      .where(due_on: group.today..horizon)
+      .where(due_on: today..horizon)
       .includes(:assigned_member, :covering_member)
       .to_a
   end
@@ -70,7 +85,9 @@ class ReminderSweep
       .to_set
   end
 
-  # In the window `(now - 24h, now]`: the moment has arrived, and it is not yet stale.
+  # In the window `[now - 24h, now]`: the moment has arrived, and it is not yet stale. The lower
+  # bound is inclusive because the guard buries a reminder only once it is *more than* 24h overdue —
+  # a moment exactly 24h old is the last one that still sends.
   def due?(shift, days_before, now)
     moment = send_moment(shift, days_before)
     moment <= now && moment >= now - STALE_AFTER

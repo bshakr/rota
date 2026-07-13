@@ -3,8 +3,10 @@
 # It runs the reconciliation (ReminderSweep) for every active rota, asking "what reminders should
 # have gone out by now, and haven't?" Running hourly rather than firing on the send hour is the whole
 # point: a worker that was down, a deploy that landed on the hour, and a clock that skipped the hour
-# in spring all heal on the next pass, because the sweep recomputes the answer from scratch instead
-# of relying on having been awake at the right minute.
+# in spring are all recovered on the next pass, because the sweep recomputes the answer from scratch
+# instead of relying on having been awake at the right minute. Multi-day reminders heal for the full
+# 24h staleness window; the day-of reminder is best-effort within its own calendar day (see
+# ReminderSweep). It is never a lost multi-day reminder, only a late one.
 class ReminderSweepJob < ApplicationJob
   queue_as :default
 
