@@ -87,14 +87,35 @@ Splitting them is the Rails 8 production default, and we extend it to every envi
 so that `db/schema.rb` only ever describes the domain. A Solid Queue upgrade can never
 show up as a diff in it.
 
-Override with `DATABASE_URL` and `QUEUE_DATABASE_URL`.
+**`DATABASE_URL` is production-only, and this is not a style preference.** A `DATABASE_URL`
+names one database, and Rails applies it to whichever environment is booting — including
+test. Point it at the development database and `bundle exec rspec` connects to your
+development data and then tries to purge it. `config/application.rb` deletes `DATABASE_URL`
+and `QUEUE_DATABASE_URL` outside production so this cannot happen; development and test take
+their database names from `config/database.yml` alone.
+
+To reach a Postgres that isn't the local default, use libpq's `PGHOST` / `PGPORT` / `PGUSER`
+/ `PGPASSWORD`. They set *where* the server is, never *which* database. That is how CI talks
+to its service container.
 
 ## Tests
 
 ```sh
 cd apps/api
+bin/ci                        # the whole gate: setup, RuboCop, gem audit, Brakeman, specs
+```
+
+`bin/ci` is exactly what GitHub Actions runs — the workflow invokes it rather than listing
+its own steps, so a green `bin/ci` locally means a green PR. Add new checks to
+`config/ci.rb`, not to the workflow.
+
+Or run the pieces:
+
+```sh
 bundle exec rspec             # RSpec + FactoryBot; no spec may touch the network
 bundle exec rubocop           # rubocop-rails-omakase
+bin/brakeman                  # SAST
+bin/bundler-audit             # gem CVEs
 ```
 
 WebMock blocks outbound HTTP in the test environment, so a spec can never send a real

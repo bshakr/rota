@@ -11,6 +11,11 @@ jobs:
     name: apps/api
     runs-on: ubuntu-latest
 
+    # The Solid Queue step runs a background worker. If it ever escaped its cleanup it
+    # would hold the step open until GitHub's default 6-hour limit. This is the floor
+    # under that.
+    timeout-minutes: 15
+
     defaults:
       run:
         working-directory: apps/api
@@ -30,10 +35,15 @@ jobs:
           --health-retries 5
 
     env:
-      RAILS_ENV: test
-      # config/database.yml names the databases; these point them at the service container.
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/houserota_api_test
-      QUEUE_DATABASE_URL: postgres://postgres:postgres@localhost:5432/houserota_api_test_queue
+      # Database NAMES come from config/database.yml. These are libpq's standard
+      # connection variables: they say WHERE Postgres is, never which database. That
+      # distinction matters — DATABASE_URL names a database and Rails applies it to
+      # whichever environment is booting, so it is production-only and
+      # config/application.rb deletes it everywhere else.
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
 
     steps:
       - uses: actions/checkout@v5
@@ -44,14 +54,12 @@ jobs:
           bundler-cache: true
           working-directory: apps/api
 
-      - name: Prepare databases
-        run: bin/rails db:prepare
-
-      - name: Lint
-        run: bundle exec rubocop -f github
-
-      - name: Specs
-        run: bundle exec rspec
+      # Setup, RuboCop, gem CVE audit, Brakeman SAST, and the specs. Defined in
+      # config/ci.rb so that running `bin/ci` locally is exactly the gate a PR hits.
+      - name: bin/ci
+        env:
+          RAILS_ENV: test
+        run: bin/ci
 
       # The specs use Active Job's :test adapter, so they prove jobs are *enqueued* but
       # never that a worker drains them. This does: it boots a real Solid Queue worker
@@ -59,8 +67,6 @@ jobs:
       - name: Solid Queue worker processes a job
         env:
           RAILS_ENV: development
-          DATABASE_URL: postgres://postgres:postgres@localhost:5432/houserota_api_development
-          QUEUE_DATABASE_URL: postgres://postgres:postgres@localhost:5432/houserota_api_development_queue
           SMOKE_TIMEOUT_SECONDS: 60
         run: |
           bin/rails db:prepare

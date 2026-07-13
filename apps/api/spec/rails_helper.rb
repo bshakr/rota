@@ -8,6 +8,19 @@ require "rspec/rails"
 # Custom matchers, shared examples and third-party setup live in spec/support.
 Rails.root.glob("spec/support/**/*.rb").sort_by(&:to_s).each { |f| require f }
 
+# Last line of defence before maintain_test_schema! purges whatever it is connected to.
+# config/application.rb already deletes DATABASE_URL outside production so this cannot
+# normally trigger, but the cost of being wrong here is a wiped development database.
+connected_to = ActiveRecord::Base.connection_db_config.database
+unless connected_to.to_s.end_with?("_test")
+  abort <<~MESSAGE
+    Refusing to run specs against #{connected_to.inspect}.
+
+    The test environment must use the test database — the next thing to run is
+    maintain_test_schema!, which purges it. Check DATABASE_URL and config/database.yml.
+  MESSAGE
+end
+
 # Recreates the test database from db/schema.rb if migrations are pending.
 begin
   ActiveRecord::Migration.maintain_test_schema!

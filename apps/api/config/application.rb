@@ -18,13 +18,14 @@ require "action_view/railtie"
 # you've limited to :test, :development, or :production.
 Bundler.require(*Rails.groups)
 
+env_name = ENV["RAILS_ENV"] || ENV["RACK_ENV"] || "development"
+
 # The monorepo keeps a single .env at its root, shared with apps/web, so there is one
 # place to put a credential. Point dotenv at it instead of Rails.root (= apps/api).
 # Must run before `class Application < Rails::Application`, which is what fires
 # dotenv's before_configuration hook.
 if defined?(Dotenv::Rails)
   monorepo_root = Pathname.new(File.expand_path("../../..", __dir__))
-  env_name = ENV["RAILS_ENV"] || ENV["RACK_ENV"] || "development"
 
   Dotenv::Rails.files = [
     monorepo_root.join(".env.#{env_name}.local"),
@@ -32,6 +33,25 @@ if defined?(Dotenv::Rails)
     monorepo_root.join(".env.#{env_name}"),
     monorepo_root.join(".env")
   ].compact
+end
+
+# DATABASE_URL and QUEUE_DATABASE_URL are a PRODUCTION-ONLY mechanism, and this is the
+# line that enforces it.
+#
+# Rails applies DATABASE_URL to whichever environment is currently booting, and the
+# monorepo's single .env is loaded in development AND test. So a DATABASE_URL naming the
+# development database — which is exactly what a `cp .env.example .env` used to hand you —
+# would silently repoint `rspec` at the development database, where `maintain_test_schema!`
+# calls `db:test:prepare` and purges it. Only Rails' environment guard stood between that
+# and a wiped dev database, and because the purge failure is swallowed the suite still
+# reported green while connected to the wrong database.
+#
+# Development and test take their database NAMES from config/database.yml and nowhere
+# else. Connection details (host, user, password) come from libpq's standard PGHOST /
+# PGUSER / PGPASSWORD, which is how CI reaches its service container.
+unless env_name == "production"
+  ENV.delete("DATABASE_URL")
+  ENV.delete("QUEUE_DATABASE_URL")
 end
 
 module HouserotaApi
@@ -64,10 +84,27 @@ module HouserotaApi
     # db/schema.rb only ever describes the domain. See config/database.yml.
     config.solid_queue.connects_to = { database: { writing: :queue } }
 
-    # Origins allowed to call this API from a browser. Defaults to the Next.js app;
-    # set CORS_ORIGINS (comma-separated) when there is more than one, e.g. preview deploys.
-    config.x.cors_origins =
-      ENV.fetch("CORS_ORIGINS") { ENV.fetch("APP_URL", "http://localhost:3001") }
-         .split(",").map(&:strip).reject(&:empty?)
+    # Active Job logs its arguments at info. The reminder and cover-notice jobs will carry
+    # member magic-link tokens and phone numbers as arguments, and a token is a permanent
+    # bearer credential — it must never reach a log aggregator.
+    config.active_job.log_arguments = false
+
+    # Origins allowed to call this API from a browser. Defaults to the Next.js app; set
+    # CORS_ORIGINS (comma-separated) when there is more than one, e.g. preview deploys.
+    #
+    # Blank counts as unset: ENV.fetch treats "" as present, and deploy platforms happily
+    # inject empty strings for unset vars, so `CORS_ORIGINS=` would otherwise resolve to
+    # an empty list and silently refuse the web app its own API.
+    origins = (ENV["CORS_ORIGINS"].presence || ENV["APP_URL"].presence || "http://localhost:3001")
+      .split(",").map(&:strip).reject(&:empty?)
+
+    # "*" is refused outright rather than passed through. rack-cors treats it as
+    # public_resources and hands the API to every site on the internet; nobody should be
+    # able to do that by panic-setting an env var.
+    if origins.include?("*")
+      raise "CORS_ORIGINS must name explicit origins. \"*\" would expose this API to every site."
+    end
+
+    config.x.cors_origins = origins
   end
 end
