@@ -189,9 +189,8 @@ const PAIRS = [
   { fg: "--primary-foreground", bg: "--primary", min: TEXT },
   { fg: "--secondary-foreground", bg: "--secondary", min: TEXT },
   { fg: "--accent-foreground", bg: "--accent", min: TEXT },
-  { fg: "--success-foreground", bg: "--success", min: TEXT, note: "solid alert/badge" },
-  { fg: "--warning-foreground", bg: "--warning", min: TEXT, note: "solid banner" },
-  { fg: "--info-foreground", bg: "--info", min: TEXT },
+  // success/warning/info are tint-only in the settled idiom, so they have no
+  // solid foreground to check. Only the destructive button is solid.
   { fg: "--destructive-foreground", bg: "--destructive", min: TEXT, note: "destructive button" },
 
   // Tinted status badges: text-STATUS over STATUS@10% over the surface. The pair

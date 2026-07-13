@@ -126,13 +126,15 @@
   --secondary: var(--bone-200);
   --secondary-foreground: var(--bone-850);
 
-  /* Status. */
+  /* Status. In the settled idiom these are TINTS: a badge whispers (text-success
+     on success/10), an alert speaks up (text-warning + a border). None uses a
+     solid fill, so success/warning/info have no -foreground — that would be a
+     name for a pixel nothing paints. Only the destructive BUTTON is solid, so
+     only --destructive keeps a foreground. Add one back the day something solid
+     needs it, with intent. */
   --success: var(--sage-600);
-  --success-foreground: var(--bone-50);
   --warning: var(--amber-600);
-  --warning-foreground: var(--bone-50);
   --info: var(--dusk-600);
-  --info-foreground: var(--bone-50);
   --destructive: var(--rust-600);
   --destructive-foreground: var(--bone-50);
 
@@ -204,11 +206,8 @@
   --secondary-foreground: var(--bone-150);
 
   --success: var(--sage-400);
-  --success-foreground: var(--bone-950);
   --warning: var(--amber-400);
-  --warning-foreground: var(--bone-950);
   --info: var(--dusk-400);
-  --info-foreground: var(--bone-950);
   --destructive: var(--rust-400);
   --destructive-foreground: var(--bone-950);
 
@@ -262,11 +261,8 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
   --color-info: var(--info);
-  --color-info-foreground: var(--info-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
