@@ -20,6 +20,22 @@ class Group < ApplicationRecord
     ActiveSupport::TimeZone[timezone]
   end
 
+  # The group's own calendar date — what "today" means in this house.
+  #
+  # `Date.current` is UTC here (config.time_zone), and every question of the form "is this shift in
+  # the future?" gets a wrong answer from it in both directions. At 23:00 UTC it is already
+  # tomorrow in Auckland, so UTC would call today's shift a future one and let a config change
+  # delete and reassign a turn the members were texted about this morning. At 02:00 UTC it is
+  # still yesterday in Honolulu, so UTC would call tomorrow's shift a past one and refuse to
+  # regenerate a turn that is genuinely still a day away, and whose day-of reminder has not gone
+  # out. Neither is a rounding error: both rewrite or freeze a real person's chore.
+  #
+  # So the boundary is the group's midnight, not the server's, and this is the one place that says
+  # so.
+  def today
+    Time.current.in_time_zone(time_zone).to_date
+  end
+
   private
 
   def timezone_must_be_recognised

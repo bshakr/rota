@@ -1,17 +1,20 @@
 # Cron-style jobs, run by the Solid Queue scheduler that `bin/jobs` starts.
 #
-# This is where the rota engine's periodic work belongs as it lands: the daily job that
-# tops every active rota's shift window back up to 90 days, and the hourly reminder sweep.
-#
-#   top_up_shift_windows:
-#     class: GenerateShiftsJob
-#     queue: default
-#     schedule: every day at 3am
+# This is where the rota engine's periodic work lives. The hourly reminder sweep joins it here.
 #
 # Schedules use Fugit's natural language ("every hour at minute 12", "at 5am every day")
 # and are evaluated in config.time_zone, which is UTC.
 
 default: &default
+  # Keeps every active rota's shifts materialised out to 90 days. The hour does not matter much:
+  # the job is idempotent, and a missed run simply means the window is a day shorter until the
+  # next one — nothing is lost, because it recomputes the whole series rather than continuing
+  # from wherever it left off. 3am UTC is quiet everywhere and well clear of any group's send_hour.
+  top_up_shift_windows:
+    class: TopUpShiftWindowsJob
+    queue: default
+    schedule: every day at 3am
+
   clear_solid_queue_finished_jobs:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12
