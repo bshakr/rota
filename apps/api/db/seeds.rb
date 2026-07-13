@@ -9,9 +9,12 @@
 # such thing as a fictional-but-valid phone number: Ofcom reserves the drama range (07700 900xxx)
 # precisely so that it can never connect, which is why libphonenumber rejects it and so does
 # Member. The numbers therefore have to be plausible, and this guard is what keeps them harmless.
+#
+# `return`, not `exit`: seeds are loaded *into* the `db:prepare` process, so exiting here would
+# take that whole process down and silently skip whatever a deploy runs next.
 if Rails.env.production?
   puts "Skipping demo seeds in production."
-  exit
+  return
 end
 
 group = Group.find_or_create_by!(workos_organization_id: "org_demo_flat_4") do |g|

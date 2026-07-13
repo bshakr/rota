@@ -116,6 +116,46 @@ RSpec.describe Rota do
     end
   end
 
+  # Postgres hands an array column back as the literal "{3,0}", not as an Array, so a validation
+  # that reads `_before_type_cast` sees a String the moment a rota is read from the database.
+  # Without care that rejects every rota ever saved, and the rota editor cannot save a single
+  # edit — while a suite that only ever builds fresh records stays perfectly green.
+  describe "editing a rota that is already in the database" do
+    let(:rota) { create(:rota, reminder_offsets: [ 3, 0 ]) }
+
+    it "is valid when read back" do
+      expect(described_class.find(rota.id)).to be_valid
+    end
+
+    it "can be renamed" do
+      reloaded = described_class.find(rota.id)
+
+      expect(reloaded.update(name: "Kitchen deep clean")).to be(true)
+      expect(reloaded.reload.name).to eq("Kitchen deep clean")
+    end
+
+    it "keeps its offsets through an edit that does not touch them" do
+      reloaded = described_class.find(rota.id)
+      reloaded.update!(send_hour: 18)
+
+      expect(reloaded.reload.reminder_offsets).to eq([ 3, 0 ])
+    end
+
+    it "can have its offsets changed" do
+      reloaded = described_class.find(rota.id)
+      reloaded.update!(reminder_offsets: [ 0, 7 ])
+
+      expect(reloaded.reload.reminder_offsets).to eq([ 7, 0 ])
+    end
+
+    it "still rejects junk offsets on an edit" do
+      reloaded = described_class.find(rota.id)
+
+      expect(reloaded.update(reminder_offsets: [ "soon" ])).to be(false)
+      expect(reloaded.errors[:reminder_offsets]).to be_present
+    end
+  end
+
   # Draft is derived from the roster, never stored: there is no way for a flag and a roster to
   # disagree if the flag does not exist.
   describe "#draft?" do

@@ -44,10 +44,10 @@ class Rota < ApplicationRecord
   # never asked for and cannot see they created. `_before_type_cast` is the only place the
   # difference between "soon" and 0 still exists.
   def reminder_offsets_must_be_whole_non_negative_days
-    raw = reminder_offsets_before_type_cast
+    raw = raw_reminder_offsets
     return if raw.blank?
 
-    unless raw.is_a?(Array) && raw.all? { |offset| whole_number?(offset) }
+    unless raw.all? { |offset| whole_number?(offset) }
       errors.add(:reminder_offsets, "must all be a whole number of days")
       return
     end
@@ -55,6 +55,16 @@ class Rota < ApplicationRecord
     return if reminder_offsets.all? { |offset| offset >= 0 }
 
     errors.add(:reminder_offsets, "must all be zero or more days before the shift")
+  end
+
+  # `_before_type_cast` hands back what was assigned only when a user assigned it. For a row read
+  # back from Postgres it hands back the raw array literal — the String "{3,0}" — so treating it
+  # as the assigned value would fail every rota ever loaded, and no saved rota could be edited
+  # again. A stored value was already checked on the way in; only a user-assigned one can still
+  # be hiding the word "soon".
+  def raw_reminder_offsets
+    raw = reminder_offsets_before_type_cast
+    raw.is_a?(Array) ? raw : reminder_offsets
   end
 
   def whole_number?(value)
