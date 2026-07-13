@@ -64,7 +64,24 @@ jobs:
           SMOKE_TIMEOUT_SECONDS: 60
         run: |
           bin/rails db:prepare
-          bin/jobs &
+
+          # Detach the worker's stdout to a log. A background process that keeps the
+          # step's stdout open can hang the runner even after the smoke script exits.
+          bin/jobs > /tmp/solid_queue.log 2>&1 &
           JOBS_PID=$!
-          trap 'kill "$JOBS_PID" 2>/dev/null || true' EXIT
+
+          set +e
           bin/rails runner script/solid_queue_smoke.rb
+          SMOKE_STATUS=$?
+          set -e
+
+          kill "$JOBS_PID" 2>/dev/null || true
+          wait "$JOBS_PID" 2>/dev/null || true
+
+          if [ "$SMOKE_STATUS" -ne 0 ]; then
+            echo "::group::Solid Queue worker log"
+            cat /tmp/solid_queue.log || true
+            echo "::endgroup::"
+          fi
+
+          exit "$SMOKE_STATUS"
