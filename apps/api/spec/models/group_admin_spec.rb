@@ -124,7 +124,51 @@ RSpec.describe GroupAdmin do
       group_admin = described_class.provision!(claims)
 
       expect(group_admin.user).to eq(winner)
-      expect(User.count).to eq(1)
+      # Scoped to this workos_user_id — the seeded demo house means the test database is never empty.
+      expect(User.where(workos_user_id: "user_01ALICE").count).to eq(1)
+    end
+
+    # Proves the savepoint (requires_new: true) is load-bearing, not decoration — the one thing the
+    # stubbed race tests above CANNOT prove.
+    #
+    # The model's `uniqueness` validation turns an ordinary duplicate into a RecordInvalid with no
+    # INSERT at all, so it never poisons a transaction and never needs a savepoint. The savepoint
+    # exists for the TRUE race: two requests both pass the validation while the row does not yet
+    # exist, then collide at the database's unique index. This reproduces exactly that window — a
+    # concurrent request commits the row (on its own connection, a second thread) in the gap between
+    # our validation and our INSERT — so our INSERT hits a REAL PG unique violation mid-transaction.
+    # Without requires_new that violation poisons the whole transaction and the rescue's re-read
+    # raises PG::InFailedSqlTransaction; the savepoint is what lets the losing request recover to the
+    # winner's row. Runs without transactional fixtures so provision!'s transaction is the real
+    # outermost one, as in a request. Delete requires_new: true and this test goes red.
+    context "under a real transaction (no fixture rollback)" do
+      self.use_transactional_tests = false
+
+      after do
+        GroupAdmin.where(user: User.where(workos_user_id: "user_01ALICE")).delete_all
+        User.where(workos_user_id: "user_01ALICE").delete_all
+        Group.where(workos_organization_id: "org_01FLAT").delete_all
+      end
+
+      it "recovers when a concurrent request wins the race to the unique index" do
+        raced = false
+        # _create_record runs after validation and immediately before the INSERT — the exact TOCTOU
+        # window. The only Group provision! creates here is org_01FLAT, so on the first one a second
+        # thread (its own connection) commits the conflicting row, then our INSERT collides.
+        allow_any_instance_of(Group).to receive(:_create_record).and_wrap_original do |original, *args|
+          unless raced
+            raced = true
+            Thread.new { Group.create!(workos_organization_id: "org_01FLAT", name: "Winner", timezone: "Europe/London") }.join
+          end
+          original.call(*args)
+        end
+
+        group_admin = described_class.provision!(claims(org_id: "org_01FLAT"))
+
+        expect(group_admin).to be_persisted
+        expect(group_admin.group.name).to eq("Winner")
+        expect(Group.where(workos_organization_id: "org_01FLAT").count).to eq(1)
+      end
     end
 
     # A create that failed for a reason that is not the race must not be swallowed into a silent

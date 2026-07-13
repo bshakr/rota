@@ -93,6 +93,18 @@ RSpec.describe WorkosAccessToken do
     end
   end
 
+  describe ".verify! expiry" do
+    # Rails' clock and WorkOS's are never perfectly aligned, so a small leeway keeps a token that is
+    # a second or two past expiry from being refused over skew alone.
+    it "accepts a token a few seconds past expiry, within the leeway" do
+      expect { verify(exp: 10.seconds.ago.to_i) }.not_to raise_error
+    end
+
+    it "refuses a token well past expiry" do
+      expect { verify(exp: 5.minutes.ago.to_i) }.to raise_error(described_class::InvalidToken)
+    end
+  end
+
   describe ".inspect_claims" do
     it "returns the full header and payload plus whether issuer and audience would pass" do
       result = described_class.inspect_claims(workos_token(aud: WorkosAuth.client_id))

@@ -13,7 +13,15 @@ module Authenticatable
   private
 
   def authenticate!
-    Current.group_admin = GroupAdmin.provision!(WorkosAccessToken.verify!(bearer_token))
+    claims = WorkosAccessToken.verify!(bearer_token)
+
+    # The authorization seam. Any authenticated member of a WorkOS organization may administer that
+    # organization's own group: a household has no admin tiers, and the boundary that actually
+    # protects people — a token can only ever act within its own group's tenant (see TenantScoped) —
+    # is enforced and tested regardless of role. If we ever add admin tiers, gate the role HERE
+    # (e.g. `raise WorkosAccessToken::InvalidToken, "role too low" unless claims.role.in?(...)`);
+    # it is a one-line change at one point, not a re-plumb. WorkOS remains the source of the role.
+    Current.group_admin = GroupAdmin.provision!(claims)
   rescue WorkosAccessToken::InvalidToken => e
     # The reason a token was refused belongs in our log, not in a response: told which of the
     # signature, the issuer, the audience or the expiry it failed, an attacker is being given a

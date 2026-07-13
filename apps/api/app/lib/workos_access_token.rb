@@ -31,6 +31,17 @@ class WorkosAccessToken
   # refetch, but no more often than this.
   REFETCH_FLOOR = 10.seconds
 
+  # Stale-if-error. WorkOS rotates keys rarely, so a cached key set is almost certainly still valid
+  # even after the TTL. If a post-TTL refresh fails because WorkOS is unreachable, we keep serving
+  # the stale set rather than 503-ing every request — a WorkOS blip must not log the whole app out.
+  # This is how long we serve stale before trying WorkOS again, so an outage costs one fetch attempt
+  # per window rather than one per request.
+  STALE_RETRY_BACKOFF = 30.seconds
+
+  # A little slack on the expiry check. Rails' clock and WorkOS's are not perfectly aligned, and
+  # without leeway a token a second from expiry is refused over skew alone.
+  EXP_LEEWAY = 30
+
   # HTTP timeouts. WorkOS being slow must not become Puma being out of threads.
   OPEN_TIMEOUT = 2
   READ_TIMEOUT = 3
@@ -49,7 +60,8 @@ class WorkosAccessToken
     def verify!(token)
       raise InvalidToken, "no bearer token" if token.blank?
 
-      payload, = JWT.decode(token, nil, true, algorithms: [ ALGORITHM ], jwks: key_set_loader)
+      payload, = JWT.decode(token, nil, true,
+        algorithms: [ ALGORITHM ], jwks: key_set_loader, exp_leeway: EXP_LEEWAY)
 
       verify_issuer!(payload["iss"])
       verify_audience!(payload["aud"])
@@ -173,9 +185,21 @@ class WorkosAccessToken
           return @key_set if @key_set && (@fetched_at != snapshot) && fresh_enough?(refetch: refetch)
         end
 
-        fetched = fetch_key_set
-        fetched_at = Time.current
+        begin
+          fetched = fetch_key_set
+        rescue KeySetUnavailable
+          # Stale-if-error: the refresh failed, but a cached set from before the TTL is almost
+          # certainly still valid, so we serve it rather than fail. Only a cold cache — nothing to
+          # fall back on — actually 503s. Back the clock off by one backoff window so requests serve
+          # the stale set without hitting the network again until it is worth retrying WorkOS.
+          stale = @state_mutex.synchronize { @key_set }
+          raise unless stale
 
+          @state_mutex.synchronize { @fetched_at = STALE_RETRY_BACKOFF.from_now - CACHE_TTL }
+          return stale
+        end
+
+        fetched_at = Time.current
         @state_mutex.synchronize do
           @key_set = fetched
           @fetched_at = fetched_at

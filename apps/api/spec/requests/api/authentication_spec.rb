@@ -174,7 +174,8 @@ RSpec.describe "WorkOS JWT authentication" do
     it "takes the user's email and name from the claims when WorkOS's JWT template supplies them" do
       get "/api/me", headers: workos_headers(sub: "user_01ALICE", email: "alice@example.com", name: "Alice")
 
-      expect(User.sole).to have_attributes(email: "alice@example.com", name: "Alice")
+      expect(User.find_by!(workos_user_id: "user_01ALICE"))
+        .to have_attributes(email: "alice@example.com", name: "Alice")
     end
 
     # Provisioning runs on every authenticated request, but that request is almost always a
@@ -263,7 +264,7 @@ RSpec.describe "WorkOS JWT authentication" do
       expect(a_request(:get, WorkosAuth.jwks_url)).to have_been_made.twice
     end
 
-    it "answers 503, not 401, when WorkOS cannot be reached" do
+    it "answers 503, not 401, when WorkOS cannot be reached with no cached keys to fall back on" do
       stub_request(:get, WorkosAuth.jwks_url).to_timeout
 
       get "/api/me", headers: workos_headers
@@ -278,6 +279,23 @@ RSpec.describe "WorkOS JWT authentication" do
 
       stub_workos_jwks
       get "/api/me", headers: workos_headers
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    # Stale-if-error. WorkOS rotates keys rarely, so a set cached before the TTL is almost certainly
+    # still valid. A WorkOS blip past the TTL must degrade to serving those stale keys, not 503 the
+    # whole app out of authentication. (The "no cached keys" case above still 503s — that is a cold
+    # boot, where there is nothing to fall back on.)
+    it "keeps authenticating on the stale key set when a post-TTL refresh fails" do
+      get "/api/me", headers: workos_headers # warms the cache with the real keys
+      expect(response).to have_http_status(:ok)
+
+      stub_request(:get, WorkosAuth.jwks_url).to_timeout # WorkOS now unreachable
+
+      travel 13.hours do
+        get "/api/me", headers: workos_headers
+      end
 
       expect(response).to have_http_status(:ok)
     end
