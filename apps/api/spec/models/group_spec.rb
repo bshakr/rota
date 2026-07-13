@@ -62,6 +62,34 @@ RSpec.describe Group do
     end
   end
 
+  # The whole point of #today: UTC gets "what day is it in this house?" wrong in both directions,
+  # and both wrong answers move a real person's chore.
+  describe "#today" do
+    it "has already turned over for a group east of the server" do
+      group = build(:group, timezone: "Pacific/Auckland")
+
+      # 23:00 UTC on the 13th is noon on the 14th in Auckland. A shift due on the 14th is today's
+      # there — already texted about, possibly already being done — and must not be treated as a
+      # disposable future row.
+      travel_to Time.utc(2026, 7, 13, 23, 0) do
+        expect(Date.current).to eq(Date.new(2026, 7, 13))
+        expect(group.today).to eq(Date.new(2026, 7, 14))
+      end
+    end
+
+    it "has not yet turned over for a group west of the server" do
+      group = build(:group, timezone: "Pacific/Honolulu")
+
+      # 02:00 UTC on the 13th is 16:00 on the 12th in Honolulu. A shift due on the 13th is still a
+      # day away there, its day-of reminder unsent, and a config change should still be free to
+      # reassign it.
+      travel_to Time.utc(2026, 7, 13, 2, 0) do
+        expect(Date.current).to eq(Date.new(2026, 7, 13))
+        expect(group.today).to eq(Date.new(2026, 7, 12))
+      end
+    end
+  end
+
   describe "destroying" do
     # Members cannot be destroyed while a shift still names them, so the group has to clear its
     # rotas — and therefore their shifts — before it can clear its members. That ordering is

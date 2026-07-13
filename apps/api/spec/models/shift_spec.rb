@@ -104,7 +104,41 @@ RSpec.describe Shift do
       future = create(:shift, rota: rota, due_on: 3.days.from_now.to_date)
       create(:shift, :past, rota: rota)
 
-      expect(rota.shifts.upcoming).to contain_exactly(today, future)
+      expect(rota.shifts.upcoming(rota.group.today)).to contain_exactly(today, future)
+    end
+
+    # The scope takes the date rather than assuming one. Hand it an Auckland "today" and it answers
+    # on Auckland's calendar; there is no way to get UTC by accident.
+    it "answers on whatever calendar it is handed" do
+      rota = create(:rota, group: create(:group, timezone: "Pacific/Auckland"))
+      shift = create(:shift, rota: rota, due_on: Date.new(2026, 7, 14))
+
+      expect(rota.shifts.upcoming(Date.new(2026, 7, 14))).to contain_exactly(shift)
+      expect(rota.shifts.upcoming(Date.new(2026, 7, 15))).to be_empty
+    end
+  end
+
+  describe ".future" do
+    # The line regeneration cuts on. Today's shift is history's side of it: the day-of reminder has
+    # already gone out, and the member may already be doing the job.
+    it "excludes today, which .upcoming includes" do
+      rota = create(:rota)
+      today = create(:shift, rota: rota, due_on: Date.current)
+      tomorrow = create(:shift, rota: rota, due_on: Date.tomorrow)
+
+      expect(rota.shifts.future(Date.current)).to contain_exactly(tomorrow)
+      expect(rota.shifts.upcoming(Date.current)).to contain_exactly(today, tomorrow)
+    end
+  end
+
+  describe ".covered / .uncovered" do
+    it "splits the shifts an admin may freely regenerate from the ones a member arranged" do
+      rota = create(:rota)
+      arranged = create(:shift, :covered, rota: rota, due_on: 3.days.from_now.to_date)
+      plain = create(:shift, rota: rota, due_on: 10.days.from_now.to_date)
+
+      expect(rota.shifts.covered).to contain_exactly(arranged)
+      expect(rota.shifts.uncovered).to contain_exactly(plain)
     end
   end
 

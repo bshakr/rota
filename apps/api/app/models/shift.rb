@@ -13,7 +13,20 @@ class Shift < ApplicationRecord
 
   has_many :sms_messages, dependent: :destroy
 
-  scope :upcoming, -> { where(due_on: Date.current..) }
+  # Today's shifts and later — on a calendar the caller has to name.
+  #
+  # There is deliberately no default. A class-level scope cannot know whose "today" it means, and
+  # `Date.current` would answer in UTC: quietly wrong for every group that is not, and wrong in a
+  # way nothing would ever surface. Pass `group.today` and the timezone decision is visible at
+  # every call site. See Group#today.
+  scope :upcoming, ->(as_of) { where(due_on: as_of..) }
+
+  # Strictly after the given date. This is the line regeneration cuts on: today's shift and every
+  # shift before it are immutable history, and everything after is derived and disposable.
+  scope :future, ->(as_of) { where("shifts.due_on > ?", as_of) }
+
+  scope :covered, -> { where.not(covering_member_id: nil) }
+  scope :uncovered, -> { where(covering_member_id: nil) }
 
   validates :due_on, presence: true, uniqueness: { scope: :rota_id }
   validate :cover_must_differ_from_the_assignee
