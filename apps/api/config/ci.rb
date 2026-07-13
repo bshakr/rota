@@ -8,7 +8,15 @@
 # on the PR that introduces it.
 
 CI.run do
-  step "Setup", "bin/setup --skip-server"
+  # Prepare the TEST database from schema only — deliberately NOT `bin/setup`, which runs
+  # `db:prepare` and *seeds*. Seeding the test database put the demo house ("Flat 4, Alma Road")
+  # into every example's world, so a natural `expect(Group.count).to eq(1)` passed locally against
+  # an unseeded DB and failed in CI against the seeded one. That reproducibility gap cost three
+  # separate debugging cycles. `db:test:prepare` loads the schema and stops — no seeds — so local
+  # `bin/ci` and CI now see the same empty test DB. Seeds still run for development (bin/setup, and
+  # the Solid Queue smoke step below), and spec/db/seeds_spec.rb still loads db/seeds.rb explicitly
+  # to prove the seed file works. Bundler is already installed by ruby/setup-ruby in CI.
+  step "Setup", "bin/rails db:test:prepare"
 
   step "Style: Ruby", "bin/rubocop"
 
