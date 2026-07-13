@@ -28,6 +28,14 @@ class Shift < ApplicationRecord
   scope :covered, -> { where.not(covering_member_id: nil) }
   scope :uncovered, -> { where(covering_member_id: nil) }
 
+  # Every shift this member has a stake in: the ones the rota assigned to them, and the ones they are
+  # covering for someone else. Deliberately broader than #responsible_member — a member must still see
+  # a shift they have handed off so they can take it back (rule 2 of the cover flow). The member page
+  # (BLO-1048) lists exactly these.
+  scope :involving, ->(member) {
+    where(assigned_member_id: member).or(where(covering_member_id: member))
+  }
+
   validates :due_on, presence: true, uniqueness: { scope: :rota_id }
   validate :cover_must_differ_from_the_assignee
   validate :members_must_belong_to_the_rotas_group
