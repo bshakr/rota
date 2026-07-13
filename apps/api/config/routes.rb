@@ -13,6 +13,20 @@ Rails.application.routes.draw do
   # authenticated by a WorkOS-signed JWT and scoped to the group that token names.
   namespace :api do
     get "me", to: "me#show"
+
+    # The admin surface (BLO-1047). Every member action is scoped to the token's group, so these
+    # ids are always the caller's own house's; a cross-tenant id resolves to 404, never a leak.
+    resource :group, only: %i[show update], controller: "group"
+    resources :members, only: %i[index create update destroy] do
+      post :rotate_link, on: :member
+    end
+    resources :rotas, only: %i[index show create update destroy] do
+      resource :positions, only: :update, controller: "rota_positions"
+      resources :shifts, only: :index
+      post :preview_message, on: :member
+    end
+    resources :shifts, only: :update
+    resources :sms_messages, only: :index
   end
 
   # Defines the root path route ("/")
