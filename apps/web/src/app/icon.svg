@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The wordmark's clay tile. Raw hex is unavoidable here: an icon is fetched
+       by the browser before any CSS exists, so it cannot read a token. These
+       track --clay-500 and --bone-50 in globals.css. -->
+  <rect width="32" height="32" rx="8" fill="#b04c20"/>
+  <path d="M8 15.2 16 8.5l8 6.7V23a1 1 0 0 1-1 1h-4.5v-5h-5v5H9a1 1 0 0 1-1-1z"
+        fill="none" stroke="#fffdfa" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

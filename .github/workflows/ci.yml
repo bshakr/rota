@@ -7,6 +7,36 @@ on:
     branches: [ main ]
 
 jobs:
+  # The JS half of the gate. `bin/ci` is the Rails equivalent; `npm run ci` is
+  # this one, and running it locally is exactly what a PR hits.
+  #
+  # No .env is written here, deliberately. next.config.ts loads the repo-root
+  # .env when one exists, and it is gitignored, so it never does in CI — which
+  # means this job also proves the build does not secretly depend on it.
+  web:
+    name: apps/web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - run: npm ci
+
+      # Lint (includes the rule banning raw colours in components), typecheck,
+      # the design-token gate, and a production build.
+      - run: npm run ci
+
   api:
     name: apps/api
     runs-on: ubuntu-latest
