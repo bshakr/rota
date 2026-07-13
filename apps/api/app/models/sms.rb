@@ -34,6 +34,15 @@ module Sms
     end
   end
 
+  # A template with an unbalanced or stray brace — `Hi {{name}`. Same failure class as an unknown
+  # placeholder: it should have been rejected at save, and texting the literal braces out is exactly
+  # the un-recallable mistake the validation exists to prevent.
+  class MalformedTemplate < PermanentFailure
+    def initialize(_template = nil)
+      super("template has an unbalanced or stray brace", error_code: SmsMessage::INVALID_TEMPLATE)
+    end
+  end
+
   class << self
     def deliver(to:, body:)
       adapter.deliver(to: to, body: body, status_callback: status_callback_url)

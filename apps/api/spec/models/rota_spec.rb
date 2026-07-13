@@ -62,6 +62,24 @@ RSpec.describe Rota do
       expect(rota).not_to be_valid
       expect(rota.errors[:message_template].first).to include("{{name}}", "{{days_until}}")
     end
+
+    it "rejects an unbalanced brace rather than letting it reach a text" do
+      rota = build(:rota, message_template: "Hi {{name}")
+
+      expect(rota).not_to be_valid
+      expect(rota.errors[:message_template].first).to include("unbalanced or stray brace")
+    end
+
+    it "rejects a template longer than the segment budget" do
+      rota = build(:rota, message_template: "x" * (Rota::MESSAGE_TEMPLATE_MAX + 1))
+
+      expect(rota).not_to be_valid
+      expect(rota.errors[:message_template]).to be_present
+    end
+
+    it "accepts a template at the maximum length" do
+      expect(build(:rota, message_template: "x" * Rota::MESSAGE_TEMPLATE_MAX)).to be_valid
+    end
   end
 
   describe "the schedule" do

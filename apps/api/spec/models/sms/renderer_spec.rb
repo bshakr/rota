@@ -1,8 +1,6 @@
 require "rails_helper"
 
 RSpec.describe Sms::Renderer do
-  include ActiveSupport::Testing::TimeHelpers
-
   let(:group) { create(:group, timezone: "Europe/London") }
   let(:member) { create(:member, group: group, name: "Alice") }
   let(:rota) { create(:rota, group: group, name: "Kitchen deep clean", message_template: template) }
@@ -71,6 +69,10 @@ RSpec.describe Sms::Renderer do
     it "counts backwards for a shift already past" do
       expect(render(due_on: Date.new(2026, 7, 3))).to start_with("2 days ago")
     end
+
+    it "says 1 day ago, not 1 days ago" do
+      expect(render(due_on: Date.new(2026, 7, 4))).to start_with("1 day ago")
+    end
   end
 
   describe "the magic link" do
@@ -109,6 +111,37 @@ RSpec.describe Sms::Renderer do
       known = described_class::PLACEHOLDERS.map { |placeholder| "{{#{placeholder}}}" }.join(" ")
 
       expect(described_class.unknown_placeholders(known)).to eq([])
+    end
+  end
+
+  describe "unbalanced braces" do
+    it "refuses to render a template with a stray brace rather than texting it literally" do
+      rota.update_column(:message_template, "Hi {{name}")
+
+      expect { render }.to raise_error(Sms::MalformedTemplate)
+    end
+
+    it "flags an opening brace with no close" do
+      expect(described_class.stray_braces?("Hi {{name}")).to be(true)
+    end
+
+    it "flags a closing brace with no open" do
+      expect(described_class.stray_braces?("Hi name}}")).to be(true)
+    end
+
+    it "accepts a template whose braces all pair up" do
+      expect(described_class.stray_braces?("Hi {{name}}, it is {{rota}}")).to be(false)
+    end
+  end
+
+  describe "an oversized body" do
+    it "clamps the message under Twilio's limit while keeping the magic link intact" do
+      rota.update_column(:message_template, "x" * 5_000)
+
+      result = render
+
+      expect(result.length).to be <= described_class::MAX_BODY_LENGTH
+      expect(result).to end_with("/s/#{member.access_token}")
     end
   end
 

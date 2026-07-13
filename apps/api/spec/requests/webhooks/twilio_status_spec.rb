@@ -115,6 +115,27 @@ RSpec.describe "POST /webhooks/twilio/status" do
       expect(sms_message.reload.status).to eq("delivered")  # the signed body is what was applied
     end
 
+    it "ignores a signed callback with no MessageSid instead of matching an unsent row" do
+      # Every pending/sending row has a NULL twilio_sid, so an absent SID makes the lookup
+      # `find_by(twilio_sid: nil)`, which matches an arbitrary unsent message. A validly-signed
+      # callback with no SID must therefore touch nothing rather than flip a random reminder.
+      pending_row = create(:sms_message) # status pending, twilio_sid nil
+
+      post_callback({ "MessageStatus" => "failed", "ErrorCode" => "30006" }) # no MessageSid at all
+
+      expect(response).to have_http_status(:no_content)
+      expect(pending_row.reload).to have_attributes(status: "pending", error_code: nil)
+    end
+
+    it "ignores a signed callback whose MessageSid is blank" do
+      pending_row = create(:sms_message)
+
+      post_callback({ "MessageSid" => "", "MessageStatus" => "failed" })
+
+      expect(response).to have_http_status(:no_content)
+      expect(pending_row.reload.status).to eq("pending")
+    end
+
     it "does not walk a delivered row back to failed on a replayed callback" do
       # Twilio signatures carry no nonce, so any captured callback can be replayed verbatim. A
       # `failed` replay arriving after the message already delivered must not undo the delivery.

@@ -29,6 +29,13 @@ module Webhooks
       # flip a message they hold no signature for — the signature check would pass and change the
       # wrong row. The signed set is the only trustworthy input.
       callback = request.request_parameters
+
+      # A blank SID is not a lookup — it is a landmine. Every `pending` and `sending` row carries a
+      # NULL twilio_sid (the sweep claims the row before rendering), so `find_by(twilio_sid: nil)`
+      # matches an arbitrary unsent row, and a signed callback with no MessageSid would flip it to
+      # delivered or failed. Refuse the blank before it reaches the database.
+      return head :no_content if callback["MessageSid"].blank?
+
       message = SmsMessage.find_by(twilio_sid: callback["MessageSid"])
       status = TERMINAL_STATUSES[callback["MessageStatus"].to_s]
 
@@ -38,6 +45,11 @@ module Webhooks
       # failed it is terminal. Twilio signatures carry no nonce, so a captured callback can be
       # replayed verbatim; refusing to move a terminal row is what stops a replayed `failed` from
       # undoing a real delivery.
+      #
+      # Residual race (accepted, follow-up ticket): SendSmsJob writes the SID in the same UPDATE that
+      # moves the row to `sent`, immediately after Twilio's 201, so the window is sub-millisecond. A
+      # delivery callback that beat that write would find no row and be dropped, and Twilio (given a
+      # 204) would not retry. The window is as small as it can be without a SID we do not yet have.
       if message && status && !message.delivered? && !message.failed?
         message.update!(status: status, error_code: callback["ErrorCode"].presence)
       end

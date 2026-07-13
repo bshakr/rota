@@ -85,13 +85,15 @@ RSpec.describe SendSmsJob do
   end
 
   describe "a Twilio failure that will not fix itself" do
-    it "records the carrier error code and does not retry" do
+    it "records the carrier error code, the rendered body, and does not retry" do
       stub_twilio_error(status: 400, code: 21_610, message: "Attempt to send to unsubscribed recipient")
 
       expect { described_class.perform_now(sms_message.id) }
         .not_to have_enqueued_job(described_class)
 
       expect(sms_message.reload).to have_attributes(status: "failed", error_code: "21610", twilio_sid: nil)
+      # The body we tried to send is kept, so the SMS log shows what a failed reminder would have said.
+      expect(sms_message.body).to include("Hi Alice!")
     end
   end
 
@@ -154,6 +156,53 @@ RSpec.describe SendSmsJob do
     end
   end
 
+  # The one that spends money if it is wrong. Sending is claim -> call Twilio -> record, and the
+  # middle step leaves the machine; the row is claimed (pending -> sending) BEFORE Twilio is called
+  # so that a crash after the carrier accepts the message can never become a second text.
+  describe "a crash between the carrier accepting the message and the row being recorded" do
+    # A real SIGKILL/OOM runs no rescue handlers, so we model it with an error that is NOT a
+    # StandardError — the job's own catch-all rescues StandardError, and a genuine crash would sail
+    # straight past it exactly as this does.
+    class SimulatedCrash < Exception; end # rubocop:disable Lint/InheritException
+
+    it "never sends the text a second time" do
+      stub_twilio_send
+
+      # First attempt: Twilio returns 201, then the process dies before the row is written to `sent`.
+      # Simulate the kill by making the sent-transition raise a fatal error after the send happened.
+      allow_any_instance_of(SmsMessage).to receive(:update!).and_wrap_original do |original, *args|
+        raise SimulatedCrash if args.first.is_a?(Hash) && args.first[:status] == :sent
+
+        original.call(*args)
+      end
+
+      expect { described_class.perform_now(sms_message.id) }.to raise_error(SimulatedCrash)
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).to have_been_made.once
+      # Left mid-flight — claimed, carrier-accepted, but not recorded.
+      expect(sms_message.reload.status).to eq("sending")
+
+      # Solid Queue re-runs the job. It must NOT call Twilio again: the row is `sending`, not
+      # `pending`, so the claim finds nothing to take.
+      allow_any_instance_of(SmsMessage).to receive(:update!).and_call_original
+      described_class.perform_now(sms_message.id)
+
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).to have_been_made.once
+      expect(sms_message.reload.status).to eq("sending")
+    end
+
+    it "claims the row exactly once when two workers race the same job" do
+      stub_twilio_send
+
+      # First worker claims and sends. The second worker, arriving on the same id, finds the row no
+      # longer `pending` and does nothing — no second text.
+      described_class.perform_now(sms_message.id)
+      described_class.perform_now(sms_message.id)
+
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).to have_been_made.once
+      expect(sms_message.reload.status).to eq("sent")
+    end
+  end
+
   describe "a template that should never have been saved" do
     it "fails the row rather than texting a literal placeholder" do
       rota.update_column(:message_template, "Hi {{nmae}}")
@@ -165,6 +214,18 @@ RSpec.describe SendSmsJob do
         error_code: SmsMessage::INVALID_TEMPLATE
       )
       expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).not_to have_been_made
+    end
+  end
+
+  describe "an unexpected exception on the send path" do
+    it "records the row as failed rather than leaving it stranded in sending" do
+      # A bug or a nil somewhere past the claim. The catch-all must not let the row sit in `sending`
+      # forever with its retries spent and no status to explain it.
+      allow(Sms).to receive(:deliver).and_raise(StandardError, "unexpected")
+
+      described_class.perform_now(sms_message.id)
+
+      expect(sms_message.reload).to have_attributes(status: "failed", error_code: SmsMessage::INTERNAL_ERROR)
     end
   end
 end
