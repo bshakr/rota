@@ -26,6 +26,10 @@ gem "thruster", require: false
 # The Next.js app calls this API cross-origin with a bearer token
 gem "rack-cors"
 
+# libphonenumber. A bad phone number is a silently missed reminder, so numbers are normalised to
+# E.164 and validated at entry rather than discovered three weeks later. See Member.
+gem "phonelib", "~> 0.10.22"
+
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
