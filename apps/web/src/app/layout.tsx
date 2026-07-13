@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Figtree, JetBrains_Mono } from "next/font/google";
 
+import { ThemeColorMeta } from "@/components/theme-color-meta";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -30,19 +31,14 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // Tints the phone's browser chrome to match the page, so the member page fills
-  // the screen instead of sitting inside someone else's white box.
-  //
-  // The only raw colours in the codebase, and the lint rule below is switched off
-  // by hand to allow them: a <meta> tag is read by the browser before any CSS
-  // exists, so it cannot reference a custom property. These two values MUST track
-  // --background in globals.css (bone-100 in light, bone-950 in dark).
-  /* eslint-disable no-restricted-syntax */
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f9f6ef" },
-    { media: "(prefers-color-scheme: dark)", color: "#18130f" },
-  ],
-  /* eslint-enable no-restricted-syntax */
+  // The SSR default for the browser-chrome tint (light --background). It is a
+  // sensible first paint for no-JS and pre-hydration; <ThemeColorMeta> then
+  // updates this same tag to the RESOLVED theme, because a media-query tag would
+  // track the OS rather than the theme the user actually chose. A <meta> is read
+  // before any CSS exists so it cannot reference a token — this raw hex must
+  // track --background (bone-100), and the lint rule is disabled for it.
+  // eslint-disable-next-line no-restricted-syntax
+  themeColor: "#f9f6ef",
 };
 
 export default function RootLayout({
@@ -66,6 +62,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <ThemeColorMeta />
           {children}
           <Toaster />
         </ThemeProvider>

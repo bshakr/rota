@@ -41,10 +41,12 @@ only lists the rules that are easy to break by accident.
 
 ### Three rules
 
-1. **Never a raw colour in a component.** No hex, no `oklch()`, no `bg-orange-500`.
-   The raw pigments in `globals.css` are deliberately kept *outside* Tailwind's
-   `@theme`, so no `bg-clay-500` utility is ever generated — the escape hatch does
-   not exist. ESLint fails the build on `bg-[#b45024]` and on inline colour styles.
+1. **Never a raw colour in a component.** No hex, no `oklch()`, no `bg-red-500`.
+   Two things enforce it: `globals.css` tears Tailwind's default palette out of
+   the compiler with `@theme { --color-*: initial }`, so `bg-red-500` / `text-white`
+   generate **no CSS at all**; and ESLint fails the build on hex, `oklch()`, inline
+   colour styles, and any default-palette utility that slips through. Reach for a
+   semantic token.
 2. **One accent.** Clay, via `--primary`. A second saturated colour on a screen
    means something has gone wrong. Status colours are the only exception, and only
    for status.
@@ -61,20 +63,49 @@ only lists the rules that are easy to break by accident.
 | `--input` | A real control boundary — form fields. Darker, because WCAG wants 3:1 here. |
 | `--success` / `--warning` / `--info` | HouseRota additions, for the SMS delivery log. `<Badge variant="success">`. |
 
+### Shared primitives — reach for these before inventing
+
+Every one of these exists because otherwise five screens would each build it
+differently. All are shown live in `/styleguide`.
+
+| Use it for | Component |
+| --- | --- |
+| Page gutter (the one padding + max-width) | `<Container width="admin\|prose\|member">` |
+| Admin screen heading | `<PageHeader>` |
+| "Nothing here yet" | `<EmptyState>` |
+| A destructive/consequential confirm | `<ConfirmDialog>` (solid confirm, quiet cancel — correct hierarchy) |
+| A submit in flight | `<Button loading>` |
+| Names → initials, "+2 more" | `initials()`, `nameList()` in `src/lib/format.ts` |
+| Member shift + cover states | `src/components/member/` (`ShiftCard`, `InvalidLink`) |
+
+`error.tsx`, `loading.tsx`, `not-found.tsx` exist at the app root; add
+screen-specific ones next to a route when its shape differs.
+
 ### Conventions
 
-- **Dates:** always format through `src/lib/date.ts`. Never call
-  `toLocaleDateString()` in a component — with no locale it resolves to the host
-  default (`en-US` on the Node server, `en-GB` in the browser), the two disagree,
-  and React throws a hydration mismatch. This product is made of dates.
+- **Dates:** always format through `src/lib/date.ts`, which pins **both** locale
+  and timezone. Never call `toLocaleDateString()` in a component — unpinned it
+  resolves to the host (en-US server / en-GB browser, in two zones), server and
+  client disagree on the day, and React throws a hydration mismatch. This product
+  is made of dates. Use `relativeDay(target, today)` for "in 3 days".
+- **Status idiom:** a Badge *whispers* (tinted, inline status), an Alert *speaks
+  up* (`variant="warning"` etc., tinted + bordered, a message to read), a
+  destructive Button *shouts* (solid). Pick by volume.
+- **Tables on a phone:** a 4-column table doesn't fit 375px. Render a `<Table>`
+  from `md` up and a stack of `<Card>`s below, from the same data — the pattern is
+  in `/styleguide` under "Table, and the phone fallback".
 - **Forms:** `Field` + `react-hook-form` + `zod`; non-native inputs (Select,
-  Calendar) go through `Controller`. Worked example in `/styleguide`. Note that
-  shadcn's `form` component is an empty stub in this style — `field` replaced it.
-- **Admin screens:** start with `<PageHeader>`, and add your route to `ADMIN_NAV`
-  in `src/components/admin-shell.tsx` rather than building your own navigation.
+  Calendar) go through `Controller`. Worked example in `/styleguide`. shadcn's
+  `form` is an empty stub in this style — `field` replaced it.
+- **Admin screens:** start with `<PageHeader>` inside `<Container>`, and add your
+  route to `ADMIN_NAV` in `src/components/admin-shell.tsx`, not your own nav.
 - **Buttons and inputs** are one size step larger than stock shadcn (default 40px,
-  `lg` 44px). That is a touch target, not a preference. Re-running
-  `shadcn add button --overwrite` will lose it; put it back.
+  `lg` 44px; icon buttons `icon-lg` for phone controls). That is a touch target,
+  not a preference. Re-running `shadcn add … --overwrite` loses this and the focus
+  and status edits below; put them back.
+- **Focus** is an offset `outline` in `--ring` (distinct from `--primary`), not a
+  box-shadow ring — it survives Windows High Contrast Mode and shows on a clay
+  button. Keep `outline-hidden` (not `outline-none`).
 
 ### The two layouts
 

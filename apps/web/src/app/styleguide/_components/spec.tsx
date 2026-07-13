@@ -1,3 +1,4 @@
+import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export function Section({
@@ -28,7 +29,11 @@ export function Section({
   );
 }
 
-/** A labelled panel around a live component, so the demo never floats loose. */
+/**
+ * A labelled panel around a live component. It IS a <Card> — the styleguide eats
+ * its own dog food, so the reference for "what a panel looks like" is the same
+ * component every screen uses, not a look-alike.
+ */
 export function Demo({
   label,
   hint,
@@ -41,7 +46,7 @@ export function Demo({
   children: React.ReactNode;
 }) {
   return (
-    <div className="border-border bg-card overflow-hidden rounded-xl border">
+    <Card className="gap-0 overflow-hidden py-0">
       <div className="border-border bg-muted/40 flex items-baseline justify-between gap-4 border-b px-4 py-2">
         <span className="text-xs font-medium">{label}</span>
         {hint ? (
@@ -53,7 +58,7 @@ export function Demo({
       <div className={cn("flex flex-wrap items-center gap-3 p-5", className)}>
         {children}
       </div>
-    </div>
+    </Card>
   );
 }
 

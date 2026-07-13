@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Container } from "@/components/container";
 import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,8 +56,13 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-              "focus-visible:ring-ring/50 outline-none focus-visible:ring-2",
+              // 44px tall (py-2.5 + text line) — a nav row is tapped on a phone.
+              "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+              // Focus is an offset outline in --sidebar-ring, measured against the
+              // sidebar. A ring here was invisible on the clay active item; the
+              // offset puts a sidebar-coloured gap between item and outline so it
+              // shows on any item background.
+              "outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring",
               active
                 ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-xs"
                 : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -88,8 +94,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <Wordmark />
         </Link>
         <NavLinks />
-        <div className="mt-auto flex items-center justify-between px-1 pt-4">
-          <span className="text-muted-foreground text-xs">Willow Road</span>
+        {/* The group name belongs here, from AuthKit's organization (BLO-1050).
+            Deliberately left empty rather than stubbed with a plausible-looking
+            house name — a fake that reads as real is the kind of thing that
+            survives to production. */}
+        <div className="mt-auto flex items-center justify-end px-1 pt-4">
           <ThemeToggle />
         </div>
       </aside>
@@ -99,7 +108,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <header className="bg-sidebar border-sidebar-border flex items-center justify-between border-b px-4 py-3 md:hidden">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Open navigation">
+              {/* icon-lg (44px): the primary mobile control. */}
+              <Button variant="ghost" size="icon-lg" aria-label="Open navigation">
                 <Menu className="size-5" />
               </Button>
             </SheetTrigger>
@@ -117,9 +127,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <ThemeToggle />
         </header>
 
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 md:px-8 md:py-10">
-          {children}
-        </main>
+        <Container asChild>
+          <main className="flex-1 py-6 md:py-10">{children}</main>
+        </Container>
       </div>
     </div>
   );

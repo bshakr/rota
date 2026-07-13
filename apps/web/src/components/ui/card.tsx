@@ -12,7 +12,14 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl bg-card py-(--card-spacing) text-sm text-card-foreground ring-1 ring-foreground/10 [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
+        // The ONE card idiom: bg-card, a --border hairline, and shadow-xs. Every
+        // panel in the product is a <Card> — the styleguide's own panels included
+        // — so five screens cannot each invent their own boundary. The border is
+        // --border (what the styleguide documents "card edges" to be), not a
+        // translucent ring, and the shadow gives the lift a 2% lightness step
+        // cannot carry on a phone in daylight. --card-spacing (16px, 12px on sm)
+        // is the canonical card padding.
+        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl border border-border bg-card py-(--card-spacing) text-sm text-card-foreground shadow-xs [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
         className
       )}
       {...props}

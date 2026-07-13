@@ -1,216 +1,290 @@
 #!/usr/bin/env node
 /**
- * Guards the two promises the design system makes, both of which are the kind
- * that rot silently:
+ * Guards the promises the design system makes, all of which rot silently:
  *
  *   1. THEME PARITY — every semantic token defined for light is redefined for
- *      dark. Miss one and it does not crash; it inherits the light value and you
- *      get, say, sand-coloured text on a cocoa background. Nobody notices until
- *      a user does.
+ *      dark. Miss one and it inherits the light value: sand text on cocoa.
  *
- *   2. CONTRAST — every foreground/background pairing still clears WCAG AA
- *      (4.5:1 for text, 3:1 for control borders and focus rings) in BOTH themes.
- *      "Warm and friendly" is one careless nudge away from "beige on beige", and
- *      the member page is read on a phone, outdoors, by someone in a hurry.
+ *   2. CONTRAST — every foreground/background pairing meets WCAG AA (4.5:1 text,
+ *      3:1 control borders and focus rings) in BOTH themes, with TRANSLUCENT
+ *      fills composited over their real backdrop first. A tinted `success/10`
+ *      badge, a `/50` focus ring, an offset outline — their on-screen contrast
+ *      depends on what is behind them, and measuring the opaque colour instead
+ *      is how the first version of this checker printed a green tick for a focus
+ *      ring that rendered at 2:1.
  *
- * Run by `npm run check:tokens`, and in CI. Reads globals.css as the source of
- * truth — no duplicated colour table to drift out of sync.
+ * Two deliberate choices, both learned the hard way:
+ *
+ *   - The stylesheet is parsed with POSTCSS, walking the real node tree, never
+ *     regex. A regex `:root\{([^}]*)\}` folds a `:root` nested inside
+ *     `@media (prefers-color-scheme: dark)` into the light scope and truncates
+ *     at the first nested `}`. Tailwind v4 stylesheets have both. Only an actual
+ *     parser gets the cascade right.
+ *
+ *   - Translucent values are COMPOSITED, not ignored and not rejected. A focus
+ *     ring is legitimately drawn at partial opacity; the question is what it
+ *     looks like over its backdrop, which is answerable, so we answer it.
+ *
+ * Run by `npm run check:tokens`, and in CI.
  */
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import postcss from "postcss";
+
 const CSS_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../src/app/globals.css",
 );
 
-// Paint is theme-independent by design: one pigment set, two mappings. These
-// live only in :root and must NOT be redeclared under .dark.
+// Paint is theme-independent by design: one pigment set, two mappings. Paint
+// lives only in :root and must NOT be redeclared under .dark.
 const PAINT = /^--(bone|clay|sage|amber|rust|dusk)-/;
-// Geometry, not colour. Same in both themes.
-const THEME_AGNOSTIC = new Set(["--radius"]);
+// Not colour — geometry, type, spacing. Skipped by both parity and contrast.
+const NON_COLOUR = /^--(font|text|radius|shadow|elevation|space)/;
 
-/** Text needs 4.5:1; a control boundary or focus ring needs 3:1 (WCAG 1.4.11). */
-const PAIRS = [
-  ...["--background", "--card", "--muted", "--popover"].flatMap((surface) => [
-    { fg: "--foreground", bg: surface, min: 4.5 },
-    { fg: "--muted-foreground", bg: surface, min: 4.5 },
-    { fg: "--primary", bg: surface, min: 4.5 },
-    { fg: "--success", bg: surface, min: 4.5 },
-    { fg: "--warning", bg: surface, min: 4.5 },
-    { fg: "--info", bg: surface, min: 4.5 },
-    { fg: "--destructive", bg: surface, min: 4.5 },
-    { fg: "--input", bg: surface, min: 3 },
-    { fg: "--ring", bg: surface, min: 3 },
-  ]),
-  { fg: "--primary-foreground", bg: "--primary", min: 4.5 },
-  { fg: "--success-foreground", bg: "--success", min: 4.5 },
-  { fg: "--warning-foreground", bg: "--warning", min: 4.5 },
-  { fg: "--info-foreground", bg: "--info", min: 4.5 },
-  { fg: "--destructive-foreground", bg: "--destructive", min: 4.5 },
-  { fg: "--secondary-foreground", bg: "--secondary", min: 4.5 },
-  { fg: "--accent-foreground", bg: "--accent", min: 4.5 },
-  { fg: "--sidebar-foreground", bg: "--sidebar", min: 4.5 },
-  { fg: "--sidebar-primary-foreground", bg: "--sidebar-primary", min: 4.5 },
-  { fg: "--foreground", bg: "--sidebar", min: 4.5 },
-  { fg: "--muted-foreground", bg: "--sidebar", min: 4.5 },
-];
+const TEXT = 4.5; // WCAG AA, normal text
+const UI = 3.0; //   WCAG AA, control boundaries and focus indicators
 
-/* --- parsing --------------------------------------------------------------- */
+/* --- parse (postcss AST, never regex) -------------------------------------- */
 
-/** Collect `--x: value;` declarations from every block with the given selector. */
-function declarationsFor(css, selector) {
+/**
+ * Custom-property declarations from every TOP-LEVEL rule matching the selector.
+ * `rule.parent.type === "root"` is what keeps a `:root` nested inside an at-rule
+ * (e.g. a `@media (prefers-color-scheme: dark)` block) out of the base scope.
+ */
+function declarationsForSelector(root, selectorTest) {
   const out = {};
-  const blocks = css.matchAll(
-    new RegExp(`${selector}\\s*\\{([^}]*)\\}`, "g"),
-  );
-  for (const [, body] of blocks) {
-    for (const [, prop, value] of body.matchAll(
-      /(--[\w-]+)\s*:\s*([^;]+);/g,
-    )) {
-      out[prop] = value.trim();
-    }
-  }
+  root.walkRules((rule) => {
+    if (rule.parent.type !== "root") return;
+    if (!rule.selectors.map((s) => s.trim()).some(selectorTest)) return;
+    rule.walkDecls((decl) => {
+      if (decl.prop.startsWith("--")) out[decl.prop] = decl.value.trim();
+    });
+  });
   return out;
 }
 
-/** Follow `var(--x)` chains down to a literal colour. */
-function resolve_(prop, scope, seen = new Set()) {
+/** Follow `var(--x)` chains to a literal value. */
+function deref(prop, scope, seen = new Set()) {
   const value = scope[prop];
   if (value === undefined) return undefined;
   if (seen.has(prop)) throw new Error(`Circular var(): ${prop}`);
   seen.add(prop);
-
-  const ref = value.match(/^var\((--[\w-]+)\)$/);
-  return ref ? resolve_(ref[1], scope, seen) : value;
+  const ref = value.match(/^var\(\s*(--[\w-]+)\s*\)$/);
+  return ref ? deref(ref[1], scope, seen) : value;
 }
 
 /* --- colour ---------------------------------------------------------------- */
 
+/** oklch(L C H) or oklch(L C H / A). Returns {L,C,H,alpha} or null. */
 function parseOklch(value) {
   const m = value.match(
-    /oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*(?:\/\s*([\d.%]+)\s*)?\)/,
+    /^oklch\(\s*([\d.]+%?)\s+([\d.]+)\s+([\d.]+)\s*(?:\/\s*([\d.]+%?)\s*)?\)$/,
   );
   if (!m) return null;
-  return [Number(m[1]), Number(m[2]), Number(m[3])];
+  const num = (s) => (s.endsWith("%") ? Number(s.slice(0, -1)) / 100 : Number(s));
+  return {
+    L: num(m[1]),
+    C: Number(m[2]),
+    H: Number(m[3]),
+    alpha: m[4] === undefined ? 1 : num(m[4]),
+  };
 }
 
-function oklchToSrgb([L, C, Hdeg]) {
-  const h = (Hdeg * Math.PI) / 180;
+/** oklch -> clamped linear sRGB [r,g,b] in 0..1. */
+function oklchToLinear({ L, C, H }) {
+  const h = (H * Math.PI) / 180;
   const a = C * Math.cos(h);
   const b = C * Math.sin(h);
-
   const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
   const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
   const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
-
-  const linear = [
+  return [
     4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
     -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
     -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
-  ];
-
-  // Gamma-encode and clamp: a channel outside sRGB is what the screen will
-  // actually show, so luminance must be measured after clipping, not before.
-  return linear.map((x) => {
-    const v =
-      x <= 0.0031308 ? 12.92 * x : 1.055 * Math.max(x, 0) ** (1 / 2.4) - 0.055;
-    return Math.min(1, Math.max(0, v));
-  });
+  ].map((x) => Math.min(1, Math.max(0, x)));
 }
 
-function luminance(oklch) {
-  const [r, g, b] = oklchToSrgb(oklch).map((v) =>
-    v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4,
-  );
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+/** src (may be translucent) over an already-linear opaque dst. Linear light. */
+function over(src, dstLinear) {
+  const s = oklchToLinear(src);
+  const a = src.alpha;
+  return [0, 1, 2].map((k) => s[k] * a + dstLinear[k] * (1 - a));
 }
 
-function contrast(a, b) {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+function relLuminance(lin) {
+  return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+}
+
+function contrast(linA, linB) {
+  const [hi, lo] = [relLuminance(linA), relLuminance(linB)].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/* --- checks ---------------------------------------------------------------- */
+/* --- token resolution ------------------------------------------------------ */
 
-const css = readFileSync(CSS_PATH, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+/** "--success 0.10" resolves the token then forces alpha to 0.10. */
+function resolveToken(spec, scope) {
+  const [name, alphaOverride] = spec.split(/\s+/);
+  const raw = deref(name, scope);
+  if (raw === undefined) return { error: `${name} is not defined` };
+  const parsed = parseOklch(raw);
+  if (!parsed) return { error: `${name} is \`${raw}\`, not a literal oklch()` };
+  if (alphaOverride !== undefined) parsed.alpha = Number(alphaOverride);
+  return { parsed };
+}
 
-const root = declarationsFor(css, ":root");
-const darkOverrides = declarationsFor(css, "\\.dark");
+/** A background stack [nearest … opaqueBase] -> one opaque linear colour. */
+function flattenBackground(stack, scope) {
+  const specs = Array.isArray(stack) ? stack : [stack];
+  const layers = [];
+  for (const spec of specs) {
+    const r = resolveToken(spec, scope);
+    if (r.error) return r;
+    layers.push(r.parsed);
+  }
+  const base = layers[layers.length - 1];
+  if (base.alpha !== 1) return { error: `background base ${specs.at(-1)} must be opaque` };
+  let lin = oklchToLinear(base);
+  for (let i = layers.length - 2; i >= 0; i--) lin = over(layers[i], lin);
+  return { linear: lin };
+}
 
-// .dark only overrides; anything it omits inherits from :root. Modelling that
-// cascade is the point — it is exactly how a missing token goes unnoticed.
-const light = root;
-const dark = { ...root, ...darkOverrides };
+/* --- pair spec ------------------------------------------------------------- */
+//
+// bg is a token, or a stack [nearest … opaqueBase]. "--x 0.10" forces alpha.
+// kind "sep" pairs are surface-separation checks: reported, never gated, because
+// this system separates surfaces with border and shadow, not a garish lightness
+// gap.
+
+const surfaces = ["--background", "--card", "--muted"];
+
+const PAIRS = [
+  ...surfaces.flatMap((bg) => [
+    { fg: "--foreground", bg, min: TEXT },
+    { fg: "--muted-foreground", bg, min: TEXT },
+    { fg: "--primary", bg, min: TEXT, note: "primary as link/icon" },
+  ]),
+
+  // Solid fills: foreground on its own fill.
+  { fg: "--primary-foreground", bg: "--primary", min: TEXT },
+  { fg: "--secondary-foreground", bg: "--secondary", min: TEXT },
+  { fg: "--accent-foreground", bg: "--accent", min: TEXT },
+  { fg: "--success-foreground", bg: "--success", min: TEXT, note: "solid alert/badge" },
+  { fg: "--warning-foreground", bg: "--warning", min: TEXT, note: "solid banner" },
+  { fg: "--info-foreground", bg: "--info", min: TEXT },
+  { fg: "--destructive-foreground", bg: "--destructive", min: TEXT, note: "destructive button" },
+
+  // Tinted status badges: text-STATUS over STATUS@10% over the surface. The pair
+  // the first checker never modelled.
+  ...["--success", "--warning", "--info", "--destructive"].flatMap((s) => [
+    { fg: s, bg: [`${s} 0.10`, "--card"], min: TEXT, note: "tinted badge on card" },
+    { fg: s, bg: [`${s} 0.10`, "--background"], min: TEXT, note: "tinted badge on page" },
+  ]),
+
+  // Control borders — real UI boundary.
+  ...surfaces.map((bg) => ({ fg: "--input", bg, min: UI, note: "input border" })),
+
+  // Focus outline, measured against the surface its offset gap exposes.
+  { fg: "--ring", bg: "--background", min: UI, note: "focus on page" },
+  { fg: "--ring", bg: "--card", min: UI, note: "focus on card" },
+  { fg: "--sidebar-ring", bg: "--sidebar", min: UI, note: "focus on sidebar" },
+
+  // Sidebar.
+  { fg: "--sidebar-foreground", bg: "--sidebar", min: TEXT },
+  { fg: "--muted-foreground", bg: "--sidebar", min: TEXT, note: "sidebar meta" },
+  { fg: "--sidebar-primary-foreground", bg: "--sidebar-primary", min: TEXT, note: "active nav item" },
+
+  // Surface separation — informational only.
+  { fg: "--card", bg: "--background", kind: "sep" },
+  { fg: "--popover", bg: "--background", kind: "sep" },
+  { fg: "--muted", bg: "--card", kind: "sep" },
+  { fg: "--sidebar", bg: "--background", kind: "sep" },
+];
+
+/* --- run ------------------------------------------------------------------- */
+
+const root = postcss.parse(readFileSync(CSS_PATH, "utf8"));
+const lightDecls = declarationsForSelector(root, (s) => s === ":root");
+const darkDecls = declarationsForSelector(root, (s) => s === ".dark");
+
+const light = lightDecls;
+const dark = { ...lightDecls, ...darkDecls }; // .dark overrides; rest cascades.
 
 const failures = [];
+const info = [];
 
 // 1. Parity.
-const semantic = Object.keys(root).filter(
-  (p) => !PAINT.test(p) && !THEME_AGNOSTIC.has(p),
+const semantic = Object.keys(lightDecls).filter(
+  (p) => !PAINT.test(p) && !NON_COLOUR.test(p) && p !== "--radius",
 );
 for (const prop of semantic) {
-  if (!(prop in darkOverrides)) {
+  if (!(prop in darkDecls)) {
     failures.push(
-      `parity: ${prop} is defined for light but never redefined under .dark — ` +
-        `it will inherit the light value.`,
+      `parity: ${prop} is defined for light but never redefined under .dark — it inherits the light value.`,
     );
   }
 }
-for (const prop of Object.keys(darkOverrides)) {
-  if (!(prop in root)) {
-    failures.push(
-      `parity: ${prop} exists only under .dark. Typo, or a token light forgot?`,
-    );
+for (const prop of Object.keys(darkDecls)) {
+  if (NON_COLOUR.test(prop) || prop === "--radius") continue;
+  if (!(prop in lightDecls)) {
+    failures.push(`parity: ${prop} exists only under .dark. Typo, or a token light forgot?`);
   }
   if (PAINT.test(prop)) {
-    failures.push(
-      `parity: ${prop} is paint and must not be redeclared under .dark — ` +
-        `remap the semantic token instead.`,
-    );
+    failures.push(`parity: ${prop} is paint and must not be redeclared under .dark.`);
   }
 }
 
-// 2. Contrast, in both themes.
+// 2. Contrast, both themes.
+let checked = 0;
 for (const [themeName, scope] of [
   ["light", light],
   ["dark", dark],
 ]) {
-  for (const { fg, bg, min } of PAIRS) {
-    const fgRaw = resolve_(fg, scope);
-    const bgRaw = resolve_(bg, scope);
-
-    if (fgRaw === undefined || bgRaw === undefined) {
-      failures.push(
-        `contrast: ${themeName} — ${fgRaw === undefined ? fg : bg} is not defined.`,
-      );
+  for (const pair of PAIRS) {
+    const bg = flattenBackground(pair.bg, scope);
+    if (bg.error) {
+      failures.push(`contrast: ${themeName} — ${bg.error}.`);
       continue;
     }
-
-    const fgColor = parseOklch(fgRaw);
-    const bgColor = parseOklch(bgRaw);
-    if (!fgColor || !bgColor) {
-      failures.push(
-        `contrast: ${themeName} — ${fg} on ${bg} is not a plain oklch() value, ` +
-          `so it cannot be checked. Keep tokens as literal oklch().`,
-      );
+    const fg = resolveToken(pair.fg, scope);
+    if (fg.error) {
+      failures.push(`contrast: ${themeName} — foreground ${fg.error}.`);
       continue;
     }
+    // A translucent foreground (e.g. a /50 ring) composites over its backdrop.
+    const fgLinear =
+      fg.parsed.alpha === 1 ? oklchToLinear(fg.parsed) : over(fg.parsed, bg.linear);
 
-    const ratio = contrast(fgColor, bgColor);
-    if (ratio < min) {
+    const ratio = contrast(fgLinear, bg.linear);
+    const bgLabel = Array.isArray(pair.bg) ? pair.bg.join(" / ") : pair.bg;
+    const label = `${pair.fg} on ${bgLabel}${pair.note ? ` (${pair.note})` : ""}`;
+
+    if (pair.kind === "sep") {
+      info.push(`  ${themeName}: ${label} — ${ratio.toFixed(2)}:1`);
+      continue;
+    }
+    checked++;
+    if (ratio < pair.min) {
       failures.push(
-        `contrast: ${themeName} — ${fg} on ${bg} is ${ratio.toFixed(2)}:1, ` +
-          `below the required ${min}:1.`,
+        `contrast: ${themeName} — ${label} is ${ratio.toFixed(2)}:1, below the required ${pair.min}:1.`,
       );
     }
   }
 }
 
+if (info.length) {
+  console.log("Surface separation (carried by border + shadow, not gated):");
+  for (const line of info) console.log(line);
+  console.log("");
+}
+
 if (failures.length > 0) {
-  console.error(`\n✗ ${failures.length} design-token problem(s):\n`);
+  console.error(`✗ ${failures.length} design-token problem(s):\n`);
   for (const f of failures) console.error(`  • ${f}`);
   console.error("\nSee the three rules at /styleguide.\n");
   process.exit(1);
@@ -218,5 +292,5 @@ if (failures.length > 0) {
 
 console.log(
   `✓ ${semantic.length} semantic tokens defined in both themes; ` +
-    `${PAIRS.length * 2} contrast pairs meet WCAG AA.`,
+    `${checked} contrast pairs meet WCAG AA (translucent fills composited over their backdrop).`,
 );

@@ -18,6 +18,29 @@ const NO_RAW_COLOUR =
   "border-input. The pigments are intentionally unreachable from components; " +
   "see the three rules at /styleguide.";
 
+// A Tailwind palette utility — bg-red-500, text-white, border-slate-800,
+// bg-black/10. globals.css already tears the default palette out of @theme so
+// these generate NO css, but a stray one should fail review, not merge and
+// silently do nothing (or, worse, get "fixed" later by re-adding the palette).
+// This is the fast feedback on top of the structural CSS reset.
+//
+// Matches `<utility>-<family>-<shade>` and the keyword colours white/black, with
+// an optional `/opacity`. `family` is the Tailwind default palette, spelled out
+// so semantic families (primary, muted, sidebar, …) never match.
+const PALETTE_FAMILY =
+  "slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|" +
+  "teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose";
+const UTILITY_PREFIX =
+  "bg|text|border|ring|fill|stroke|from|via|to|outline|divide|caret|accent|" +
+  "decoration|shadow|ring-offset";
+const PALETTE_UTILITY = new RegExp(
+  `\\b(?:${UTILITY_PREFIX})-(?:(?:${PALETTE_FAMILY})-\\d{2,3}|white|black)(?:/\\d{1,3})?\\b`,
+);
+const NO_PALETTE_UTILITY =
+  "Default Tailwind palette utility (e.g. bg-red-500, text-white). This is not " +
+  "part of the design system — it generates no CSS and has no dark variant. Use " +
+  "a semantic token. See /styleguide.";
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -46,6 +69,14 @@ const eslintConfig = defineConfig([
           selector:
             "TemplateElement[value.raw=/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![0-9a-fA-F])/]",
           message: NO_RAW_COLOUR,
+        },
+        {
+          selector: `Literal[value=/${PALETTE_UTILITY.source}/]`,
+          message: NO_PALETTE_UTILITY,
+        },
+        {
+          selector: `TemplateElement[value.raw=/${PALETTE_UTILITY.source}/]`,
+          message: NO_PALETTE_UTILITY,
         },
       ],
     },

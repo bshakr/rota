@@ -8,10 +8,12 @@ import {
   Swatch,
   SwatchGrid,
 } from "@/app/styleguide/_components/spec";
+import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = { title: "Styleguide" };
 
@@ -127,31 +129,52 @@ const LINES = [
   {
     swatchClass: "bg-ring",
     token: "--ring",
-    util: "ring-ring",
-    role: "Focus. Clay, so focus is always the accent colour.",
+    util: "outline-ring",
+    role: "Focus. A deeper clay, distinct from --primary, always drawn as an offset outline so it shows on a clay button.",
+  },
+  {
+    swatchClass: "bg-overlay",
+    token: "--overlay",
+    util: "bg-overlay",
+    role: "The wash behind a modal. Warm ink in light, strong black in dark — never invisible.",
   },
 ];
 
+// Each with the ONE thing it is for, so engineer #3 doesn't guess.
 const RADII = [
-  { cls: "rounded-sm", label: "sm" },
-  { cls: "rounded-md", label: "md" },
-  { cls: "rounded-lg", label: "lg · --radius" },
-  { cls: "rounded-xl", label: "xl" },
-  { cls: "rounded-2xl", label: "2xl" },
+  { cls: "rounded-sm", label: "sm", use: "inputs, badges' inner chips" },
+  { cls: "rounded-md", label: "md", use: "buttons, menu items" },
+  { cls: "rounded-lg", label: "lg · --radius", use: "the default" },
+  { cls: "rounded-xl", label: "xl", use: "cards, dialogs, popovers" },
+  { cls: "rounded-2xl", label: "2xl", use: "the member page's hero" },
 ];
 
 const SHADOWS = [
-  { cls: "shadow-xs", label: "xs" },
-  { cls: "shadow-sm", label: "sm" },
-  { cls: "shadow-md", label: "md" },
-  { cls: "shadow-lg", label: "lg" },
+  { cls: "shadow-xs", label: "xs", use: "a card resting on the page" },
+  { cls: "shadow-sm", label: "sm", use: "a hovered/raised card" },
+  { cls: "shadow-md", label: "md", use: "popover, dropdown" },
+  { cls: "shadow-lg", label: "lg", use: "dialog, sheet — floating over a scrim" },
+];
+
+const ICON_SIZES = [
+  { px: "size-4 (16px)", use: "inside buttons and inputs — inline with text" },
+  { px: "size-[18px]", use: "nav items and the wordmark tile" },
+  { px: "size-5 (20px)", use: "a standalone icon button (hamburger)" },
+  { px: "size-6 (24px)", use: "an empty-state / section glyph" },
+];
+
+const SPACING = [
+  { name: "Page gutter", value: "px-5 md:px-8", use: "every screen's left/right edge — use <Container>, never hand-rolled" },
+  { name: "Section rhythm", value: "space-y-10 / gap-14", use: "between major blocks on a page" },
+  { name: "Card padding", value: "--card-spacing (16px, 12px sm)", use: "inside a Card — owned by the component" },
+  { name: "Control gap", value: "gap-2 / gap-3", use: "between a label and its input, buttons in a row" },
 ];
 
 export default function StyleguidePage() {
   return (
     <div className="flex flex-1 flex-col">
       <header className="bg-background/85 border-border sticky top-0 z-20 border-b backdrop-blur">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-5 py-3 md:px-8">
+        <Container className="flex items-center justify-between py-3">
           <Link href="/">
             <Wordmark />
           </Link>
@@ -161,10 +184,11 @@ export default function StyleguidePage() {
             </span>
             <ThemeToggle />
           </div>
-        </div>
+        </Container>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-10 md:px-8 md:py-14">
+      <Container asChild>
+        <main className="flex-1 py-10 md:py-14">
         <PageHeader
           title="Styleguide"
           description="The contract for every HouseRota screen. If you are building BLO-1051 through BLO-1055, this page is the spec — take the tokens and components from here rather than inventing your own."
@@ -185,7 +209,7 @@ export default function StyleguidePage() {
               {[
                 {
                   n: "Never a raw colour.",
-                  body: "No hex, no oklch, no bg-orange-500 in a component. The raw pigments are deliberately kept out of Tailwind's theme, so no utility exists for them — the escape hatch is not there to take. Lint fails the build if you try.",
+                  body: "No hex, no oklch(), no Tailwind palette utility. globals.css tears the default palette out of the compiler, so those utilities generate nothing, and lint fails the build on any that slip in. Reach for a semantic token instead.",
                 },
                 {
                   n: "One accent.",
@@ -298,34 +322,85 @@ export default function StyleguidePage() {
           <Section
             id="shape"
             title="Shape & elevation"
-            intro="--radius is 0.875rem, a step rounder than shadcn's default. Shadows are warm brown in light — a black shadow on sand reads as grime — and go black in dark, where there is nothing to tint."
+            intro="--radius is 0.875rem, a step rounder than shadcn's default. Shadows are warm brown in light — a black shadow on sand reads as grime — and go black in dark, where there is nothing to tint. Each swatch names the ONE place it belongs, so five screens round and lift things the same way."
           >
             <div className="grid gap-4 md:grid-cols-2">
-              <Demo label="Radius" hint="--radius: 0.875rem">
-                {RADII.map((r) => (
-                  <span key={r.cls} className="flex flex-col items-center gap-2">
-                    <span
-                      className={`bg-primary/15 ring-primary/30 size-14 ring-1 ${r.cls}`}
-                    />
-                    <code className="text-muted-foreground font-mono text-[11px]">
-                      {r.label}
-                    </code>
-                  </span>
-                ))}
+              <Demo label="Radius — assignment" className="block">
+                <ul className="w-full space-y-2.5">
+                  {RADII.map((r) => (
+                    <li key={r.cls} className="flex items-center gap-3">
+                      <span
+                        className={`bg-primary/15 ring-primary/30 size-9 shrink-0 ring-1 ${r.cls}`}
+                      />
+                      <span className="min-w-0 text-sm">
+                        <code className="font-mono text-xs font-medium">
+                          {r.label}
+                        </code>
+                        <span className="text-muted-foreground"> — {r.use}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </Demo>
-              <Demo label="Elevation">
-                {SHADOWS.map((s) => (
-                  <span key={s.cls} className="flex flex-col items-center gap-2">
-                    <span
-                      className={`bg-card size-14 rounded-xl ${s.cls}`}
-                    />
-                    <code className="text-muted-foreground font-mono text-[11px]">
-                      {s.label}
-                    </code>
-                  </span>
-                ))}
+              <Demo label="Elevation — assignment" className="block">
+                <ul className="w-full space-y-2.5">
+                  {SHADOWS.map((s) => (
+                    <li key={s.cls} className="flex items-center gap-3">
+                      <span className={`bg-card size-9 shrink-0 rounded-lg ${s.cls}`} />
+                      <span className="min-w-0 text-sm">
+                        <code className="font-mono text-xs font-medium">
+                          {s.label}
+                        </code>
+                        <span className="text-muted-foreground"> — {s.use}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Demo>
+              <Demo label="Icon sizes — assignment" className="block">
+                <ul className="w-full space-y-2 text-sm">
+                  {ICON_SIZES.map((i) => (
+                    <li key={i.px}>
+                      <code className="font-mono text-xs font-medium">{i.px}</code>
+                      <span className="text-muted-foreground"> — {i.use}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Demo>
+              <Demo label="Touch targets" className="block">
+                <p className="text-sm text-pretty">
+                  Anything tapped on a phone is at least{" "}
+                  <span className="font-medium">44px</span>: buttons at{" "}
+                  <code className="font-mono text-xs">size=&quot;lg&quot;</code>,
+                  icon buttons at{" "}
+                  <code className="font-mono text-xs">size=&quot;icon-lg&quot;</code>{" "}
+                  (the hamburger, the modal close). Table-row actions may be
+                  smaller — they are mouse targets.
+                </p>
               </Demo>
             </div>
+          </Section>
+
+          <Section
+            id="spacing"
+            title="Spacing"
+            intro="“Generous” needs a definition to copy, or five screens drift to five different paddings. Here it is, named. The page gutter lives in <Container>; the card padding lives in <Card>; the rest are conventions to reach for."
+          >
+            <Demo label="The spacing system" className="block">
+              <ul className="w-full space-y-3">
+                {SPACING.map((s) => (
+                  <li key={s.name} className="text-sm">
+                    <span className="font-medium">{s.name}</span>{" "}
+                    <code className="text-muted-foreground font-mono text-xs">
+                      {s.value}
+                    </code>
+                    <p className="text-muted-foreground text-xs text-pretty">
+                      {s.use}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </Demo>
           </Section>
 
           <Section
@@ -334,43 +409,58 @@ export default function StyleguidePage() {
             intro="They are deliberately opposites, and the difference is the product."
           >
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="border-border bg-card rounded-xl border p-5">
-                <h3 className="mb-1 font-medium">
-                  Admin — <code className="font-mono text-xs">app/(admin)/</code>
-                </h3>
-                <p className="text-muted-foreground mb-4 text-sm text-pretty">
-                  Sidebar on desktop, drawer on mobile, theme toggle, five nav
-                  entries. Signed in via AuthKit. Start every screen with{" "}
-                  <code className="font-mono text-xs">&lt;PageHeader&gt;</code>.
-                  Add your route to{" "}
-                  <code className="font-mono text-xs">ADMIN_NAV</code> rather
-                  than building your own nav.
-                </p>
-                <Button asChild size="sm" variant="outline">
-                  <Link href="/dashboard">Open</Link>
-                </Button>
-              </div>
-              <div className="border-border bg-card rounded-xl border p-5">
-                <h3 className="mb-1 font-medium">
-                  Member —{" "}
-                  <code className="font-mono text-xs">app/(member)/s/[token]</code>
-                </h3>
-                <p className="text-muted-foreground mb-4 text-sm text-pretty">
-                  No nav, no theme toggle, no account menu. A single column, a
-                  comfortable measure, and one thing to do. The person holding
-                  this link did not ask to be here and is not logged in. The
-                  theme follows their phone.
-                </p>
-                <Button asChild size="sm" variant="outline">
-                  <Link href="/s/demo-token">Open</Link>
-                </Button>
-              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>
+                    Admin —{" "}
+                    <code className="font-mono text-xs font-normal">
+                      app/(admin)/
+                    </code>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-muted-foreground space-y-4">
+                  <p className="text-pretty">
+                    Sidebar on desktop, drawer on mobile, theme toggle, five nav
+                    entries. Signed in via AuthKit. Start every screen with{" "}
+                    <code className="font-mono text-xs">&lt;PageHeader&gt;</code>,
+                    wrap it in <code className="font-mono text-xs">&lt;Container&gt;</code>,
+                    and add your route to{" "}
+                    <code className="font-mono text-xs">ADMIN_NAV</code> rather
+                    than building your own nav.
+                  </p>
+                  <Button asChild size="sm" variant="outline">
+                    <Link href="/dashboard">Open</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>
+                    Member —{" "}
+                    <code className="font-mono text-xs font-normal">
+                      app/(member)/s/[token]
+                    </code>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-muted-foreground space-y-4">
+                  <p className="text-pretty">
+                    No nav, no theme toggle, no account menu. A single column, a
+                    comfortable measure, and one thing to do. The person holding
+                    this link did not ask to be here and is not logged in. The
+                    theme follows their phone.
+                  </p>
+                  <Button asChild size="sm" variant="outline">
+                    <Link href="/s/demo-token">Open</Link>
+                  </Button>
+                </CardContent>
+              </Card>
             </div>
           </Section>
 
           <Gallery />
         </div>
-      </main>
+        </main>
+      </Container>
     </div>
   );
 }

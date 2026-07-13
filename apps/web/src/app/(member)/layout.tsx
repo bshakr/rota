@@ -1,3 +1,4 @@
+import { Container } from "@/components/container";
 import { Wordmark } from "@/components/wordmark";
 
 /**
@@ -14,13 +15,15 @@ export default function MemberLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <header className="px-5 pt-7 pb-1">
-        {/* Muted: this is a signal that the link is genuine, not a logo to admire. */}
-        <Wordmark muted />
-      </header>
-      <main className="mx-auto w-full max-w-lg flex-1 px-5 pt-4 pb-16">
-        {children}
-      </main>
+      <Container width="member" asChild>
+        <header className="pt-7 pb-1">
+          {/* Muted: a signal that the link is genuine, not a logo to admire. */}
+          <Wordmark muted />
+        </header>
+      </Container>
+      <Container width="member" asChild>
+        <main className="flex-1 pt-4 pb-16">{children}</main>
+      </Container>
     </div>
   );
 }
