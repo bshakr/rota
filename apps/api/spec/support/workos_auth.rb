@@ -60,6 +60,20 @@ module WorkosAuth
   def workos_headers(...)
     { "Authorization" => "Bearer #{workos_token(...)}" }
   end
+
+  # Returns the INSERT/UPDATE/DELETE statements Active Record ran during the block. Used to prove
+  # the steady-state authenticated read path writes nothing. BEGIN/COMMIT/SAVEPOINT and SELECTs
+  # are ignored — only actual row mutations count.
+  def sql_writes_during
+    statements = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+      statements << payload[:sql] if payload[:sql].match?(/\A\s*(INSERT|UPDATE|DELETE)\b/i)
+    end
+    yield
+    statements
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber)
+  end
 end
 
 RSpec.configure do |config|

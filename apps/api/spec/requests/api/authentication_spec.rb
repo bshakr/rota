@@ -173,6 +173,33 @@ RSpec.describe "WorkOS JWT authentication" do
 
       expect(User.sole).to have_attributes(email: "alice@example.com", name: "Alice")
     end
+
+    # Provisioning runs on every authenticated request, but that request is almost always a
+    # steady-state read by an admin who already exists and whose role has not changed. That path
+    # must not write — otherwise a single valid-token holder drives unbounded write load through
+    # plain GETs, and these reads could never be served from a read replica.
+    it "writes nothing on a steady-state request whose role is unchanged" do
+      get "/api/me", headers: workos_headers(role: "admin")
+
+      writes = sql_writes_during do
+        get "/api/me", headers: workos_headers(role: "admin")
+      end
+
+      expect(response).to have_http_status(:ok)
+      expect(writes).to be_empty
+    end
+
+    it "writes only to re-sync the role, not to touch the user or group, when the role changes" do
+      get "/api/me", headers: workos_headers(role: "admin")
+
+      writes = sql_writes_during do
+        get "/api/me", headers: workos_headers(role: "member")
+      end
+
+      expect(GroupAdmin.sole.role).to eq("member")
+      expect(writes).to be_present
+      expect(writes).to all(match(/UPDATE "group_admins"/i))
+    end
   end
 
   # Current is process state, reused by the next request the thread picks up. If it survived a

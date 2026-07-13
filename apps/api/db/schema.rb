@@ -28,6 +28,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_13_110000) do
     t.datetime "created_at", null: false
     t.string "name", null: false
     t.string "timezone", null: false
+    t.datetime "timezone_confirmed_at"
     t.datetime "updated_at", null: false
     t.string "workos_organization_id", null: false
     t.index ["workos_organization_id"], name: "index_groups_on_workos_organization_id", unique: true

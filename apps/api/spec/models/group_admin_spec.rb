@@ -73,6 +73,35 @@ RSpec.describe GroupAdmin do
       expect(group_admin.user.email).to eq("user_01ALICE@users.workos.invalid")
     end
 
+    # The token has no timezone, so a JIT-created group is a guess (UTC) until a human confirms it.
+    it "leaves a newly-created group's timezone unconfirmed" do
+      group = described_class.provision!(claims).group
+
+      expect(group.timezone).to eq("UTC")
+      expect(group.timezone_confirmed?).to be(false)
+    end
+
+    # The steady-state path: existing membership, unchanged role, no email/name in the claim. It
+    # must not write, or every authenticated read becomes a write.
+    it "writes nothing when the membership already exists and nothing would change" do
+      described_class.provision!(claims)
+
+      expect {
+        result = described_class.provision!(claims)
+        expect(result.user).to be_present
+        expect(result.group).to be_present
+      }.to not_change { [ User.maximum(:updated_at), Group.maximum(:updated_at), described_class.maximum(:updated_at) ] }
+    end
+
+    it "does not re-query the user and group it already loaded on the fast path" do
+      described_class.provision!(claims)
+
+      group_admin = described_class.provision!(claims)
+
+      expect(group_admin.association(:user)).to be_loaded
+      expect(group_admin.association(:group)).to be_loaded
+    end
+
     # The concurrent request has already inserted the group by the time we look for it and miss.
     # Our INSERT then loses to the unique index, and we must end up with the winner's row.
     it "finds the group a concurrent request created between the lookup and the insert" do
@@ -87,7 +116,9 @@ RSpec.describe GroupAdmin do
 
     it "finds the user a concurrent request created between the lookup and the insert" do
       winner = create(:user, workos_user_id: "user_01ALICE")
-      allow(User).to receive(:find_by).and_return(nil, winner)
+      # Three lookups miss before the winner surfaces: the read-only fast path, the upsert's own
+      # look-before-insert, then the rescue after our INSERT loses to the unique index.
+      allow(User).to receive(:find_by).and_return(nil, nil, winner)
 
       group_admin = described_class.provision!(claims)
 

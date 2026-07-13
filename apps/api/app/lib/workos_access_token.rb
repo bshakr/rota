@@ -35,10 +35,17 @@ class WorkosAccessToken
   OPEN_TIMEOUT = 2
   READ_TIMEOUT = 3
 
-  @mutex = Mutex.new
+  # Two locks on purpose. @state_mutex guards the cached key set and is only ever held for O(1)
+  # reads and the pointer swap — never across the network. @fetch_mutex serialises the actual
+  # HTTP fetch so a rotation storm makes one request to WorkOS, not one per thread (single-flight).
+  # The split is the whole point: a slow or hung JWKS response can only ever block another thread
+  # that also needs to fetch; it can NEVER block the cache-hit readers, which are every normal
+  # authenticated request.
+  @state_mutex = Mutex.new
+  @fetch_mutex = Mutex.new
 
   class << self
-    # Returns the verified Claims, or raises. This is the only entry point.
+    # Returns the verified Claims, or raises. This is the only entry point on the request path.
     def verify!(token)
       raise InvalidToken, "no bearer token" if token.blank?
 
@@ -54,8 +61,24 @@ class WorkosAccessToken
       raise InvalidToken, "#{e.class}: #{e.message}"
     end
 
+    # Operational tooling only — never called on a request. Verifies the signature and expiry
+    # against the live JWKS and returns the FULL header and claim set, plus whether the issuer and
+    # audience checks would pass, so a human wiring real WorkOS keys (BLO-1057) can see exactly what
+    # a real token carries — settling the `aud`/issuer ambiguity from a real token, not from docs.
+    # See lib/tasks/workos.rake.
+    def inspect_claims(token)
+      payload, header = JWT.decode(token, nil, true, algorithms: [ ALGORITHM ], jwks: key_set_loader)
+
+      {
+        header: header,
+        payload: payload,
+        issuer_trusted: trusted_issuer?(payload["iss"]),
+        audience_accepted: audience_accepted?(payload["aud"])
+      }
+    end
+
     def reset_key_set!
-      @mutex.synchronize do
+      @state_mutex.synchronize do
         @key_set = nil
         @fetched_at = nil
       end
@@ -98,12 +121,18 @@ class WorkosAccessToken
       uri = URI.parse(issuer)
       return false unless "#{uri.scheme}://#{uri.host}" == api_origin
 
-      # WorkOS documents both `https://api.workos.com/user_management/<client_id>` and a bare
-      # `https://api.workos.com/`. Accept either — but if the issuer names a client, it must name
-      # ours, so a token minted for somebody else's WorkOS client is refused even in the (unlikely)
-      # event that it verifies against our key set.
+      # WorkOS documents the issuer both as `https://api.workos.com/user_management/<client_id>`
+      # and as a bare `https://api.workos.com/`. The client-scoped form is always accepted, and it
+      # must name OUR client — a token minted for somebody else's WorkOS client is refused even in
+      # the unlikely event it verifies against our key set.
       path = uri.path.to_s.delete_suffix("/")
-      path.empty? || path == "/user_management/#{client_id}"
+      return true if path == "/user_management/#{client_id}"
+
+      # The bare form does not name a client, so accepting it leaves cross-client isolation resting
+      # entirely on WorkOS serving per-client keys. That is a fine dev convenience but not a
+      # production assumption: in production we require the client-scoped form, or an exact
+      # WORKOS_JWT_ISSUER pin (handled above). BLO-1057 confirms the real format before launch.
+      path.empty? && !Rails.env.production?
     rescue URI::InvalidURIError
       false
     end
@@ -114,10 +143,11 @@ class WorkosAccessToken
     # environment, signed by the very same keys). Presenting that here would make this API a
     # confused deputy for whatever that application is.
     def verify_audience!(audience)
-      return if audience.blank?
-      return if Array(audience).include?(client_id)
+      raise InvalidToken, "audience #{audience.inspect} is not this app" unless audience_accepted?(audience)
+    end
 
-      raise InvalidToken, "audience #{audience.inspect} is not this app"
+    def audience_accepted?(audience)
+      audience.blank? || Array(audience).include?(client_id)
     end
 
     # jwt calls this to find the key that signed the token, and calls it a second time with
@@ -127,12 +157,30 @@ class WorkosAccessToken
     end
 
     def key_set(refetch: false)
-      @mutex.synchronize do
+      snapshot = nil
+      @state_mutex.synchronize do
         return @key_set if @key_set && fresh_enough?(refetch: refetch)
 
-        @key_set = fetch_key_set
-        @fetched_at = Time.current
-        @key_set
+        snapshot = @fetched_at
+      end
+
+      # Single-flight: only one thread fetches at a time. Any others wait here — but crucially they
+      # are threads that ALSO need a fetch, never cache-hit readers, who never reach this method's
+      # network path at all. The re-check inside the lock means a thread that queued behind a fetch
+      # usually finds the set already fresh and never hits the network.
+      @fetch_mutex.synchronize do
+        @state_mutex.synchronize do
+          return @key_set if @key_set && (@fetched_at != snapshot) && fresh_enough?(refetch: refetch)
+        end
+
+        fetched = fetch_key_set
+        fetched_at = Time.current
+
+        @state_mutex.synchronize do
+          @key_set = fetched
+          @fetched_at = fetched_at
+          @key_set
+        end
       end
     end
 

@@ -15,8 +15,14 @@ class GroupAdmin < ApplicationRecord
   # and exist for foreign keys, display and audit. Which means this must be idempotent, and it must
   # survive losing a race — the first page load fires several API calls at once, and on a brand new
   # group they all arrive here with nothing in the database yet.
+  #
+  # This runs on EVERY authenticated request, which is almost always a steady-state read by an admin
+  # who already exists and whose role has not changed. That common case must not pay for the rare
+  # one: `settled` returns the existing membership with zero writes and no transaction when nothing
+  # in the token would change a row. Only a first sighting, a role change, or a new email/name in the
+  # claim falls through to the write path below — which stays idempotent and race-safe.
   def self.provision!(claims)
-    transaction do
+    settled(claims) || transaction do
       user = upsert(User, { workos_user_id: claims.workos_user_id }, user_defaults(claims))
       group = upsert(Group, { workos_organization_id: claims.workos_organization_id }, group_defaults(claims))
       group_admin = upsert(self, { user_id: user.id, group_id: group.id }, { role: claims.role })
@@ -25,6 +31,30 @@ class GroupAdmin < ApplicationRecord
       group_admin
     end
   end
+
+  # The read-only hot path. Returns the existing membership only when the token would write nothing:
+  # the user and group already exist, the role matches, and the claim carries no email/name that
+  # differs from what is stored. Any miss returns nil, and provision! takes the write path. The
+  # already-loaded user and group are attached so the caller (Current, then /api/me) does not
+  # re-query them.
+  def self.settled(claims)
+    user = User.find_by(workos_user_id: claims.workos_user_id)
+    return unless user
+    return if claims.email && claims.email != user.email
+    return if claims.name && claims.name != user.name
+
+    group = Group.find_by(workos_organization_id: claims.workos_organization_id)
+    return unless group
+
+    group_admin = find_by(user_id: user.id, group_id: group.id)
+    return unless group_admin
+    return if group_admin.role != claims.role
+
+    group_admin.association(:user).target = user
+    group_admin.association(:group).target = group
+    group_admin
+  end
+  private_class_method :settled
 
   # An AuthKit access token carries no email and no name — they arrive only if the WorkOS JWT
   # template has been configured to add them. The column is NOT NULL, so a first sighting of an
