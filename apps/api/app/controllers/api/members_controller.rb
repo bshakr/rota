@@ -42,11 +42,13 @@ module Api
 
     private
 
-    # `active` is here so an admin can reactivate someone they removed; a fresh member is created
-    # active by default. Phone normalisation and validation are the model's job (Member), so a bad
-    # number surfaces as a structured 422 rather than being stored however it was typed.
+    # Deliberately no `active`. Deactivation is DELETE and only DELETE, because that path also removes
+    # the member from every roster, drops the covers they'd agreed to, and regenerates — flipping the
+    # flag here would leave an inactive member still on rosters, still being assigned future shifts,
+    # and silently skipped by the reminder sweep. Phone normalisation and validation are the model's
+    # job (Member), so a bad number surfaces as a structured 422 rather than being stored as typed.
     def member_params
-      params.permit(:name, :phone_e164, :active)
+      params.permit(:name, :phone_e164)
     end
   end
 end

@@ -90,7 +90,7 @@ module Api
     private
 
     def find_rota
-      group_scope(:rotas).find(params[:id])
+      group_scope(:rotas).includes(rota_positions: :member).find(params[:id])
     end
 
     def rota_params
