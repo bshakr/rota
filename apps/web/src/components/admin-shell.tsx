@@ -83,7 +83,14 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
  * has no navigation at all because members are not logged in and have exactly
  * one thing to do.
  */
-export function AdminShell({ children }: { children: React.ReactNode }) {
+export function AdminShell({
+  children,
+  account,
+}: {
+  children: React.ReactNode;
+  /** The signed-in admin's identity + sign-out, wired by the (admin) layout (BLO-1050). */
+  account?: React.ReactNode;
+}) {
   const [open, setOpen] = React.useState(false);
 
   return (
@@ -94,12 +101,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <Wordmark />
         </Link>
         <NavLinks />
-        {/* The group name belongs here, from AuthKit's organization (BLO-1050).
-            Deliberately left empty rather than stubbed with a plausible-looking
-            house name — a fake that reads as real is the kind of thing that
-            survives to production. */}
-        <div className="mt-auto flex items-center justify-end px-1 pt-4">
-          <ThemeToggle />
+        {/* The group name belongs here too, from Rails (/api/me) — deferred to the
+            dashboard ticket rather than stubbed with a plausible-looking house name.
+            BLO-1050 wires the account footer: who is signed in, and the way out. */}
+        <div className="mt-auto flex flex-col gap-3 px-1 pt-4">
+          {account}
+          <div className="flex items-center justify-end">
+            <ThemeToggle />
+          </div>
         </div>
       </aside>
 
@@ -120,6 +129,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 </SheetTitle>
               </SheetHeader>
               <NavLinks onNavigate={() => setOpen(false)} />
+              {account ? (
+                <div className="border-sidebar-border mt-6 border-t pt-4">{account}</div>
+              ) : null}
             </SheetContent>
           </Sheet>
 
