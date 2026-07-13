@@ -16,8 +16,9 @@
 # Neither rule ever touches a shift on or before the group's today. Past shifts are immutable
 # history, and today's day-of reminder has already gone out.
 class RotaRegenerator
-  # `deleted` and `inserted` are counts; `dropped_covers` is the same payload
-  # #schedule_change_warning returns, so the UI can confirm and then report with one shape.
+  # `deleted` and `inserted` are counts. `dropped_covers` holds exactly the same entries, under
+  # exactly the same key, as the `:dropped_covers` that #schedule_change_warning returns — so the
+  # UI confirms against one shape and reports against the same one.
   Outcome = Data.define(:deleted, :inserted, :dropped_covers)
 
   def initialize(rota)
@@ -26,13 +27,13 @@ class RotaRegenerator
 
   # Call after the roster has been saved.
   def roster_changed
-    regenerate { future_shifts.uncovered }
+    regenerate(drops_covers: false) { future_shifts.uncovered }
   end
 
   # Call after the new `starts_on` / `interval_*` has been saved — and only once the admin has
   # confirmed the warning below, because this is where the covers go.
   def schedule_changed
-    regenerate { future_shifts }
+    regenerate(drops_covers: true) { future_shifts }
   end
 
   # What a schedule change would cost, without doing it. This is what the admin sees in the
@@ -42,14 +43,14 @@ class RotaRegenerator
   # already moved and the covers it is meant to name are attached to a series that no longer
   # exists — it would still return an answer, just not the one anybody asked for.
   def schedule_change_warning
-    { future_shifts: future_shifts.count, covers_dropped: cover_summaries(future_shifts.covered) }
+    { future_shifts: future_shifts.count, dropped_covers: cover_summaries(future_shifts.covered) }
   end
 
   private
 
   attr_reader :rota
 
-  def regenerate
+  def regenerate(drops_covers:)
     dropped = []
     deleted = 0
     inserted = 0
@@ -62,7 +63,10 @@ class RotaRegenerator
     # top-up safe to run concurrently. It is deleting that has to be serialised.
     rota.with_lock do
       doomed = yield
-      dropped = cover_summaries(doomed.covered)
+      # Only a schedule change can drop a cover. On the roster path `doomed` is already filtered to
+      # `.uncovered`, so asking it for its covers can only ever return nothing — the empty list is
+      # the guarantee that rule makes, by construction rather than by luck.
+      dropped = drops_covers ? cover_summaries(doomed.covered) : []
       # `destroy_all`, not `delete_all`. sms_messages carries a plain foreign key on shift_id with
       # no cascade, so a shift whose reminder has already gone out cannot simply be deleted —
       # Postgres would refuse. The bound is one rota's 90-day window, so the row-at-a-time cost is

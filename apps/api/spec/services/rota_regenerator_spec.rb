@@ -199,7 +199,7 @@ RSpec.describe RotaRegenerator do
       warning = described_class.new(rota).schedule_change_warning
 
       expect(warning[:future_shifts]).to eq(rota.shifts.future(today).count)
-      expect(warning[:covers_dropped].sole).to include(
+      expect(warning[:dropped_covers].sole).to include(
         shift_id: covered.id, covering_member_id: bob.id, covering_member_name: bob.name
       )
     end
@@ -217,8 +217,22 @@ RSpec.describe RotaRegenerator do
     it "says there is nothing to lose when no cover has been arranged" do
       warning = described_class.new(rota).schedule_change_warning
 
-      expect(warning[:covers_dropped]).to be_empty
+      expect(warning[:dropped_covers]).to be_empty
       expect(warning[:future_shifts]).to be_positive
+    end
+
+    # The admin UI confirms against the warning and then reports against the outcome. If the two
+    # ever describe the same covers under different keys, that mismatch surfaces as a nil in the
+    # admin API rather than as a failure here — so pin them together.
+    it "predicts exactly what the change then drops, under the same key" do
+      shift_on(2.weeks).update!(covering_member: create(:member, group: group))
+      predicted = described_class.new(rota).schedule_change_warning[:dropped_covers]
+
+      rota.update!(interval_count: 2)
+      actually_dropped = described_class.new(rota).schedule_changed.dropped_covers
+
+      expect(predicted).to eq(actually_dropped)
+      expect(predicted).not_to be_empty
     end
   end
 end

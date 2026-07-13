@@ -53,24 +53,47 @@ RSpec.describe TopUpShiftWindowsJob do
   end
 
   describe "when one rota blows up" do
-    # Every group's rota is generated in the same loop. One group's bad data must not be able to
-    # starve every group after it in the iteration order — the failure is reported, and the rest
-    # of the houses still get their shifts.
-    it "reports it and carries on with the others" do
-      broken = create(:rota, :with_roster, group: group, starts_on: Date.current)
-      healthy = create(:rota, :with_roster, group: create(:group), starts_on: Date.current)
-      boom = RuntimeError.new("no")
+    let(:broken) { create(:rota, :with_roster, group: group, starts_on: Date.current) }
+    let(:healthy) { create(:rota, :with_roster, group: create(:group), starts_on: Date.current) }
+    let(:boom) { RuntimeError.new("no") }
 
+    before do
+      broken
+      healthy
+      exploding = instance_double(ShiftGenerator)
+      allow(exploding).to receive(:call).and_raise(boom)
       allow(ShiftGenerator).to receive(:new).and_call_original
-      allow(ShiftGenerator).to receive(:new).with(having_attributes(id: broken.id))
-        .and_return(instance_double(ShiftGenerator).tap { |d| allow(d).to receive(:call).and_raise(boom) })
-      allow(Rails.error).to receive(:report)
+      allow(ShiftGenerator).to receive(:new).with(having_attributes(id: broken.id)).and_return(exploding)
+    end
 
+    # Every group's rota is generated in the same loop. One group's bad data must not be able to
+    # starve every group after it in the iteration order.
+    it "carries on with the others" do
       expect { described_class.perform_now }.not_to raise_error
 
-      expect(Rails.error).to have_received(:report).with(boom, hash_including(context: { rota_id: broken.id }))
       expect(healthy.shifts).to be_present
       expect(broken.shifts).to be_empty
+    end
+
+    it "hands the failure to the error reporter" do
+      allow(Rails.error).to receive(:report)
+
+      described_class.perform_now
+
+      expect(Rails.error).to have_received(:report)
+        .with(boom, hash_including(context: { rota_id: broken.id }))
+    end
+
+    # The rescue must not be a black hole. `Rails.error` has no subscribers in this app yet, so
+    # reporting alone would leave a job that swallowed every rota in silence and still finished
+    # green — and the first anyone would know of it is a house that stopped being texted. Until a
+    # subscriber exists, this log line IS the alarm, so it is worth a test of its own.
+    it "says so in the log, loudly enough to find" do
+      allow(Rails.logger).to receive(:error)
+
+      described_class.perform_now
+
+      expect(Rails.logger).to have_received(:error).with(/rota #{broken.id}.*RuntimeError.*no/)
     end
   end
 end
