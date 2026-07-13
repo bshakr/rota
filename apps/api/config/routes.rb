@@ -27,6 +27,14 @@ Rails.application.routes.draw do
     end
     resources :shifts, only: :update
     resources :sms_messages, only: :index
+
+    # The member magic-link path (BLO-1048). A SECOND, deliberately narrow way in: no WorkOS identity,
+    # authenticated by an opaque bearer token that maps to one member (MemberAuthenticatable), and able
+    # to reach only that member's own shifts and the cover action. The token is NEVER a path segment —
+    # `/s/:token` exists only as the Next.js page, which forwards the token as a bearer header.
+    get    "member/shifts",           to: "member_shifts#index"
+    post   "member/shifts/:id/cover", to: "member_covers#create"
+    delete "member/shifts/:id/cover", to: "member_covers#destroy"
   end
 
   # Defines the root path route ("/")

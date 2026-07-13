@@ -146,6 +146,27 @@ RSpec.describe Shift do
     end
   end
 
+  describe ".involving" do
+    # Broader than #responsible_member on purpose: a member must still see a shift they have handed
+    # off so they can take it back. So it is every shift they are assigned OR covering, and no others.
+    it "returns the shifts a member is assigned or covering, and nothing else" do
+      group = create(:group)
+      rota = create(:rota, group: group)
+      alice = create(:member, group: group)
+      bob = create(:member, group: group)
+
+      assigned = create(:shift, rota: rota, assigned_member: alice, due_on: 3.days.from_now.to_date)
+      covering = create(:shift, rota: rota, assigned_member: bob, covering_member: alice,
+        due_on: 4.days.from_now.to_date)
+      handed_off = create(:shift, rota: rota, assigned_member: alice, covering_member: bob,
+        due_on: 5.days.from_now.to_date)
+      unrelated = create(:shift, rota: rota, assigned_member: bob, due_on: 6.days.from_now.to_date)
+
+      expect(Shift.involving(alice)).to contain_exactly(assigned, covering, handed_off)
+      expect(Shift.involving(alice)).not_to include(unrelated)
+    end
+  end
+
   it "takes its messages with it when destroyed" do
     message = create(:sms_message)
 
