@@ -9,6 +9,12 @@ Rails.application.routes.draw do
   # Webhooks::TwilioStatusController.
   post "webhooks/twilio/status" => "webhooks/twilio_status#create", as: :twilio_status_webhook
 
+  # The admin API. Everything under it inherits Api::BaseController, so every route here is
+  # authenticated by a WorkOS-signed JWT and scoped to the group that token names.
+  namespace :api do
+    get "me", to: "me#show"
+  end
+
   # Defines the root path route ("/")
   # root "posts#index"
 end
