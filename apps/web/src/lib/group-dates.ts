@@ -14,11 +14,12 @@
  * `civilDate` hands it a noon-UTC instant so no formatter can shift the day.
  */
 
-const CIVIL_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-// en-CA renders as YYYY-MM-DD, which is exactly a civil date string. Same trick
-// date.ts uses internally to take a zone-aware date difference.
+// en-CA renders as YYYY-MM-DD, which is exactly a civil date string. Pinned to
+// UTC so it reads the calendar date off a noon-UTC instant identically on the
+// server and the browser — without the pin it would fall back to the host zone
+// and could shift the day when run client-side.
 const civilFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "UTC",
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
@@ -64,9 +65,4 @@ export function isThisWeek(dueOn: string, today: string): boolean {
 /** Today or later — an upcoming shift, the only kind the admin can still override. */
 export function isFutureOrToday(dueOn: string, today: string): boolean {
   return compareCivil(dueOn, today) >= 0;
-}
-
-/** True for a well-formed YYYY-MM-DD string. */
-export function isCivilDate(value: string): boolean {
-  return CIVIL_DATE.test(value);
 }

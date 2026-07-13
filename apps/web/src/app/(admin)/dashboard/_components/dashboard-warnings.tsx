@@ -24,7 +24,7 @@ export function DashboardWarnings({ warnings }: { warnings: DashboardWarning[] }
         const Icon = ICON[warning.severity];
         return (
           <Alert key={warning.id} variant={warning.severity}>
-            <Icon />
+            <Icon aria-hidden />
             <AlertTitle>{warning.title}</AlertTitle>
             <AlertDescription>
               {warning.description}{" "}

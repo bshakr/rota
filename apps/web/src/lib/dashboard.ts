@@ -103,8 +103,8 @@ export function collectDashboardWarnings({
       severity: "warning",
       title: `${n} active ${plural(n, "person", "people")} won't get texts`,
       description:
-        `${nameList(unreachableNames)} opted out of reminders, so ` +
-        `${plural(n, "they'll", "they'll")} be skipped every time until that changes.`,
+        `${nameList(unreachableNames)} opted out of reminders, so they'll ` +
+        `be skipped every time until that changes.`,
       href: "/members",
       action: "Review members",
     });

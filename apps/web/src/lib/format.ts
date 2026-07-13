@@ -28,3 +28,12 @@ export function nameList(names: string[], max = 3): string {
   const shown = names.slice(0, max).join(", ");
   return `${shown} +${names.length - max}`;
 }
+
+/**
+ * "today" -> "Today". First letter upper, the rest untouched — for sentence-cased
+ * labels like `relativeDay`'s output shown as a heading. Centralised so the shift
+ * screens don't each keep their own copy.
+ */
+export function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}

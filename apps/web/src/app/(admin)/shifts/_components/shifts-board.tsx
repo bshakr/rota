@@ -24,7 +24,7 @@ import {
 import { toastApiError } from "@/lib/api/toast";
 import type { MemberRef, Shift } from "@/lib/api/types";
 import { formatShiftDate, relativeDay } from "@/lib/date";
-import { initials } from "@/lib/format";
+import { capitalise, initials } from "@/lib/format";
 import { civilDate } from "@/lib/group-dates";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -69,16 +69,22 @@ export function ShiftsBoard({
   const [byId, setById] = React.useState<Record<number, Shift>>(() =>
     Object.fromEntries(rotas.flatMap((rota) => rota.shifts).map((shift) => [shift.id, shift])),
   );
-  const [pendingId, setPendingId] = React.useState<number | null>(null);
+  // A set, not a single id: two rows can be in flight at once, and clearing one
+  // must not re-enable the other (which would let its cover double-submit).
+  const [pending, setPending] = React.useState<ReadonlySet<number>>(() => new Set());
 
   async function handleCover(shift: Shift, value: string) {
     const next = value === NONE ? null : Number(value);
     const current = shift.covering_member?.id ?? null;
     if (next === current) return;
 
-    setPendingId(shift.id);
+    setPending((prev) => new Set(prev).add(shift.id));
     const result = await setShiftCover(shift.id, next);
-    setPendingId(null);
+    setPending((prev) => {
+      const updated = new Set(prev);
+      updated.delete(shift.id);
+      return updated;
+    });
 
     if (!result.ok) {
       toastApiError(result.error, GUARD_MESSAGES[result.error.error]);
@@ -137,9 +143,10 @@ export function ShiftsBoard({
                         <CoverControl
                           shift={shift}
                           options={coverOptions(shift)}
-                          pending={pendingId === shift.id}
+                          pending={pending.has(shift.id)}
                           onChange={(value) => handleCover(shift, value)}
                           label={coverLabel(rota.name, shift)}
+                          size="sm"
                           className="w-44"
                         />
                       </TableCell>
@@ -169,9 +176,10 @@ export function ShiftsBoard({
                     <CoverControl
                       shift={shift}
                       options={coverOptions(shift)}
-                      pending={pendingId === shift.id}
+                      pending={pending.has(shift.id)}
                       onChange={(value) => handleCover(shift, value)}
                       label={coverLabel(rota.name, shift)}
+                      size="default"
                       className="w-full"
                     />
                   </CardContent>
@@ -209,6 +217,7 @@ function CoverControl({
   pending,
   onChange,
   label,
+  size = "default",
   className,
 }: {
   shift: Shift;
@@ -216,6 +225,9 @@ function CoverControl({
   pending: boolean;
   onChange: (value: string) => void;
   label: string;
+  // Default (40px) on the mobile card, where the override is the primary control;
+  // sm (32px) in the dense desktop table row, a mouse target.
+  size?: "sm" | "default";
   className?: string;
 }) {
   return (
@@ -224,7 +236,7 @@ function CoverControl({
       onValueChange={onChange}
       disabled={pending}
     >
-      <SelectTrigger size="sm" aria-label={label} className={className}>
+      <SelectTrigger size={size} aria-label={label} className={className}>
         {pending ? <Loader2Icon className="animate-spin" aria-hidden /> : null}
         <SelectValue />
       </SelectTrigger>
@@ -239,8 +251,6 @@ function CoverControl({
     </Select>
   );
 }
-
-const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 const coverLabel = (rotaName: string, shift: Shift) =>
   `Cover for ${rotaName} on ${formatShiftDate(civilDate(shift.due_on))}`;

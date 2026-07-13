@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import type { Shift } from "@/lib/api/types";
 import { formatShiftDate, relativeDay } from "@/lib/date";
 import { civilDate } from "@/lib/group-dates";
-import { initials } from "@/lib/format";
+import { capitalise, initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /** A this-week shift carrying the rota it belongs to, so the glance names the job. */
@@ -101,5 +101,3 @@ function groupByDay(shifts: WeekShift[]): { due_on: string; shifts: WeekShift[] 
   }
   return days;
 }
-
-const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
