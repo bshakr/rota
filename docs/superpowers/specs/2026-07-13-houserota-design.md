@@ -90,6 +90,21 @@ the `group_admins` row with its `role`. Rails holds no independent copy of WorkO
 state to drift out of sync — these tables exist for foreign keys, display names, and audit, not
 as a source of truth.
 
+**The token carries no timezone, and that matters more than it sounds.** A WorkOS access token
+has `sub`, `org_id`, `role` and friends — no email, no organisation name, and crucially no
+timezone. So JIT provisioning fills placeholders on INSERT only, never clobbering a value a human
+later set. `role` is the exception: WorkOS owns it, so it re-syncs on every request.
+
+The timezone placeholder is the dangerous one. `groups.timezone` drives `send_hour` for every
+reminder in the system. A London house provisioned as UTC, whose admin never opens a settings
+screen, texts everybody an hour early from BST onwards — forever, with no error raised anywhere.
+That is the exact class of silent failure this product exists to prevent.
+
+So `groups.timezone_confirmed_at` is nullable, and NULL means *"we guessed; no human has ever
+confirmed this."* Setting the timezone through `PATCH /api/group` stamps it. While it is NULL,
+the dashboard shows a loud, actionable warning. A timezone the system invented is not a timezone
+the system should quietly trust.
+
 ### The member auth path is a deliberate exception
 
 Members have no WorkOS identity. Their magic link carries an opaque 32-byte URL-safe token that
@@ -260,6 +275,8 @@ nothing to cancel.
 
 **Admin (Next.js + shadcn, behind AuthKit)**
 
+- Group settings: name and timezone. Small screen, load-bearing: the timezone is a *guess* until a
+  human confirms it, and every reminder time in the system depends on it.
 - Dashboard: who's up this week across every rota.
 - Members: table; add, edit, deactivate, rotate magic link.
 - Rota editor: name; schedule (`starts_on` + every N days/weeks/months); send hour; reminder
