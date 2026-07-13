@@ -1,0 +1,29 @@
+# Docker reads the .dockerignore at the BUILD CONTEXT root, not the one next to the
+# Dockerfile. Building this monorepo the usual way — context at the repo root, with
+# `-f apps/api/Dockerfile` — therefore ignores apps/api/.dockerignore entirely, and the
+# Dockerfile's `COPY . .` would bake the real root .env, with live Twilio and WorkOS
+# credentials, straight into an image layer.
+#
+# apps/api/.dockerignore still applies when the context is apps/api. Keep both.
+
+# Secrets. The whole point of this file.
+.env
+.env.*
+!.env.example
+
+# Version control and agent worktrees
+.git/
+.gitignore
+/.koh/
+
+# Dependencies and build output, rebuilt inside the image
+node_modules/
+apps/web/node_modules/
+apps/web/.next/
+apps/api/tmp/
+apps/api/log/
+apps/api/.bundle/
+apps/api/vendor/bundle/
+
+# Local noise
+.DS_Store

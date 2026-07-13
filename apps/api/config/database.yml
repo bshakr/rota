@@ -1,0 +1,69 @@
+# Every environment runs two databases:
+#
+#   primary  the application schema (BLO-1043 owns db/schema.rb)
+#   queue    Solid Queue's internal tables, loaded from db/queue_schema.rb
+#
+# Keeping the queue tables out of the primary database is the Rails 8 production
+# default. We extend it to development and test so that db/schema.rb only ever
+# describes the domain, and a Solid Queue upgrade can never show up as a diff in it.
+#
+# Do NOT set `schema_dump: false` on the queue connection to stop Rails dumping it.
+# Rails only loads a schema file it can see, so that would leave the queue database
+# EMPTY and bin/jobs broken. db/queue_schema.rb is committed in the exact form Rails'
+# dumper emits, and that is what stops `db:migrate` rewriting it.
+#
+# CONNECTION DETAILS, and why there is no `url:` here:
+#
+# Development and test take their database NAMES from this file and nowhere else.
+# DATABASE_URL is deleted outside production (see config/application.rb): it names ONE
+# database and Rails applies it to whichever environment is booting, so a DATABASE_URL
+# pointing at the development database would repoint `rspec` at it and purge it.
+#
+# Host, user and password therefore come from libpq's standard PGHOST / PGUSER /
+# PGPASSWORD / PGPORT — that is how CI reaches its Postgres service container. Locally
+# you need none of them; Postgres trusts your OS user over the domain socket.
+#
+# In production, DATABASE_URL configures `primary` and QUEUE_DATABASE_URL configures
+# `queue`. Rails derives that variable name from the connection name.
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  # For details on connection pooling, see Rails configuration guide
+  # https://guides.rubyonrails.org/configuring.html#database-pooling
+  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
+development:
+  primary:
+    <<: *default
+    database: houserota_api_development
+  queue:
+    <<: *default
+    database: houserota_api_development_queue
+    migrations_paths: db/queue_migrate
+
+# Warning: The database defined as "test" will be erased and
+# re-generated from your development database when you run "rake".
+# Do not set this db to the same as development or production.
+test:
+  primary:
+    <<: *default
+    database: houserota_api_test
+  queue:
+    <<: *default
+    database: houserota_api_test_queue
+    migrations_paths: db/queue_migrate
+
+production:
+  primary: &primary_production
+    <<: *default
+    database: houserota_api_production
+    username: houserota_api
+    password: <%= ENV["HOUSEROTA_API_DATABASE_PASSWORD"] %>
+  cache:
+    <<: *primary_production
+    database: houserota_api_production_cache
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *primary_production
+    database: houserota_api_production_queue
+    migrations_paths: db/queue_migrate
