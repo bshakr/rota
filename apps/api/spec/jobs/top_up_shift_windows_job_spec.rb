@@ -19,21 +19,27 @@ RSpec.describe TopUpShiftWindowsJob do
     expect(rota.shifts.maximum(:due_on)).to be_within(7).of(rota.group.today + 90.days)
   end
 
+  # Assertions here are scoped to the rota under test, never to a global Shift.count. `bin/setup`
+  # seeds a demo group into the test database, and those seeded rotas are committed baseline that
+  # this job legitimately generates shifts for on every run — a global count would make these
+  # specs pass or fail on whether the world happened to be seeded.
   it "leaves an inactive rota alone" do
     rota = create(:rota, :with_roster, :inactive, group: group, starts_on: Date.current)
 
-    expect { described_class.perform_now }.not_to change(Shift, :count)
+    described_class.perform_now
+
     expect(rota.shifts).to be_empty
   end
 
   it "skips a draft rota without complaining" do
-    create(:rota, group: group, starts_on: Date.current)
+    rota = create(:rota, group: group, starts_on: Date.current)
 
-    expect { described_class.perform_now }.not_to change(Shift, :count)
+    expect { described_class.perform_now }.not_to raise_error
+    expect(rota.shifts).to be_empty
   end
 
   # The point of the daily run: yesterday's horizon is one day short of today's, so exactly one
-  # shift falls into the window each day for a daily rota.
+  # shift falls into this rota's window each day for a daily rota.
   it "tops the window back up as the horizon moves" do
     rota = create(:rota, :with_roster, group: group, starts_on: Date.current,
       interval_count: 1, interval_unit: "day")
@@ -41,15 +47,15 @@ RSpec.describe TopUpShiftWindowsJob do
     first_run = rota.shifts.maximum(:due_on)
 
     travel 1.day
-    expect { described_class.perform_now }.to change(Shift, :count).by(1)
+    expect { described_class.perform_now }.to change { rota.shifts.count }.by(1)
     expect(rota.shifts.maximum(:due_on)).to eq(first_run + 1.day)
   end
 
-  it "adds nothing on a second run in the same day" do
-    create(:rota, :with_roster, group: group, starts_on: Date.current)
+  it "adds nothing to a rota already topped up in the same day" do
+    rota = create(:rota, :with_roster, group: group, starts_on: Date.current)
     described_class.perform_now
 
-    expect { described_class.perform_now }.not_to change(Shift, :count)
+    expect { described_class.perform_now }.not_to change { rota.shifts.count }
   end
 
   describe "when one rota blows up" do
