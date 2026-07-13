@@ -12,7 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { Member, Rota } from "@/lib/api/types";
+import type { Member, Rota, Shift } from "@/lib/api/types";
 
 import { updateRotaAction } from "../actions";
 import { RosterEditor } from "./roster-editor";
@@ -29,10 +29,12 @@ import { RotaDetailsForm } from "./rota-details-form";
 export function RotaEditor({
   rota,
   members,
+  shifts,
   todayDay,
 }: {
   rota: Rota;
   members: Member[];
+  shifts: Shift[];
   todayDay: string;
 }) {
   const router = useRouter();
@@ -83,6 +85,7 @@ export function RotaEditor({
             rotaId={rota.id}
             initialRoster={rota.positions}
             allMembers={members}
+            savedShifts={shifts}
             startsOn={rota.starts_on}
             intervalCount={rota.interval_count}
             intervalUnit={rota.interval_unit}

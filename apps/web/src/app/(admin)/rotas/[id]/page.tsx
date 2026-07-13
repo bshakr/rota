@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { getRota, listMembers } from "@/lib/api/admin";
+import { getRota, listMembers, listShifts } from "@/lib/api/admin";
 import { isApiError } from "@/lib/api/errors";
 
 import { RotaEditor } from "../_components/rota-editor";
@@ -19,13 +19,16 @@ export default async function EditRotaPage({ params }: { params: Promise<{ id: s
 
   let rota;
   let members;
+  let shifts;
   try {
-    const [rotaResponse, membersResponse] = await Promise.all([
+    const [rotaResponse, membersResponse, shiftsResponse] = await Promise.all([
       getRota(rotaId),
       listMembers(),
+      listShifts(rotaId),
     ]);
     rota = rotaResponse.rota;
     members = membersResponse.members;
+    shifts = shiftsResponse.shifts;
   } catch (error) {
     if (isApiError(error) && error.status === 404) notFound();
     throw error;
@@ -42,7 +45,7 @@ export default async function EditRotaPage({ params }: { params: Promise<{ id: s
           </Button>
         }
       />
-      <RotaEditor rota={rota} members={members} todayDay={todayDayString()} />
+      <RotaEditor rota={rota} members={members} shifts={shifts} todayDay={todayDayString()} />
     </>
   );
 }

@@ -15,11 +15,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toastApiError } from "@/lib/api/toast";
-import type { IntervalUnit, Member, RotaPositionEntry } from "@/lib/api/types";
+import type { IntervalUnit, Member, RotaPositionEntry, Shift } from "@/lib/api/types";
 import { initials } from "@/lib/format";
 
 import { updateRotaPositionsAction } from "../actions";
 import { ShiftProjection } from "./shift-projection";
+import { UpcomingShifts } from "./upcoming-shifts";
 
 // The roster editor. The order IS the rotation, so reordering has to be first
 // class: native drag on a pointer device (the grip handle), and Up/Down buttons
@@ -32,6 +33,7 @@ export function RosterEditor({
   rotaId,
   initialRoster,
   allMembers,
+  savedShifts,
   startsOn,
   intervalCount,
   intervalUnit,
@@ -40,6 +42,8 @@ export function RosterEditor({
   rotaId: number;
   initialRoster: RotaPositionEntry[];
   allMembers: Member[];
+  /** The real, Rails-generated shifts (authoritative once the roster is saved). */
+  savedShifts: Shift[];
   startsOn: string;
   intervalCount: number;
   intervalUnit: IntervalUnit;
@@ -221,18 +225,26 @@ export function RosterEditor({
 
       <div className="space-y-3 border-t border-border pt-5">
         <p className="text-sm font-medium">Upcoming shifts</p>
-        <ShiftProjection
-          startsOn={startsOn}
-          intervalCount={intervalCount}
-          intervalUnit={intervalUnit}
-          roster={order}
-          todayDay={todayDay}
-        />
+        {/* While the order is unsaved, show the transient client projection — a
+            "who'd land where" hint. The moment it's saved, Rails is authoritative,
+            so we show the real generated shifts (which also reflect any covers). */}
         {dirty ? (
-          <p className="text-xs text-muted-foreground">
-            Previewing your unsaved order. Save the roster to apply it.
-          </p>
-        ) : null}
+          <>
+            <ShiftProjection
+              startsOn={startsOn}
+              intervalCount={intervalCount}
+              intervalUnit={intervalUnit}
+              roster={order}
+              todayDay={todayDay}
+            />
+            <p className="text-xs text-muted-foreground">
+              Previewing your unsaved order. Save the roster to apply it and see the
+              scheduled shifts.
+            </p>
+          </>
+        ) : (
+          <UpcomingShifts shifts={savedShifts} todayDay={todayDay} />
+        )}
       </div>
     </div>
   );

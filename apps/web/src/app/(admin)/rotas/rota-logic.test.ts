@@ -143,6 +143,52 @@ describe("projectShifts", () => {
     ]);
   });
 
+  it("lands on 29 Feb in a leap year (monthly from a 31st), not 1/2 March", () => {
+    const shifts = projectShifts({
+      startsOn: "2024-01-31",
+      intervalCount: 1,
+      intervalUnit: "month",
+      roster,
+      count: 4,
+    });
+    expect(shifts.map((s) => s.dueOn)).toEqual([
+      "2024-01-31",
+      "2024-02-29",
+      "2024-03-31",
+      "2024-04-30",
+    ]);
+  });
+
+  it("counts 29 Feb as a real day when stepping daily across a leap boundary", () => {
+    const shifts = projectShifts({
+      startsOn: "2024-02-28",
+      intervalCount: 1,
+      intervalUnit: "day",
+      roster,
+      count: 3,
+    });
+    expect(shifts.map((s) => s.dueOn)).toEqual(["2024-02-28", "2024-02-29", "2024-03-01"]);
+  });
+
+  it("wraps cleanly across more than one full cycle of the roster", () => {
+    const shifts = projectShifts({
+      startsOn: "2026-07-04",
+      intervalCount: 1,
+      intervalUnit: "week",
+      roster,
+      count: 7, // 2 full cycles of 3 + 1
+    });
+    expect(shifts.map((s) => s.member.name)).toEqual([
+      "Alice",
+      "Bob",
+      "Cara",
+      "Alice",
+      "Bob",
+      "Cara",
+      "Alice",
+    ]);
+  });
+
   it("skips past occurrences but keeps the assignee tied to the true occurrence index", () => {
     const pair = [member(1, "Alice", 0), member(2, "Bob", 1)];
     const shifts = projectShifts({
