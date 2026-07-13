@@ -159,5 +159,18 @@ RSpec.describe "GET /api/member/shifts" do
 
       expect(response).to have_http_status(:unauthorized)
     end
+
+    # Deactivation is how a member is removed from a house, and it does NOT rotate the token. So the
+    # removed housemate's magic link must stop working immediately — otherwise they keep reading the
+    # roster and acting on shifts, which is the exact thing removal is meant to end.
+    it "refuses a token whose member has since been deactivated" do
+      member = create(:member, group: group)
+      token = member.access_token
+      member.update!(active: false)
+
+      get "/api/member/shifts", headers: { "Authorization" => "Bearer #{token}" }
+
+      expect(response).to have_http_status(:unauthorized)
+    end
   end
 end

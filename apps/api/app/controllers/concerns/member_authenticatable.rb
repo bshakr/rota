@@ -21,7 +21,11 @@ module MemberAuthenticatable
   private
 
   def authenticate_member!
-    @current_member = Member.find_by(access_token: bearer_token) if bearer_token.present?
+    # `active` only: deactivation is how a member is *removed* from a house, and it deliberately does
+    # not rotate the token (see Member). Without this scope a removed housemate would keep a fully
+    # working magic link — able to read the live roster and act on shifts — which is the exact thing
+    # removal is supposed to end. A deactivated token therefore authenticates as nobody: a 401.
+    @current_member = Member.active.find_by(access_token: bearer_token) if bearer_token.present?
 
     return if @current_member
 
