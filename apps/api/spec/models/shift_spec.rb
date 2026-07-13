@@ -100,11 +100,15 @@ RSpec.describe Shift do
   describe ".upcoming" do
     it "takes today's shifts and later, but not the past" do
       rota = create(:rota)
-      today = create(:shift, rota: rota, due_on: Date.current)
-      future = create(:shift, rota: rota, due_on: 3.days.from_now.to_date)
+      # Build the fixtures on the SAME calendar the query uses (the group's), not UTC Date.current.
+      # Otherwise, when CI runs after ~23:00 UTC, the group is already "tomorrow" in Europe/London
+      # and a UTC-dated "today" shift looks like yesterday — the assertion flaked exactly there.
+      group_today = rota.group.today
+      today = create(:shift, rota: rota, due_on: group_today)
+      future = create(:shift, rota: rota, due_on: group_today + 3)
       create(:shift, :past, rota: rota)
 
-      expect(rota.shifts.upcoming(rota.group.today)).to contain_exactly(today, future)
+      expect(rota.shifts.upcoming(group_today)).to contain_exactly(today, future)
     end
 
     # The scope takes the date rather than assuming one. Hand it an Auckland "today" and it answers
