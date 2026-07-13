@@ -1,0 +1,54 @@
+# Every environment runs two databases:
+#
+#   primary  the application schema (BLO-1043 owns db/schema.rb)
+#   queue    Solid Queue's internal tables, loaded from db/queue_schema.rb
+#
+# Keeping the queue tables out of the primary database is the Rails 8 production
+# default. We extend it to development and test so that db/schema.rb only ever
+# describes the domain, and a Solid Queue upgrade can never show up as a diff in it.
+#
+# Connection URLs: DATABASE_URL configures `primary`, QUEUE_DATABASE_URL configures
+# `queue`. Rails derives the variable name from the connection name, so any config
+# below can be overridden the same way.
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  # For details on connection pooling, see Rails configuration guide
+  # https://guides.rubyonrails.org/configuring.html#database-pooling
+  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
+development:
+  primary:
+    <<: *default
+    database: houserota_api_development
+  queue:
+    <<: *default
+    database: houserota_api_development_queue
+    migrations_paths: db/queue_migrate
+
+# Warning: The database defined as "test" will be erased and
+# re-generated from your development database when you run "rake".
+# Do not set this db to the same as development or production.
+test:
+  primary:
+    <<: *default
+    database: houserota_api_test
+  queue:
+    <<: *default
+    database: houserota_api_test_queue
+    migrations_paths: db/queue_migrate
+
+production:
+  primary: &primary_production
+    <<: *default
+    database: houserota_api_production
+    username: houserota_api
+    password: <%= ENV["HOUSEROTA_API_DATABASE_PASSWORD"] %>
+  cache:
+    <<: *primary_production
+    database: houserota_api_production_cache
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *primary_production
+    database: houserota_api_production_queue
+    migrations_paths: db/queue_migrate
