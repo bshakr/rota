@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_13_100800) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_13_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -109,7 +109,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_13_100800) do
     t.check_constraint "days_before IS NULL OR days_before >= 0", name: "sms_messages_days_before_non_negative"
     t.check_constraint "kind::text <> 'reminder'::text OR days_before IS NOT NULL", name: "sms_messages_reminder_has_days_before"
     t.check_constraint "kind::text = ANY (ARRAY['reminder'::character varying, 'cover_notice'::character varying]::text[])", name: "sms_messages_kind_known"
-    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'sent'::character varying, 'delivered'::character varying, 'failed'::character varying]::text[])", name: "sms_messages_status_known"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'sending'::character varying, 'sent'::character varying, 'delivered'::character varying, 'failed'::character varying]::text[])", name: "sms_messages_status_known"
   end
 
   create_table "users", force: :cascade do |t|
