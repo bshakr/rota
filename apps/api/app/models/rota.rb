@@ -19,6 +19,7 @@ class Rota < ApplicationRecord
   validates :interval_unit, inclusion: { in: INTERVAL_UNITS }
   validates :send_hour, numericality: { only_integer: true, in: 0..23 }
   validate :reminder_offsets_must_be_whole_non_negative_days
+  validate :message_template_placeholders_must_be_known
 
   # A rota with no roster has nobody to assign, so generation is a no-op and the rota is in draft.
   # Derived from the roster, never stored: a flag and a roster can disagree, a derived method
@@ -28,6 +29,21 @@ class Rota < ApplicationRecord
   end
 
   private
+
+  # A typo in a template — {{nmae}} — has exactly one moment where it can be caught for free: the
+  # moment the admin types it. Caught at send time instead, it is already a text that somebody
+  # received with "{{nmae}}" in it, and a text cannot be recalled. So the vocabulary is enforced
+  # here, loudly, at save. Sms::Renderer owns the vocabulary; this only asks it.
+  def message_template_placeholders_must_be_known
+    unknown = Sms::Renderer.unknown_placeholders(message_template)
+    return if unknown.empty?
+
+    known = Sms::Renderer::PLACEHOLDERS.map { |placeholder| "{{#{placeholder}}}" }.join(", ")
+    errors.add(
+      :message_template,
+      "has unknown placeholders: #{unknown.map { |name| "{{#{name}}}" }.join(', ')}. Known: #{known}"
+    )
+  end
 
   # Offsets mean the same thing in any order, so "0, 3" and "3, 0" are the same rota and neither
   # should be an error. Normalising on write — descending, so the furthest-out reminder reads

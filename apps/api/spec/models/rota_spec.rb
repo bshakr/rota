@@ -28,6 +28,42 @@ RSpec.describe Rota do
     end
   end
 
+  # A template is only ever wrong at one moment that costs nothing to fix: the moment it is typed.
+  # A text cannot be recalled, so an unknown placeholder is rejected at save, never discovered at
+  # send. Sms::Renderer owns the vocabulary.
+  describe "the message template's placeholders" do
+    it "accepts every placeholder the renderer knows" do
+      known = Sms::Renderer::PLACEHOLDERS.map { |placeholder| "{{#{placeholder}}}" }.join(" ")
+
+      expect(build(:rota, message_template: known)).to be_valid
+    end
+
+    it "accepts a template with no placeholders at all" do
+      expect(build(:rota, message_template: "Bins out please")).to be_valid
+    end
+
+    it "rejects a typo rather than texting it out verbatim" do
+      rota = build(:rota, message_template: "Hi {{nmae}}!")
+
+      expect(rota).not_to be_valid
+      expect(rota.errors[:message_template].first).to include("{{nmae}}")
+    end
+
+    it "names every unknown placeholder, so the admin fixes them in one pass" do
+      rota = build(:rota, message_template: "{{name}} {{nmae}} {{when}}")
+
+      expect(rota).not_to be_valid
+      expect(rota.errors[:message_template].first).to include("{{nmae}}", "{{when}}")
+    end
+
+    it "lists the known placeholders in the error, so the admin does not have to guess" do
+      rota = build(:rota, message_template: "{{nmae}}")
+
+      expect(rota).not_to be_valid
+      expect(rota.errors[:message_template].first).to include("{{name}}", "{{days_until}}")
+    end
+  end
+
   describe "the schedule" do
     it "accepts each interval unit" do
       Rota::INTERVAL_UNITS.each do |unit|

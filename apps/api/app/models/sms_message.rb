@@ -9,6 +9,16 @@ class SmsMessage < ApplicationRecord
   KINDS = { reminder: "reminder", cover_notice: "cover_notice" }.freeze
   STATUSES = { pending: "pending", sent: "sent", delivered: "delivered", failed: "failed" }.freeze
 
+  # Not every failure comes from a carrier. These two share the `error_code` column with Twilio's
+  # numeric codes (21610, 30006 and friends) so that the SMS log has one column to read and one
+  # question to answer — "why didn't Alice get her text" — and they are word-shaped precisely so
+  # they can never collide with a Twilio code.
+  #
+  # NOT_CONTACTABLE: the member was inactive or had opted out when the job ran. Nothing was sent.
+  # INVALID_TEMPLATE: the rota's template carried a placeholder we have no value for.
+  NOT_CONTACTABLE = "not_contactable".freeze
+  INVALID_TEMPLATE = "invalid_template".freeze
+
   belongs_to :shift
   belongs_to :member
 
