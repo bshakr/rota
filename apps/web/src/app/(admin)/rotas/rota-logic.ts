@@ -118,9 +118,10 @@ export interface ProjectShiftsOptions {
   fromDay?: string;
 }
 
-// Enough headroom to skip past occurrences (a monthly rota, a year of history)
-// without ever looping unbounded on a pathological input.
-const MAX_OCCURRENCES = 1000;
+// A hard ceiling on the exponential search for the first upcoming occurrence, so
+// a pathological input can never loop unbounded. 2^40 occurrences is astronomically
+// past any real rota; the search reaches it in 40 steps.
+const MAX_INDEX = 2 ** 40;
 
 /**
  * The next `count` shifts a rota would generate, mirroring the Rails generator:
@@ -128,7 +129,9 @@ const MAX_OCCURRENCES = 1000;
  * assignee is `roster[i % roster.length]` — the wrap-around is the rotation.
  *
  * The assignee tracks the TRUE occurrence index, so skipping past shifts with
- * `fromDay` never shifts who is up next.
+ * `fromDay` never shifts who is up next. The first upcoming index is found by
+ * search rather than a linear scan, so an old rota (a daily one started years
+ * ago) still projects its real upcoming shifts instead of running off a cap.
  */
 export function projectShifts({
   startsOn,
@@ -141,15 +144,34 @@ export function projectShifts({
   if (roster.length === 0 || count <= 0) return [];
 
   const start = parseDayString(startsOn);
+  const dayAt = (i: number) => formatDayString(addInterval(start, i * intervalCount, intervalUnit));
+
+  const startIndex = fromDay ? firstIndexOnOrAfter(dayAt, fromDay) : 0;
+
   const shifts: ProjectedShift[] = [];
-
-  for (let i = 0; i < MAX_OCCURRENCES && shifts.length < count; i++) {
-    const dueOn = formatDayString(addInterval(start, i * intervalCount, intervalUnit));
-    if (fromDay && dueOn < fromDay) continue; // lexicographic works for YYYY-MM-DD
-    shifts.push({ dueOn, member: roster[i % roster.length] });
+  for (let k = 0; k < count; k++) {
+    const i = startIndex + k;
+    shifts.push({ dueOn: dayAt(i), member: roster[i % roster.length] });
   }
-
   return shifts;
+}
+
+// Occurrence dates strictly increase with the index, so "first index whose day is
+// >= fromDay" is a monotonic predicate: exponential-probe an upper bound, then
+// binary-search. Lexicographic comparison is correct for zero-padded YYYY-MM-DD.
+function firstIndexOnOrAfter(dayAt: (i: number) => string, fromDay: string): number {
+  if (dayAt(0) >= fromDay) return 0;
+
+  let hi = 1;
+  while (hi < MAX_INDEX && dayAt(hi) < fromDay) hi *= 2;
+
+  let lo = Math.floor(hi / 2);
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (dayAt(mid) < fromDay) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 // ---------------------------------------------------------------------------

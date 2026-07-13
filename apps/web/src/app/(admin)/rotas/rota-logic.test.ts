@@ -158,6 +158,25 @@ describe("projectShifts", () => {
     expect(shifts.map((s) => s.member.name)).toEqual(["Alice", "Bob"]);
   });
 
+  it("still projects upcoming shifts for a rota that started long ago (no linear-scan cap)", () => {
+    const pair = [member(1, "Alice", 0), member(2, "Bob", 1)];
+    // A daily rota anchored ~4 years before fromDay: index reaches the thousands.
+    const shifts = projectShifts({
+      startsOn: "2022-01-01",
+      intervalCount: 1,
+      intervalUnit: "day",
+      roster: pair,
+      count: 3,
+      fromDay: "2026-07-14",
+    });
+    expect(shifts.map((s) => s.dueOn)).toEqual(["2026-07-14", "2026-07-15", "2026-07-16"]);
+    // 2022-01-01 → 2026-07-14 is occurrence 1655 (a leap-year-aware day count),
+    // so the assignee must track that true index, not a reset counter.
+    const daysBetween =
+      (Date.UTC(2026, 6, 14) - Date.UTC(2022, 0, 1)) / 86_400_000;
+    expect(shifts[0].member).toBe(pair[daysBetween % 2]);
+  });
+
   it("is empty for a draft rota with no roster", () => {
     expect(
       projectShifts({

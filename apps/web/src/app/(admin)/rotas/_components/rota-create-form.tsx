@@ -12,12 +12,13 @@ import { RotaDetailsForm } from "./rota-details-form";
  * where the preview and the drag-to-order roster live. A rota with no roster is a
  * draft, which the edit screen states plainly.
  */
-export function RotaCreateForm() {
+export function RotaCreateForm({ defaultStartsOn }: { defaultStartsOn: string }) {
   const router = useRouter();
 
   return (
     <div className="mx-auto max-w-2xl">
       <RotaDetailsForm
+        defaultStartsOn={defaultStartsOn}
         submitLabel="Create rota"
         save={(params) => createRotaAction(params)}
         onSaved={(rota) => {

@@ -59,6 +59,7 @@ export function RotaEditor({
           <RotaDetailsForm
             rota={rota}
             members={members}
+            defaultStartsOn={rota.starts_on}
             submitLabel="Save changes"
             save={(params, confirm) => updateRotaAction(rota.id, params, confirm)}
             onSaved={() => {

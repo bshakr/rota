@@ -45,8 +45,9 @@ export function ReminderOffsetsField({
   }
 
   function addCustom() {
-    const parsed = Number(custom);
-    if (!Number.isInteger(parsed) || parsed < 0 || parsed > MAX_OFFSET) return;
+    const trimmed = custom.trim();
+    const parsed = Number(trimmed);
+    if (trimmed === "" || !Number.isInteger(parsed) || parsed < 0 || parsed > MAX_OFFSET) return;
     add(parsed);
     setCustom("");
     setOpen(false);
@@ -127,7 +128,7 @@ export function ReminderOffsetsField({
                 }}
                 placeholder="e.g. 2"
               />
-              <Button type="button" onClick={addCustom} disabled={custom === ""}>
+              <Button type="button" onClick={addCustom} disabled={custom.trim() === ""}>
                 Add
               </Button>
             </div>

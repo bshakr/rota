@@ -83,10 +83,10 @@ const FIELD_KEYS: (keyof RotaFormValues)[] = [
   "message_template",
 ];
 
-function defaultsFrom(rota?: Rota): RotaFormValues {
+function defaultsFrom(rota: Rota | undefined, defaultStartsOn: string): RotaFormValues {
   return {
     name: rota?.name ?? "",
-    starts_on: rota?.starts_on ?? displayDateToDayString(new Date()),
+    starts_on: rota?.starts_on ?? defaultStartsOn,
     interval_count: rota?.interval_count ?? 1,
     interval_unit: rota?.interval_unit ?? "week",
     send_hour: rota?.send_hour ?? 9,
@@ -111,6 +111,7 @@ function defaultsFrom(rota?: Rota): RotaFormValues {
 export function RotaDetailsForm({
   rota,
   members,
+  defaultStartsOn,
   submitLabel,
   save,
   onSaved,
@@ -118,13 +119,19 @@ export function RotaDetailsForm({
   rota?: Rota;
   /** Group members for the live-preview recipient picker. Absent on create (no rota id yet). */
   members?: Member[];
+  /**
+   * The start date to pre-fill when creating (edit reads it from the rota). Passed
+   * in from the server — computed from the client clock it would risk a
+   * server/client hydration mismatch on the date field. See src/lib/date.ts.
+   */
+  defaultStartsOn: string;
   submitLabel: string;
   save: (params: RotaWriteParams, confirm: boolean) => Promise<ActionResult<{ rota: Rota }>>;
   onSaved: (rota: Rota) => void;
 }) {
   const form = useForm<RotaFormValues>({
     resolver: zodResolver(rotaFormSchema),
-    defaultValues: defaultsFrom(rota),
+    defaultValues: defaultsFrom(rota, defaultStartsOn),
   });
   const { errors, isSubmitting } = form.formState;
 

@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 
 import { RotaCreateForm } from "../_components/rota-create-form";
+import { todayDayString } from "../rota-logic";
 
 export const metadata: Metadata = { title: "New rota" };
 
@@ -20,7 +21,7 @@ export default function NewRotaPage() {
           </Button>
         }
       />
-      <RotaCreateForm />
+      <RotaCreateForm defaultStartsOn={todayDayString()} />
     </>
   );
 }
