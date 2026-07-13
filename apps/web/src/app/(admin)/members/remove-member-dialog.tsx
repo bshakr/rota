@@ -65,6 +65,11 @@ export function RemoveMemberDialog({
       } else {
         toastApiError(result.error, `Couldn't remove ${member.name}.`);
       }
+    } catch (error) {
+      // A non-ApiError failure (the API host unreachable, say) is re-thrown by the
+      // action; catch it so the confirm dialog stays put with a toast rather than
+      // surfacing an unhandled rejection.
+      toastApiError(error, `Couldn't remove ${member.name}.`);
     } finally {
       setPending(false);
     }

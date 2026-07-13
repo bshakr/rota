@@ -258,7 +258,13 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
           }
           confirmLabel="Rotate link"
           onConfirm={async () => {
-            const result = await rotateMemberLinkAction(rotateTarget.id);
+            // `.catch` handles the throw path (a non-ApiError like an unreachable
+            // API) — toast and rethrow; the `!result.ok` branch below handles the
+            // ApiError-as-value path. Either way ConfirmDialog stays open to retry.
+            const result = await rotateMemberLinkAction(rotateTarget.id).catch((error) => {
+              toastApiError(error, `Couldn't rotate ${rotateTarget.name}'s link.`);
+              throw error;
+            });
             if (!result.ok) {
               toastApiError(result.error, `Couldn't rotate ${rotateTarget.name}'s link.`);
               // Throw so ConfirmDialog keeps itself open for a retry.

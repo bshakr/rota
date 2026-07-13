@@ -95,22 +95,30 @@ export function MemberFormDialog({
   }
 
   async function onSubmit(values: Values) {
-    const result = isEdit
-      ? await updateMemberAction(member!.id, values)
-      : await createMemberAction(values);
+    try {
+      const result = isEdit
+        ? await updateMemberAction(member!.id, values)
+        : await createMemberAction(values);
 
-    if (result.ok) {
-      const name = result.data.member.name;
-      toast.success(isEdit ? `${name}'s details saved.` : `${name} added.`, {
-        description: isEdit ? undefined : "They can go into any rota now.",
-      });
-      onClose();
-      return;
-    }
+      if (result.ok) {
+        const name = result.data.member.name;
+        toast.success(isEdit ? `${name}'s details saved.` : `${name} added.`, {
+          description: isEdit ? undefined : "They can go into any rota now.",
+        });
+        onClose();
+        return;
+      }
 
-    // A field-level rejection lands on the input; anything else is a toast.
-    if (!applyFieldErrors(result.error)) {
-      toastApiError(result.error, isEdit ? "Couldn't save the changes." : "Couldn't add the member.");
+      // A field-level rejection lands on the input; anything else is a toast.
+      if (!applyFieldErrors(result.error)) {
+        toastApiError(result.error, isEdit ? "Couldn't save the changes." : "Couldn't add the member.");
+      }
+    } catch (error) {
+      // The action returns ApiError failures as a value; it only THROWS for the
+      // unexpected (the API host unreachable, so the fetch rejected before Rails
+      // answered). Catch it so the dialog stays open with a toast rather than
+      // letting the rejection go unhandled.
+      toastApiError(error, isEdit ? "Couldn't save the changes." : "Couldn't add the member.");
     }
   }
 
