@@ -28,6 +28,7 @@ class MemberRemoval
 
   def call
     Member.transaction do
+      lock_affected_rotas!                # take the rota locks BEFORE any shift, in id order
       to_reassign = pending_assignments   # snapshot BEFORE the roster moves them
       dropped = drop_future_covers        # undo the agreements, and name them
       regenerate_affected_rosters         # remove from rosters, redistribute the assigned turns
@@ -40,6 +41,26 @@ class MemberRemoval
   private
 
   attr_reader :member, :group, :today
+
+  # Every writer of a shift's cover takes the shift's rota lock before the shift itself, in the same
+  # rota -> shift order, so none of them can deadlock (see ShiftCover). This service writes covers —
+  # `drop_future_covers`'s bulk UPDATE, and RotaRegenerator's deletes — across POTENTIALLY SEVERAL
+  # rotas, so it must take all of their locks first, and in a deterministic order among themselves, or
+  # two concurrent removals whose rota sets overlap would deadlock each other. Lock ascending by id,
+  # one row at a time: a single `ORDER BY id ... FOR UPDATE` locks rows as the scan reads them (before
+  # the sort), so per-row locking is what actually guarantees the acquisition order. RotaRegenerator's
+  # inner `rota.with_lock` then re-locks a row this transaction already holds — a no-op on the same
+  # connection.
+  def lock_affected_rotas!
+    affected_rota_ids.each { |id| Rota.where(id: id).lock.first }
+  end
+
+  # The rotas whose shifts this removal will lock: the ones the member sits on (whose rosters
+  # regenerate) and the ones holding shifts the member is covering (whose covers get cleared).
+  def affected_rota_ids
+    covering_rota_ids = future_shifts.where(covering_member_id: member.id).distinct.pluck(:rota_id)
+    (member.rota_ids + covering_rota_ids).uniq.sort
+  end
 
   # Every strictly-future shift in the group. One cutoff for the whole group, because every rota in
   # it shares the group's calendar (see Group#today).

@@ -69,4 +69,44 @@ RSpec.describe MemberRemoval do
 
     past.each { |shift| expect(shift.reload.assigned_member_id).to eq(member.id) }
   end
+
+  # This service writes covers across several rotas (a bulk cover-clear plus per-rota regeneration).
+  # Every cover writer takes the shift's rota lock BEFORE the shift, in rota -> shift / ascending-id
+  # order (see ShiftCover). If this one grabbed shift locks first (as it used to, via update_all before
+  # RotaRegenerator's rota.with_lock) it would form an AB-BA cycle with a concurrent cover, and two
+  # concurrent removals with overlapping rota sets would deadlock each other.
+  describe "lock ordering (rota -> shift, so it cannot deadlock a cover)" do
+    it "takes a rota FOR UPDATE lock before it writes any shift" do
+      on_rota = rostered_rota(size: 3)
+      member = on_rota.rota_positions.order(:position).first.member
+      covered_rota = rostered_rota(size: 2)
+      covered_rota.shifts.future(group.today).first.update!(covering_member: member)
+
+      statements = []
+      subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+        statements << payload[:sql]
+      end
+      described_class.new(member).call
+      ActiveSupport::Notifications.unsubscribe(subscriber)
+
+      first_rota_lock = statements.index { |sql| sql.match?(/FROM "rotas".*FOR UPDATE/i) }
+      first_shift_write = statements.index { |sql| sql.match?(/UPDATE "shifts"|DELETE FROM "shifts"/i) }
+
+      expect(first_rota_lock).not_to be_nil
+      expect(first_shift_write).not_to be_nil
+      expect(first_rota_lock).to be < first_shift_write
+    end
+
+    it "locks every affected rota — the member's own and any it covers into — in ascending id order" do
+      on_rota = rostered_rota(size: 3)
+      member = on_rota.rota_positions.order(:position).first.member
+      covered_rota = rostered_rota(size: 2)
+      covered_rota.shifts.future(group.today).first.update!(covering_member: member)
+
+      ids = described_class.new(member).send(:affected_rota_ids)
+
+      expect(ids).to eq(ids.uniq.sort)
+      expect(ids).to include(on_rota.id, covered_rota.id)
+    end
+  end
 end
