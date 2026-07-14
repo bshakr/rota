@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
+import { CloudOff } from "lucide-react";
 
+import { EmptyState } from "@/components/empty-state";
 import { InvalidLink } from "@/components/member/invalid-link";
-import { isApiError } from "@/lib/api/errors";
+import { apiErrorMessage, isApiError } from "@/lib/api/errors";
 import { getMemberShifts } from "@/lib/api/member";
+import { TIME_ZONE } from "@/lib/date";
+import { groupToday } from "@/lib/group-dates";
 
 import { assignCoverAction, cancelCoverAction } from "./actions";
 import { ShiftList } from "./shift-list";
@@ -44,12 +48,30 @@ export default async function MemberShiftsPage({
     if (isApiError(error) && error.status === 401) {
       return <InvalidLink />;
     }
-    // Anything else (the API briefly unreachable) is a real fault; let the error
-    // boundary show its warm "this one's on us, try again".
+    // A throttle (429) or a brief outage (5xx) is not a broken link. Show warm,
+    // human copy from the shared error map — never a code — and keep the member
+    // surface, rather than falling through to the app-wide error boundary.
+    if (isApiError(error)) {
+      return (
+        <EmptyState
+          icon={CloudOff}
+          title="We couldn't load your shifts"
+          description={apiErrorMessage(error, "This one's on us, not you. Try again in a moment.")}
+        />
+      );
+    }
+    // Truly unexpected (the API host unreachable, so fetch rejected before Rails
+    // answered): let the error boundary show its warm "try again".
     throw error;
   }
 
   const firstName = data.member.name.split(" ")[0];
+
+  // The reference "today" that relative dates ("in 3 days") are measured from.
+  // BLO-1064: swap TIME_ZONE for the group's own timezone once GET
+  // /api/member/shifts carries it — a one-argument change, since this whole app
+  // pins Europe/London for now and the member page stays consistent with it.
+  const today = groupToday(new Date(), TIME_ZONE);
 
   return (
     <>
@@ -62,7 +84,7 @@ export default async function MemberShiftsPage({
         initialShifts={data.shifts}
         coverableMembers={data.coverable_members}
         memberId={data.member.id}
-        today={data.today}
+        today={today}
         assignAction={assignCoverAction.bind(null, token)}
         cancelAction={cancelCoverAction.bind(null, token)}
       />

@@ -171,7 +171,10 @@ function CoverActions({
           const result = await runCancel(cancelAction, shift.id);
           if (!result.ok) {
             toastApiError(result.error, "Couldn't take it back just now. Try again.");
-            return;
+            // Re-throw so ConfirmDialog stays OPEN (its contract: a rejected
+            // onConfirm leaves the dialog up to retry or cancel). Returning would
+            // close it right after the error toast, stranding a network blip.
+            throw new Error("cancel-cover-failed");
           }
           onUpdate(result.shift);
           toast.success("Got it — you're back down for this one.");
@@ -212,7 +215,10 @@ function AskCoverDialog({
   }
 
   async function confirm() {
-    if (!selected) return;
+    // Re-entry guard: this POST texts the person picked, so a double-tap must not
+    // fire it twice. The button is also disabled while pending, but guard here too
+    // in case two taps queue before the disable commits.
+    if (!selected || pending) return;
     setPending(true);
     let result: CoverActionResult;
     try {
@@ -282,10 +288,14 @@ function AskCoverDialog({
         )}
 
         <DialogFooter>
-          <Button variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
+          <Button variant="secondary" onClick={() => change(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={confirm} disabled={!selected} loading={pending}>
+          {/* `disabled={!selected || pending}`, NOT `loading` alone: Button derives
+              its disabled state as `disabled ?? loading`, and an explicit
+              `disabled={false}` (a target IS selected) shortcuts that — so `loading`
+              would never block the click and a double-tap would text twice. */}
+          <Button onClick={confirm} disabled={!selected || pending} loading={pending}>
             {selected ? `Ask ${selected.name}` : "Ask them to cover"}
           </Button>
         </DialogFooter>

@@ -16,11 +16,19 @@
  *
  * This became meaningful only at BLO-1055: the member page is the first place that
  * consumes `@/lib/api/member`, so before it there was no build to grep. A token
- * VALUE never exists at build time (it's a runtime route param), so what we assert
- * is the only thing that CAN leak at build time — the token-handling CODE. If the
- * member API client or the shared Bearer-header builder is ever bundled into a
- * browser chunk, its distinctive strings (the `/api/member/*` paths, the `API_URL`
- * sentinel) come with it. Their absence is the token's absence.
+ * VALUE never exists at build time (it's a runtime route param), so this checks the
+ * one thing that CAN leak at build time — the token-handling CODE. If the member
+ * API client or the shared Bearer-header builder is ever bundled into a browser
+ * chunk, its distinctive strings (the `/api/member/*` paths, the `API_URL` sentinel)
+ * come with it.
+ *
+ * SCOPE, stated honestly: this proves the server-only CODE isn't in a static client
+ * chunk. It does NOT and cannot catch a token VALUE rendered into this
+ * force-dynamic page's per-request RSC/flight payload — e.g. a Server Component
+ * passing the raw token as a plain prop to a Client Component. That runtime vector,
+ * the higher-risk one, is covered separately by page.token-safety.test.ts, which
+ * renders the page with a sentinel token and asserts it appears in no client-bound
+ * prop. The two together are the guarantee; this half alone is not.
  *
  * Runs after `next build` in `npm run ci` (see `check:bundle` in package.json).
  */

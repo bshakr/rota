@@ -354,16 +354,12 @@ export interface MemberShift {
 
 /** GET /api/member/shifts — this member's upcoming shifts and the people they could ask to cover. */
 export interface MemberShiftsResponse {
-  /**
-   * The group's "today" as a civil date (YYYY-MM-DD), resolved in the group's own
-   * timezone server-side. The member page has no other authenticated route to the
-   * group's zone, and it's the reference every relative date ("in 3 days") is
-   * measured from — so a shift reads the same "soon" it did on the server.
-   */
-  today: string;
   member: MemberRef;
   shifts: MemberShift[];
   coverable_members: MemberRef[];
+  // BLO-1064: this response will carry the group's `timezone` so the member page's
+  // relative dates resolve in the group's own zone; until then the page uses the
+  // app-wide Europe/London pin, the same reference every other screen uses.
 }
 
 /** POST and DELETE /api/member/shifts/:id/cover return the updated shift. */
