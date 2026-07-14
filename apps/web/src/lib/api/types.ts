@@ -357,6 +357,9 @@ export interface MemberShiftsResponse {
   member: MemberRef;
   shifts: MemberShift[];
   coverable_members: MemberRef[];
+  // BLO-1064: this response will carry the group's `timezone` so the member page's
+  // relative dates resolve in the group's own zone; until then the page uses the
+  // app-wide Europe/London pin, the same reference every other screen uses.
 }
 
 /** POST and DELETE /api/member/shifts/:id/cover return the updated shift. */
