@@ -15,49 +15,61 @@ module Api
 
     # PATCH /api/shifts/:id — set or clear the cover. `group_scope(:shifts)` roots the lookup in the
     # token's group (Group has_many :shifts through :rotas), so another house's shift id is a 404.
+    #
+    # The write goes through ShiftCover, the one locked path every writer of a shift's cover shares.
+    # Without that, this un-locked read-guard-update could lost-update a cover a member committed a
+    # moment earlier (or be overwritten by one), or write over a shift RotaRegenerator is deleting.
+    # The guard is re-checked inside the lock; a shift regeneration has since deleted raises
+    # RecordNotFound, which BaseController renders as a 404.
     def update
       shift = group_scope(:shifts).find(params[:id])
+      cover = cover_member_id ? group_scope(:members).find_by(id: cover_member_id) : nil
 
-      # A past shift records what actually happened; overriding it would rewrite history. Today's is
-      # still fair game — the day-of reminder resolves the cover at send time, so a same-day override
-      # still reaches the right person.
-      if shift.due_on < current_group.today
-        return render_problem("shift_in_the_past", :unprocessable_content,
-          message: "This shift has already passed and cannot be changed.")
-      end
+      result = ShiftCover.change(shift: shift, to: cover) { |locked| override_error(locked, cover) }
+      return render_override_error(result.error, cover) unless result.ok?
 
-      guard = cover_guard(shift)
-      return guard if guard
-
-      shift.update!(covering_member_id: cover_member_id)
-      render json: { shift: ShiftSerializer.one(shift.reload) }
+      render json: { shift: ShiftSerializer.one(result.shift.reload) }
     end
 
     private
 
-    # nil clears the cover; an id sets it. `key?` distinguishes "clear it" (covering_member_id: null)
-    # from a request that simply didn't mention it — though the route only reaches here for an update,
-    # so a missing key is treated as a clear.
+    # nil clears the cover; an id sets it. `.presence` treats blank as "clear it" — and the route only
+    # reaches here for an update, so a missing key is a clear too.
     def cover_member_id
       params[:covering_member_id].presence
     end
 
-    # The model already refuses a cover from another group or one equal to the assignee. This adds the
-    # rule the model has no reason to hold but an override must: you cannot hand a turn to someone who
-    # has left the house. An inactive cover would be a reminder sent to nobody — the silent miss this
-    # product exists to prevent. Clearing a cover (nil) is always allowed.
-    def cover_guard(shift)
-      id = cover_member_id
-      return if id.nil?
+    # The admin override's rules, re-checked under the lock. A past shift records what actually
+    # happened; overriding it would rewrite history — but today's is still fair game, since the
+    # day-of reminder resolves the cover at send time. The model already refuses a cover from another
+    # group or one equal to the assignee; this adds the rule the model has no reason to hold but an
+    # override must — you cannot hand a turn to someone who has left the house, because an inactive
+    # cover is a reminder sent to nobody. Clearing a cover (nil) is always allowed.
+    def override_error(shift, cover)
+      return :shift_in_the_past if shift.due_on < current_group.today
+      return nil if cover_member_id.nil?
+      return :member_not_found if cover.nil?
 
-      member = group_scope(:members).find_by(id: id)
-      return render_problem("member_not_found", :unprocessable_content,
-        message: "That member is not part of this group.") if member.nil?
+      # Re-read under the lock: a member removal that raced this override has committed its
+      # deactivation by the time we hold the rota lock, so a just-removed member is caught here.
+      cover.reload
+      return :member_inactive unless cover.active?
 
-      return if member.active?
+      nil
+    end
 
-      render_problem("member_inactive", :unprocessable_content,
-        message: "#{member.name} has been removed and cannot cover a shift.")
+    def render_override_error(code, cover)
+      case code
+      when :shift_in_the_past
+        render_problem("shift_in_the_past", :unprocessable_content,
+          message: "This shift has already passed and cannot be changed.")
+      when :member_not_found
+        render_problem("member_not_found", :unprocessable_content,
+          message: "That member is not part of this group.")
+      when :member_inactive
+        render_problem("member_inactive", :unprocessable_content,
+          message: "#{cover.name} has been removed and cannot cover a shift.")
+      end
     end
   end
 end

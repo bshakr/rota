@@ -99,5 +99,29 @@ RSpec.describe "Api::Shifts" do
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body["error"]).to eq("validation_failed")
     end
+
+    # The override goes through ShiftCover's rota lock, and re-reads the shift FOR UPDATE inside it —
+    # so a regeneration that deletes the shift the instant the override takes the lock is a 404, not a
+    # silent UPDATE of zero rows returning 200 for a shift that no longer exists. Simulate the delete
+    # at lock-acquisition; without the lock (a plain update!) this returns 200. See ShiftCover and its
+    # spec for the real two-thread proof; this asserts the admin path is on the shared lock.
+    it "404s when the shift is deleted by a regeneration as the override takes the lock" do
+      rota = rostered_rota
+      shift = rota.shifts.future(group.today).first
+      cover = create(:member, group: group)
+
+      first = true
+      allow_any_instance_of(Rota).to receive(:with_lock).and_wrap_original do |original, &block|
+        if first
+          first = false
+          Shift.where(id: shift.id).delete_all
+        end
+        original.call(&block)
+      end
+
+      patch "/api/shifts/#{shift.id}", params: { covering_member_id: cover.id }, headers: headers
+
+      expect(response).to have_http_status(:not_found)
+    end
   end
 end

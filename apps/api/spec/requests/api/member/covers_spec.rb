@@ -277,20 +277,22 @@ RSpec.describe "Member cover assignment" do
     end
   end
 
-  describe "the row lock (two concurrent hand-overs cannot both win)" do
+  describe "the lock (two concurrent hand-overs cannot both win)" do
     # A real two-thread race is non-deterministic under transactional fixtures, so we simulate the
     # losing side precisely: a competing request commits its cover in the instant our request takes
-    # the row lock. The guard MUST be re-evaluated against that committed state INSIDE the lock — not
+    # the lock. The guard MUST be re-evaluated against that committed state INSIDE the lock — not
     # against the state we read before acquiring it. Without the lock (a plain read-check-update),
     # both requests pass their guard against the old state and both update: a lost update, and two
-    # unrecallable "you're covering" texts to two different people. This example fails against the
-    # unlocked controller and passes once the guard runs under with_lock.
+    # unrecallable "you're covering" texts to two different people. The lock is the rota row (see
+    # ShiftCover — the same lock the admin override and RotaRegenerator take), so the injection point
+    # is the rota lock; this fails against an unlocked controller and passes once the guard runs
+    # under it. The two-thread and cross-writer proofs live in spec/services/shift_cover_spec.rb.
     it "rejects a hand-on whose target was made responsible by a concurrent request first" do
       shift = future_shift(assigned: alice)
 
       # The moment our request acquires the lock, pretend Bob's cover already committed.
       first = true
-      allow_any_instance_of(Shift).to receive(:with_lock).and_wrap_original do |original, &block|
+      allow_any_instance_of(Rota).to receive(:with_lock).and_wrap_original do |original, &block|
         if first
           first = false
           Shift.where(id: shift.id).update_all(covering_member_id: bob.id)
@@ -305,6 +307,28 @@ RSpec.describe "Member cover assignment" do
       expect(response.parsed_body["error"]).to eq("not_responsible")
       # Bob's concurrent win stands; our racing update did not overwrite it.
       expect(shift.reload.covering_member).to eq(bob)
+    end
+
+    # The cover target is looked up before the request queues for the lock, so a member removal
+    # committing in that window would leave a stale "active" read. The guard re-reads the cover under
+    # the lock, so a member deactivated by the time we hold it is refused rather than assigned.
+    it "refuses a cover whose target was deactivated by the time the lock is acquired" do
+      shift = future_shift(assigned: alice)
+
+      first = true
+      allow_any_instance_of(Rota).to receive(:with_lock).and_wrap_original do |original, &block|
+        if first
+          first = false
+          Member.where(id: bob.id).update_all(active: false)
+        end
+        original.call(&block)
+      end
+
+      assign_cover(shift, alice, covering_member_id: bob.id)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body["error"]).to eq("cover_unavailable")
+      expect(shift.reload.covering_member).to be_nil
     end
   end
 end
