@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Inbox, MoreHorizontal, Plus, TriangleAlert, Users } from "lucide-react";
+import { ArrowRightLeft, Inbox, MoreHorizontal, Plus, TriangleAlert, Users } from "lucide-react";
 
 import { Demo, Section } from "@/app/styleguide/_components/spec";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -362,7 +362,7 @@ export function Gallery() {
         intro="Members, rotas, shifts and the SMS log are all tables, and a four-column table does not fit 375px. The pattern: a real <Table> from md up, a stack of <Card>s below it, from the SAME data. Resize the window to see it switch. Numerals are tabular everywhere, so dates don't jitter."
       >
         {/* md+ : the table */}
-        <div className="border-border bg-card hidden overflow-hidden rounded-xl border md:block">
+        <div className="border-border bg-card hidden overflow-hidden rounded-xl border shadow-xs md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -390,7 +390,10 @@ export function Gallery() {
                         </Avatar>
                         {row.who}
                         {row.cover ? (
-                          <Badge variant="secondary">covering {row.cover}</Badge>
+                          <Badge variant="info">
+                            <ArrowRightLeft aria-hidden />
+                            covering {row.cover}
+                          </Badge>
                         ) : null}
                       </span>
                     </TableCell>
@@ -425,7 +428,10 @@ export function Gallery() {
                   </Avatar>
                   {row.who}
                   {row.cover ? (
-                    <Badge variant="secondary">covering {row.cover}</Badge>
+                    <Badge variant="info">
+                      <ArrowRightLeft aria-hidden />
+                      covering {row.cover}
+                    </Badge>
                   ) : null}
                 </CardContent>
               </Card>
@@ -651,11 +657,13 @@ export function Gallery() {
         <div className="mx-auto flex w-full max-w-md flex-col gap-5">
           <div>
             <p className="text-muted-foreground mb-2 text-xs font-medium">
-              Your turn — offer to hand it on
+              Your turn, imminent — the one card allowed to lean forward
             </p>
+            {/* Tomorrow: the badge goes clay and the border warms. Further out
+                (see the cards below) everything stays quiet. */}
             <ShiftCard
               rota="Kitchen deep clean"
-              date={SAMPLE_DAY}
+              date={new Date(2026, 6, 3)}
               today={TODAY}
               state={{ kind: "yours" }}
               action={
@@ -676,8 +684,8 @@ export function Gallery() {
               today={TODAY}
               state={{ kind: "handed-off", to: "Bob" }}
               action={
-                <Button size="sm" variant="ghost">
-                  Actually, I can make it — take it back
+                <Button size="lg" variant="outline" className="w-full">
+                  I can make it after all
                 </Button>
               }
             />

@@ -5,24 +5,22 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
 
-// A signpost, not a screen. Once AuthKit lands (BLO-1050) `/` redirects to
-// /dashboard for a signed-in admin and to the login flow otherwise. Until then
-// it is the quickest way into each of the three surfaces this ticket builds.
+// A signpost, not a screen: the three ways into the product.
 const DESTINATIONS = [
   {
-    href: "/styleguide",
-    title: "Styleguide",
-    blurb: "Every token and every component, in both themes.",
-  },
-  {
     href: "/dashboard",
-    title: "Admin shell",
-    blurb: "Sidebar, nav, and the five admin screens.",
+    title: "Dashboard",
+    blurb: "Who's up this week — rotas, members, and every reminder sent.",
   },
   {
     href: "/s/demo-token",
     title: "Member page",
-    blurb: "No nav, no login. What arrives by text message.",
+    blurb: "No login, no menus. What arrives by text message.",
+  },
+  {
+    href: "/styleguide",
+    title: "Styleguide",
+    blurb: "Every token and component, in both themes.",
   },
 ] as const;
 
@@ -38,9 +36,9 @@ export default function Home() {
         <h1 className="font-heading text-display mb-2 font-semibold text-balance">
           Whose turn is it?
         </h1>
-        <p className="text-muted-foreground mb-10 text-sm">
-          Shell and design system only. The screens themselves land in BLO-1051
-          through BLO-1055.
+        <p className="text-muted-foreground mb-10 max-w-prose text-base text-pretty">
+          HouseRota keeps the house&apos;s chores turning — it texts whoever&apos;s
+          up, and makes swapping a turn one tap.
         </p>
 
         <ul className="flex flex-col gap-3">
