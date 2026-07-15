@@ -23,7 +23,11 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      // The muted wash is what the styleguide documents --muted FOR ("a recessed
+      // panel or a table header") — it separates the label band from the data
+      // without a heavier border. It also matches TableRow's hover tint, so
+      // hovering the header row visibly changes nothing.
+      className={cn("[&_tr]:border-b [&_tr]:bg-muted/50", className)}
       {...props}
     />
   )
@@ -69,8 +73,12 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   return (
     <th
       data-slot="table-head"
+      // Labels are wayfinding, not data: a step smaller and muted, so the rows
+      // — the names and dates the admin came for — carry the weight. The
+      // first/last padding matches the card the table always sits in, so cell
+      // text doesn't crowd the rounded edge.
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        "h-10 px-3 text-left align-middle text-xs font-medium whitespace-nowrap text-muted-foreground first:pl-4 last:pr-4 [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}
@@ -83,7 +91,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+        "px-3 py-2.5 align-middle whitespace-nowrap first:pl-4 last:pr-4 [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}

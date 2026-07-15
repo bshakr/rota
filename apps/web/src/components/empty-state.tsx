@@ -33,8 +33,10 @@ export function EmptyState({
       )}
     >
       {Icon ? (
-        <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">
-          <Icon className="size-5" aria-hidden />
+        // size-6 is the styleguide's documented empty-state glyph size; the
+        // circle scales with it so the mark doesn't float in too much air.
+        <span className="grid size-12 place-items-center rounded-full bg-muted text-muted-foreground">
+          <Icon className="size-6" aria-hidden />
         </span>
       ) : null}
       <div className="space-y-1">

@@ -137,8 +137,12 @@ function DialogTitle({
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
+      // A dialog is a decision ("Remove Dave from the house?") — its title
+      // outranks a card's. text-lg/semibold keeps it clearly above the body
+      // without competing with the page h1 behind the scrim. leading-snug, not
+      // leading-none: these titles wrap on a 375px phone.
       className={cn(
-        "font-heading text-base leading-none font-medium",
+        "font-heading text-lg leading-snug font-semibold text-balance",
         className
       )}
       {...props}
