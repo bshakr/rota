@@ -75,8 +75,10 @@ export default async function MemberShiftsPage({
 
   return (
     <>
-      <h1 className="text-display font-heading mb-1 font-semibold">Hi {firstName}</h1>
-      <p className="text-muted-foreground mb-8 text-sm text-pretty">
+      <h1 className="text-display font-heading mb-1.5 font-semibold">Hi {firstName}</h1>
+      {/* text-base, not text-sm: this is the page's one sentence of context,
+          read on a phone at arm's length. */}
+      <p className="text-muted-foreground mb-8 text-base text-pretty">
         Here&apos;s what&apos;s coming up for you, across every rota.
       </p>
 

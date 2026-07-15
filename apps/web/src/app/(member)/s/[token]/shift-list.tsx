@@ -134,21 +134,25 @@ function CoverActions({
     // Within this branch the member is whoever is responsible; if the shift is
     // already covered, that's them (they took someone else's turn and are now
     // passing it on), otherwise it's their own turn.
+    //
+    // The cover CTA is the escape hatch, not the point of the page — the point
+    // is knowing when you're up. So it's an OUTLINE button (the styleguide's
+    // member idiom), and the question lives in the label: seven cards with
+    // seven solid clay buttons read as seven alarms.
     const iAmCovering = shift.covered;
     return (
-      <div className="space-y-2">
-        <p className="text-sm text-muted-foreground">
-          {iAmCovering ? "Can't make it after all?" : "Can't make it?"}
-        </p>
-        <AskCoverDialog
-          shift={shift}
-          targets={targets}
-          today={today}
-          label={iAmCovering ? "Ask someone else to cover" : "Ask someone to cover"}
-          onUpdate={onUpdate}
-          assignAction={assignAction}
-        />
-      </div>
+      <AskCoverDialog
+        shift={shift}
+        targets={targets}
+        today={today}
+        label={
+          iAmCovering
+            ? "Can't make it after all? Ask someone else"
+            : "Can't make it? Ask someone to cover"
+        }
+        onUpdate={onUpdate}
+        assignAction={assignAction}
+      />
     );
   }
 
@@ -245,7 +249,7 @@ function AskCoverDialog({
   return (
     <Dialog open={open} onOpenChange={change}>
       <DialogTrigger asChild>
-        <Button size="lg" className="w-full">
+        <Button size="lg" variant="outline" className="w-full">
           {label}
         </Button>
       </DialogTrigger>

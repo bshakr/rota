@@ -1,8 +1,15 @@
 import { ArrowRightLeft, CalendarDays } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { formatShiftDate, relativeDay } from "@/lib/date";
+import { capitalise } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -46,17 +53,30 @@ export function ShiftCard({
   const handedOff = state.kind === "handed-off";
 
   return (
-    <Card className={cn(handedOff && "opacity-70", className)}>
+    <Card
+      className={cn(
+        // The next-up card is the reason this page was opened. A shift that is
+        // today or tomorrow leans forward — a clay hairline and a step more
+        // shadow — while everything further out stays quiet.
+        soon && !handedOff && "border-primary/40 shadow-sm",
+        handedOff && "opacity-70",
+        className,
+      )}
+    >
       <CardHeader>
         <CardTitle className="text-base">{rota}</CardTitle>
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <CalendarDays className="size-4" aria-hidden />
           <time>{formatShiftDate(date)}</time>
-          <span aria-hidden>·</span>
-          <span className={cn("font-medium", soon ? "text-primary" : "text-foreground")}>
-            {when}
-          </span>
         </p>
+        <CardAction>
+          {/* "Today" is the one thing this card must say at a glance, so it is a
+              badge, not a word buried in the date line. Clay only when soon —
+              a shift three weeks out has no claim on the accent. */}
+          <Badge variant={soon && !handedOff ? "default" : "secondary"}>
+            {capitalise(when)}
+          </Badge>
+        </CardAction>
       </CardHeader>
 
       <CardContent className="space-y-3">
