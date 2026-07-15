@@ -113,10 +113,15 @@ export function ShiftsBoard({
     <div className="space-y-10">
       {rotas.map((rota) => (
         <section key={rota.id}>
-          <h2 className="mb-3 font-heading text-lg font-medium">{rota.name}</h2>
+          <h2 className="mb-3 flex items-baseline gap-2">
+            <span className="font-heading text-lg font-medium">{rota.name}</span>
+            <span className="text-sm text-muted-foreground tabular-nums">
+              {rota.shifts.length} upcoming
+            </span>
+          </h2>
 
-          {/* md+ : a table */}
-          <div className="hidden overflow-hidden rounded-xl border border-border bg-card md:block">
+          {/* md+ : a table. shadow-xs to match the Card idiom. */}
+          <div className="hidden overflow-hidden rounded-xl border border-border bg-card shadow-xs md:block">
             <Table>
               <TableHeader>
                 <TableRow>

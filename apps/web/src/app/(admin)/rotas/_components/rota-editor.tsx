@@ -40,7 +40,10 @@ export function RotaEditor({
   const router = useRouter();
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    // max-w-2xl for a comfortable form measure, but NOT mx-auto: the PageHeader
+    // above spans the full admin container, so centring this column would break
+    // the shared left edge and the page would read as two misaligned halves.
+    <div className="max-w-2xl space-y-8">
       {rota.draft ? (
         <Alert variant="warning">
           <TriangleAlert />

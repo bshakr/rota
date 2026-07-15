@@ -128,7 +128,10 @@ export function MessagePreview({
 
       {state.status === "ok" ? (
         <>
-          <div className="rounded-lg border border-border bg-background p-3 text-sm whitespace-pre-wrap">
+          {/* Drawn as the SMS bubble it will be — one squared corner, like a
+              received text — so the admin reads it as a message, not a config
+              value. max-w keeps it bubble-shaped rather than banner-shaped. */}
+          <div className="max-w-[85%] rounded-2xl rounded-bl-sm border border-border bg-background px-4 py-3 text-sm whitespace-pre-wrap shadow-xs">
             {state.text}
           </div>
           <p className="text-xs text-muted-foreground">

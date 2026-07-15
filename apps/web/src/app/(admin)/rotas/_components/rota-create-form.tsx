@@ -3,6 +3,14 @@
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
 import { createRotaAction } from "../actions";
 import { RotaDetailsForm } from "./rota-details-form";
 
@@ -16,16 +24,27 @@ export function RotaCreateForm({ defaultStartsOn }: { defaultStartsOn: string })
   const router = useRouter();
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <RotaDetailsForm
-        defaultStartsOn={defaultStartsOn}
-        submitLabel="Create rota"
-        save={(params) => createRotaAction(params)}
-        onSaved={(rota) => {
-          toast.success("Rota created.", { description: "Now add its roster." });
-          router.push(`/rotas/${rota.id}`);
-        }}
-      />
+    // Left-aligned under the PageHeader (same reasoning as RotaEditor): one
+    // shared left edge, not a centred island. The Card matches the edit
+    // screen's "Details" panel, so create and edit read as the same form.
+    <div className="max-w-2xl">
+      <Card>
+        <CardHeader>
+          <CardTitle>Details</CardTitle>
+          <CardDescription>Name, schedule, reminders, and the message.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <RotaDetailsForm
+            defaultStartsOn={defaultStartsOn}
+            submitLabel="Create rota"
+            save={(params) => createRotaAction(params)}
+            onSaved={(rota) => {
+              toast.success("Rota created.", { description: "Now add its roster." });
+              router.push(`/rotas/${rota.id}`);
+            }}
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

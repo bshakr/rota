@@ -136,8 +136,8 @@ export default async function SmsLogPage({
         )
       ) : (
         <>
-          {/* md and up: the table. */}
-          <div className="border-border bg-card hidden overflow-hidden rounded-xl border md:block">
+          {/* md and up: the table. shadow-xs to match the Card idiom. */}
+          <div className="border-border bg-card hidden overflow-hidden rounded-xl border shadow-xs md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -220,10 +220,11 @@ function MessageRows({ message: m }: { message: SmsMessage }) {
           </div>
         </TableCell>
         <TableCell>
+          {/* Plain text, not a badge: kind is metadata, and the status idiom
+              reserves badges for status. A pill in every row of a 100-row log
+              is a hundred pills saying nothing. */}
           <div className="flex flex-col gap-0.5">
-            <Badge variant="secondary" className="w-fit">
-              {kindDisplay(m.kind)}
-            </Badge>
+            <span>{kindDisplay(m.kind)}</span>
             {timing ? <span className="text-muted-foreground text-xs">{timing}</span> : null}
           </div>
         </TableCell>

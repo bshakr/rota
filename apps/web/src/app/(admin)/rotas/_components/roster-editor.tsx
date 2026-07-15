@@ -175,7 +175,9 @@ export function RosterEditor({
               onDragEnd={() => {
                 dragFrom.current = null;
               }}
-              className="flex items-center gap-3 rounded-lg border border-border bg-card p-2.5"
+              // shadow-xs: these rows are pick-up-able, and a hint of lift is
+              // the affordance the grip icon alone doesn't quite carry.
+              className="flex items-center gap-3 rounded-lg border border-border bg-card p-2.5 shadow-xs"
             >
               <span
                 className="cursor-grab text-muted-foreground active:cursor-grabbing"

@@ -163,8 +163,9 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
         />
       ) : (
         <>
-          {/* md+ : the table */}
-          <div className="border-border bg-card hidden overflow-hidden rounded-xl border md:block">
+          {/* md+ : the table. shadow-xs to match the Card idiom — same lift,
+              same edge, whether the panel holds prose or rows. */}
+          <div className="border-border bg-card hidden overflow-hidden rounded-xl border shadow-xs md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -179,7 +180,10 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
               </TableHeader>
               <TableBody>
                 {members.map((row) => (
-                  <TableRow key={row.id}>
+                  // A removed member recedes as a whole row, the same cue the
+                  // member page uses for a handed-off shift — the badge then
+                  // names what the dimming already said.
+                  <TableRow key={row.id} className={row.active ? undefined : "opacity-60"}>
                     <TableCell className="font-medium">
                       <span className="flex items-center gap-2">
                         <Avatar className="size-6">
@@ -209,7 +213,7 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
           {/* below md : the same data as a card stack */}
           <div className="flex flex-col gap-3 md:hidden">
             {members.map((row) => (
-              <Card key={row.id} size="sm">
+              <Card key={row.id} size="sm" className={row.active ? undefined : "opacity-60"}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-sm">
                     <Avatar className="size-6">

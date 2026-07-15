@@ -1,5 +1,7 @@
 "use client";
 
+import { ArrowRightLeft } from "lucide-react";
+
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import type { Shift } from "@/lib/api/types";
@@ -46,7 +48,12 @@ export function UpcomingShifts({ shifts, todayDay }: { shifts: Shift[]; todayDay
             <span className="flex min-w-0 flex-1 items-center gap-2">
               <span className="truncate">{shift.responsible_member.name}</span>
               {shift.covered ? (
-                <Badge variant="secondary">covering {shift.assigned_member.name}</Badge>
+                // The one cover idiom, everywhere: info badge + swap icon,
+                // matching the dashboard and the shifts board.
+                <Badge variant="info">
+                  <ArrowRightLeft aria-hidden />
+                  covering {shift.assigned_member.name}
+                </Badge>
               ) : null}
             </span>
             <span className="shrink-0 text-xs text-muted-foreground">
