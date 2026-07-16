@@ -47,7 +47,7 @@ const SURFACES = [
     swatchClass: "bg-sidebar",
     token: "--sidebar",
     util: "bg-sidebar",
-    role: "The admin sidebar — warm paper, card-white against the cream page. The brand hue survives as its lilac hover blush.",
+    role: "The admin sidebar — warm paper on a floating, rounded panel the cream page frames. The brand hue survives as its lilac hover blush.",
   },
   {
     swatchClass: "bg-accent",
@@ -504,7 +504,7 @@ export default function StyleguidePage() {
                   </CardHeader>
                   <CardContent className="text-muted-foreground space-y-4">
                     <p className="text-pretty">
-                      Warm-paper sidebar on desktop, drawer on mobile, theme toggle,
+                      Floating warm-paper sidebar on desktop, drawer on mobile, theme toggle,
                       five nav entries. Signed in via AuthKit. Start every screen
                       with <code className="font-mono text-xs">&lt;PageHeader&gt;</code>,
                       wrap it in <code className="font-mono text-xs">&lt;Container&gt;</code>,

@@ -33,10 +33,11 @@ Pigment families (PAINT layer in `src/app/globals.css`; never used directly):
 
 Distinctive semantic choices: `--accent` (the hover tint) blushes **lilac**
 instead of grey; `--secondary` is a lilac fill with deep-iris text so "Cancel"
-stays friendly; the admin `--sidebar` is **warm paper** — card-white against
-the cream page, so the chrome stays in the sunbeam family and the deep-iris
-active item is the only saturated thing on it (the brand hue survives as the
-sidebar's lilac hover blush).
+stays friendly; the admin `--sidebar` is **warm paper**, and it FLOATS — a
+sticky, rounded, elevated card-white panel detached from the window edge, so
+the cream page frames it and the chrome speaks the same card idiom as
+everything else. The deep-iris active item is the only saturated thing on it
+(the brand hue survives as the sidebar's lilac hover blush).
 
 ### Gradients (tokens, light + dark voices)
 

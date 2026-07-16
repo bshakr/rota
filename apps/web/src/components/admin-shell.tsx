@@ -96,24 +96,28 @@ export function AdminShell({
 
   return (
     <div className="flex min-h-full flex-1">
-      {/* Desktop sidebar. Warm paper — card-white against the cream page — so
-          the chrome and the page read as one family, separated by a butter
-          hairline rather than a hue shift. */}
-      <aside className="bg-sidebar border-sidebar-border hidden w-64 shrink-0 flex-col border-r p-4 md:flex">
-        <Link href="/dashboard" className="mb-8 rounded-md px-1 py-1">
-          <Wordmark />
-        </Link>
-        <NavLinks />
-        {/* The group name belongs here too, from Rails (/api/me) — deferred to the
-            dashboard ticket rather than stubbed with a plausible-looking house name.
-            BLO-1050 wires the account footer: who is signed in, and the way out. */}
-        <div className="mt-auto flex flex-col gap-3 px-1 pt-4">
-          {account}
-          <div className="flex items-center justify-end">
-            <ThemeToggle />
+      {/* Desktop sidebar. A FLOATING panel: warm paper detached from the window
+          edge, so the cream page frames it and it reads as the same card idiom
+          as everything else — bg-sidebar (card-white), butter hairline, soft
+          violet shadow, 12px corners. Sticky, so it stays put while the page
+          scrolls; the wrapper's padding is what the panel floats in. */}
+      <div className="hidden shrink-0 p-3 md:block">
+        <aside className="bg-sidebar border-sidebar-border sticky top-3 flex h-[calc(100svh-1.5rem)] w-60 flex-col overflow-y-auto rounded-xl border p-3 shadow-sm">
+          <Link href="/dashboard" className="mb-6 rounded-md px-1 py-1">
+            <Wordmark />
+          </Link>
+          <NavLinks />
+          {/* The group name belongs here too, from Rails (/api/me) — deferred to the
+              dashboard ticket rather than stubbed with a plausible-looking house name.
+              BLO-1050 wires the account footer: who is signed in, and the way out. */}
+          <div className="mt-auto flex flex-col gap-3 px-1 pt-4">
+            {account}
+            <div className="flex items-center justify-end">
+              <ThemeToggle />
+            </div>
           </div>
-        </div>
-      </aside>
+        </aside>
+      </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Mobile bar. Only exists below md. */}
