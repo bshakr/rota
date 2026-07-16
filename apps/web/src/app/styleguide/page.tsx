@@ -178,7 +178,7 @@ const SHADOWS = [
   { cls: "shadow-sm", label: "sm", use: "a hovered/raised card, the date coin" },
   { cls: "shadow-md", label: "md", use: "popover, dropdown" },
   { cls: "shadow-lg", label: "lg", use: "dialog, sheet — floating over a scrim" },
-  { cls: "shadow-primary", label: "primary", use: "the iris glow under a CTA — nothing else" },
+  { cls: "shadow-primary", label: "primary", use: "the iris glow — held in reserve; the quiet-outline primary rests on shadow-xs" },
 ];
 
 const ICON_SIZES = [

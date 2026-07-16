@@ -18,11 +18,14 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // The CTA: a clean solid iris on a soft iris glow (shadow-primary).
-        // Hover deepens the fill a touch and swells the glow. No border, no
-        // inset edge — the fill alone carries it.
+        // The CTA: the QUIET OUTLINE — card-white with an iris border and an
+        // iris label, presence through contrast rather than fill. What keeps
+        // it unmistakably senior to the neutral `outline`/`ghost` variants is
+        // its iris identity: the coloured border, the coloured label, and a
+        // committed lilac fill on hover (bg-secondary, a full step past the
+        // outline variant's faint accent blush).
         default:
-          "bg-primary text-primary-foreground shadow-primary hover:-translate-y-0.5 hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_8%)] hover:shadow-primary-lg active:translate-y-0",
+          "border-primary/60 bg-card text-primary shadow-xs hover:-translate-y-0.5 hover:border-primary hover:bg-secondary hover:text-secondary-foreground hover:shadow-sm active:translate-y-0 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         outline:
           "border-input bg-card hover:-translate-y-0.5 hover:bg-accent hover:text-accent-foreground hover:shadow-sm active:translate-y-0 aria-expanded:bg-accent aria-expanded:text-accent-foreground dark:bg-input/30 dark:hover:bg-input/50",
         // Lilac fill, deep iris text: "Cancel" stays friendly.

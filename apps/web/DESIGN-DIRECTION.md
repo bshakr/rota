@@ -51,8 +51,9 @@ fill; hover is a softer wash of the same tint.
 - `--gradient-page` — barely-there peach + sky radial corners on `<body>`
   (violet/pink aurora in dark).
 
-There is deliberately NO CTA gradient. The primary button is a confident solid
-iris on a soft iris glow (`--elevation-primary`) — depth, not a rainbow.
+There is deliberately NO CTA gradient. The primary button is the QUIET
+OUTLINE: card-white with an iris border and an iris label, filling lilac on
+hover — presence through contrast, not fill.
 
 ## The type pairing
 
@@ -93,7 +94,8 @@ Springy, never slick; always a garnish (fully stilled by
   dark); `--input` is the one 3:1 control boundary.
 - Shadows are **soft and violet** (`oklch(0.35 0.09 296 / …)`ambient + key),
   deepening to true night in dark. `shadow-primary` / `shadow-primary-lg` are
-  the CTA treatment — a soft iris glow — reserved for primary buttons.
+  the iris glow, held in reserve (the quiet-outline primary rests on
+  `shadow-xs`).
 
 ## The five signature moves
 
@@ -102,8 +104,9 @@ Springy, never slick; always a garnish (fully stilled by
    = yours, sky = covering, muted = handed off). The dashboard reuses the coin
    as its day headings, where the colour carries urgency instead (sunrise =
    today, sunshine tint = tomorrow, cream = later).
-2. **Buttons with a pulse** — clean solid deep-iris CTAs on an iris glow
-   that lift on hover, squash on press, and bounce back on a spring.
+2. **Buttons with a pulse** — quiet-outline CTAs (an iris border and label
+   on card-white, filling lilac on hover) that lift on hover, squash on
+   press, and bounce back on a spring.
 3. **The lilac blush** — hover states tint toward iris instead of grey, so the
    interface warms wherever you touch it.
 4. **Fraunces greets you** — `Hi Alice` in the wonky cut over a sunrise swash;

@@ -91,7 +91,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatLongDate, formatShiftDate, formatTimestamp } from "@/lib/date";
 import { initials } from "@/lib/format";
-import { cn } from "@/lib/utils";
 
 const MEMBERS = ["Alice", "Bob", "Cara", "Dave"] as const;
 
@@ -249,80 +248,6 @@ function LoadingButtonDemo() {
 
 /* -------------------------------------------------------------------------- */
 
-// Primary button CANDIDATES for the owner to choose from — presentational
-// overrides on top of the stock Button, every colour reached through the
-// semantic layer (never paint). The shipping default stays untouched until a
-// winner is picked; whichever wins then becomes the real `default` variant
-// (with a proper token mapping) rather than a className pile.
-const PRIMARY_CANDIDATES = [
-  {
-    name: "Current — deep iris",
-    blurb: "The shipping default, for reference: solid iris on the iris glow.",
-    rest: "",
-    hover:
-      "-translate-y-0.5 bg-[color-mix(in_oklch,var(--primary),var(--foreground)_8%)] shadow-primary-lg",
-  },
-  {
-    name: "Sunlit iris",
-    blurb: "A brighter, friendlier solid — the lighter register of the same violet.",
-    rest: "bg-chart-1 text-primary-foreground hover:bg-[color-mix(in_oklch,var(--chart-1),var(--foreground)_8%)]",
-    hover:
-      "-translate-y-0.5 bg-[color-mix(in_oklch,var(--chart-1),var(--foreground)_8%)] shadow-primary-lg",
-  },
-  {
-    name: "Lilac tonal",
-    blurb: "A soft iris-tinted fill with deep-iris text — calm, instrument-like.",
-    rest: "bg-secondary text-secondary-foreground shadow-none hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_7%)] hover:shadow-xs",
-    hover:
-      "-translate-y-0.5 bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_7%)] shadow-xs",
-  },
-  {
-    name: "Dusk gradient",
-    blurb: "A restrained monochrome sweep, iris into plum — premium, no rainbow.",
-    rest: "bg-[image:linear-gradient(150deg,var(--primary)_0%,color-mix(in_oklch,var(--primary)_68%,var(--foreground))_140%)] hover:brightness-105",
-    hover: "-translate-y-0.5 shadow-primary-lg brightness-105",
-  },
-  {
-    name: "Violet ink",
-    blurb: "The ink itself as the fill — editorial, maximum certainty.",
-    rest: "bg-foreground text-background shadow-md hover:bg-[color-mix(in_oklch,var(--foreground),var(--background)_14%)] hover:shadow-lg",
-    hover:
-      "-translate-y-0.5 bg-[color-mix(in_oklch,var(--foreground),var(--background)_14%)] shadow-lg",
-  },
-  {
-    name: "Quiet outline",
-    blurb: "A hairline boundary with an iris label — the most understated read.",
-    rest: "border-input bg-card text-primary shadow-xs hover:bg-accent hover:text-primary",
-    hover: "-translate-y-0.5 bg-accent shadow-sm",
-  },
-] as const;
-
-function PrimaryCandidates() {
-  return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {PRIMARY_CANDIDATES.map(({ name, blurb, rest, hover }) => (
-        <Demo key={name} label={name} className="block">
-          <div className="w-full space-y-3">
-            <p className="text-muted-foreground text-xs text-pretty">{blurb}</p>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button className={rest}>Save changes</Button>
-              <Button className={cn(rest, hover)} tabIndex={-1} aria-hidden>
-                Save changes
-              </Button>
-              <Button className={rest} disabled>
-                Save changes
-              </Button>
-            </div>
-            <p className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
-              rest · hover · disabled
-            </p>
-          </div>
-        </Demo>
-      ))}
-    </div>
-  );
-}
-
 /* -------------------------------------------------------------------------- */
 
 export function Gallery() {
@@ -333,7 +258,7 @@ export function Gallery() {
       <Section
         id="buttons"
         title="Buttons"
-        intro="Soft rounded rectangles, and tactile: the primary is a clean solid iris on a soft glow, and it lifts on hover and squashes on press (spring-eased, stilled under reduced-motion). Ghost and outline hovers blush lilac rather than grey. `lg` is 44px — the comfortable touch target and the member page's CTA size; `default` (40px) is the admin workhorse; `xs`/`sm` are mouse-target sizes. `loading` shows a spinner, disables, and sets aria-busy."
+        intro="Soft rounded rectangles, and tactile: the primary is the QUIET OUTLINE — card-white with an iris border and iris label, filling lilac on hover — and every button lifts on hover and squashes on press (spring-eased, stilled under reduced-motion). The neutral outline and ghost hovers blush a fainter lilac, so hierarchy still reads at a glance. `lg` is 44px — the comfortable touch target and the member page's CTA size; `default` (40px) is the admin workhorse; `xs`/`sm` are mouse-target sizes. `loading` shows a spinner, disables, and sets aria-busy."
       >
         <div className="flex flex-col gap-4">
           <Demo label="Variants" hint="variant=">
@@ -361,14 +286,6 @@ export function Gallery() {
             </Button>
           </Demo>
         </div>
-      </Section>
-
-      <Section
-        id="primary-candidates"
-        title="Primary button — candidates"
-        intro="Six treatments of the same CTA for the owner to choose from — the shipping default is first, unchanged, for reference. Each shows rest, a forced hover preview, and disabled; toggle the theme to judge both voices. Every option is reached through semantic tokens (no raw paint), so the winner can become the real default without new plumbing."
-      >
-        <PrimaryCandidates />
       </Section>
 
       <Section

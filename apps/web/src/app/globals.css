@@ -195,9 +195,8 @@
     0 4px 8px -2px oklch(0.35 0.09 296 / 0.09), 0 12px 28px -6px oklch(0.35 0.09 296 / 0.15);
   --elevation-lg:
     0 8px 16px -4px oklch(0.35 0.09 296 / 0.11), 0 24px 48px -12px oklch(0.35 0.09 296 / 0.2);
-  /* The depth under a primary CTA: a soft iris glow, swelling on hover via
-     shadow-primary-lg. Nothing inset — the fill stays a clean solid with no
-     lit edge. */
+  /* The iris glow — held in reserve. The quiet-outline primary rests on
+     shadow-xs; keep these for a future moment that earns a glow. */
   --elevation-primary:
     0 2px 4px -2px oklch(0.42 0.19 296 / 0.34), 0 6px 16px -4px oklch(0.42 0.19 296 / 0.3);
   --elevation-primary-lg:
@@ -206,8 +205,9 @@
   /* Gradients. Defined per theme so dark keeps the personality without the
      glare. Sunrise is the brand wash (hero bands, the wordmark tile, empty-
      state coins); page is the barely-there wash behind every screen. There is
-     deliberately NO CTA gradient: primary buttons are a clean solid iris on
-     an iris glow (--elevation-primary) — depth, not a rainbow. */
+     deliberately NO CTA gradient: the primary button is a QUIET OUTLINE —
+     card-white with an iris border and label — presence through contrast,
+     not fill. */
   --gradient-sunrise: linear-gradient(
     115deg,
     var(--sunshine-200) 0%,
