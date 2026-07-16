@@ -37,9 +37,10 @@ stays friendly; the admin `--sidebar` is **frosted glass**: a sticky,
 rounded, translucent warm-paper pane (`bg-sidebar/70` + `backdrop-blur`)
 floating detached from the window edge, with soft sunrise blobs pinned
 behind the chrome so the glass has something real to blur — the same
-treatment the dashboard hero wears. The deep-iris active item is the only
-saturated thing on it (the brand hue survives as the sidebar's lilac hover
-blush).
+treatment the dashboard hero wears. The active nav item is TONAL, not loud:
+a quiet lilac fill with an iris accent rail and an iris icon (the same rail
+idiom the alerts use), deliberately decoupled from the primary button's
+fill; hover is a softer wash of the same tint.
 
 ### Gradients (tokens, light + dark voices)
 

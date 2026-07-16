@@ -58,15 +58,20 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             className={cn(
               // 44px tall (py-2.5 + text line) — a nav row is tapped on a phone.
               // Soft rounded rectangles, like every other tappable thing in Solstice.
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+              "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
               // Focus is an offset outline in --sidebar-ring, measured against the
-              // sidebar. A ring here was invisible on the clay active item; the
-              // offset puts a sidebar-coloured gap between item and outline so it
-              // shows on any item background.
+              // sidebar. The offset puts a sidebar-coloured gap between item and
+              // outline so it shows on any item background.
               "outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring",
+              // "You are here" is TONAL, not loud: a quiet lilac fill, the label
+              // a weight up, the icon in iris, and a small iris rail on the left
+              // edge — the same accent-rail idiom the alerts use. Deliberately
+              // decoupled from the primary button's fill (hover uses a softer
+              // wash of the same tint, so rest → hover → active reads as one
+              // family getting progressively more certain).
               active
-                ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-xs"
-                : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary [&_svg]:text-primary"
+                : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
             )}
           >
             <Icon className="size-[18px] shrink-0" aria-hidden />
