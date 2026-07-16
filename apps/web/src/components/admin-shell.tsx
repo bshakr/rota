@@ -95,14 +95,25 @@ export function AdminShell({
   const [open, setOpen] = React.useState(false);
 
   return (
-    <div className="flex min-h-full flex-1">
-      {/* Desktop sidebar. A FLOATING panel: warm paper detached from the window
-          edge, so the cream page frames it and it reads as the same card idiom
-          as everything else — bg-sidebar (card-white), butter hairline, soft
-          violet shadow, 12px corners. Sticky, so it stays put while the page
-          scrolls; the wrapper's padding is what the panel floats in. */}
+    <div className="relative flex min-h-full flex-1">
+      {/* The weather behind the glass: fixed sunrise blobs along the chrome's
+          edge, so the frosted sidebar (and the dashboard's frosted hero) have
+          something real to blur. Decorative only, pinned behind everything —
+          content and text always sit on their own translucent panes, never
+          directly on a blob. */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden>
+        <div className="absolute -top-28 -left-24 size-96 rounded-full bg-[image:var(--gradient-sunrise)] opacity-60 blur-3xl" />
+        <div className="absolute top-1/2 -left-36 size-80 rounded-full bg-primary/25 blur-3xl" />
+        <div className="absolute -top-20 -right-32 size-96 rotate-180 rounded-full bg-[image:var(--gradient-sunrise)] opacity-40 blur-3xl" />
+      </div>
+
+      {/* Desktop sidebar. A FLOATING pane of FROSTED GLASS: translucent warm
+          paper over the aurora blobs, detached from the window edge so the
+          page frames it — the same glass treatment as the dashboard hero.
+          Sticky, so it stays put while the page scrolls; the wrapper's
+          padding is what the panel floats in. */}
       <div className="hidden shrink-0 p-3 md:block">
-        <aside className="bg-sidebar border-sidebar-border sticky top-3 flex h-[calc(100svh-1.5rem)] w-60 flex-col overflow-y-auto rounded-xl border p-3 shadow-sm">
+        <aside className="bg-sidebar/70 border-sidebar-border/60 sticky top-3 flex h-[calc(100svh-1.5rem)] w-60 flex-col overflow-y-auto rounded-xl border p-3 shadow-sm backdrop-blur-xl">
           {/* Wordmark + theme toggle share the top row, mirroring the mobile
               header — which leaves the footer purely about the account. */}
           <div className="mb-6 flex items-center justify-between gap-2">
@@ -122,8 +133,8 @@ export function AdminShell({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile bar. Only exists below md. */}
-        <header className="bg-sidebar border-sidebar-border flex items-center justify-between border-b px-4 py-3 md:hidden">
+        {/* Mobile bar. Only exists below md — the same frost, worn thinner. */}
+        <header className="bg-sidebar/80 border-sidebar-border/60 flex items-center justify-between border-b px-4 py-3 backdrop-blur-lg md:hidden">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
               {/* icon-lg (44px): the primary mobile control. */}

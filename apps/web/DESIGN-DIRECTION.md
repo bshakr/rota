@@ -33,17 +33,20 @@ Pigment families (PAINT layer in `src/app/globals.css`; never used directly):
 
 Distinctive semantic choices: `--accent` (the hover tint) blushes **lilac**
 instead of grey; `--secondary` is a lilac fill with deep-iris text so "Cancel"
-stays friendly; the admin `--sidebar` is **warm paper**, and it FLOATS — a
-sticky, rounded, elevated card-white panel detached from the window edge, so
-the cream page frames it and the chrome speaks the same card idiom as
-everything else. The deep-iris active item is the only saturated thing on it
-(the brand hue survives as the sidebar's lilac hover blush).
+stays friendly; the admin `--sidebar` is **frosted glass**: a sticky,
+rounded, translucent warm-paper pane (`bg-sidebar/70` + `backdrop-blur`)
+floating detached from the window edge, with soft sunrise blobs pinned
+behind the chrome so the glass has something real to blur — the same
+treatment the dashboard hero wears. The deep-iris active item is the only
+saturated thing on it (the brand hue survives as the sidebar's lilac hover
+blush).
 
 ### Gradients (tokens, light + dark voices)
 
 - `--gradient-sunrise` — gold → pink → lilac (jewel tones in dark). The brand
   wash: wordmark tile, empty-state coins, the shift card's date coin, the
-  greeting swash, the dashboard hero, the styleguide hero.
+  greeting swash, the blurred blobs behind the frosted dashboard hero and
+  admin chrome, the styleguide hero.
 - `--gradient-page` — barely-there peach + sky radial corners on `<body>`
   (violet/pink aurora in dark).
 
