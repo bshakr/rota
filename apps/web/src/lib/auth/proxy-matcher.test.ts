@@ -50,7 +50,8 @@ describe("AuthKit proxy matcher", () => {
   // the literal shipped to Next must be exactly the pattern these tests exercise.
   it("proxy.ts ships the exact pattern this suite verifies", () => {
     const proxySource = readFileSync(
-      fileURLToPath(new URL("../../../proxy.ts", import.meta.url)),
+      // Next 16 runs the proxy from src/proxy.ts (two levels up from here).
+      fileURLToPath(new URL("../../proxy.ts", import.meta.url)),
       "utf8",
     );
     const inlineLiteral = proxySource.match(/matcher:\s*\[\s*"([^"]*)"\s*\]/)?.[1];
