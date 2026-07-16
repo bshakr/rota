@@ -195,21 +195,19 @@
     0 4px 8px -2px oklch(0.35 0.09 296 / 0.09), 0 12px 28px -6px oklch(0.35 0.09 296 / 0.15);
   --elevation-lg:
     0 8px 16px -4px oklch(0.35 0.09 296 / 0.11), 0 24px 48px -12px oklch(0.35 0.09 296 / 0.2);
-  /* The depth under a primary CTA: a hairline top highlight (the "lit edge"
-     that makes a solid fill read dimensional) plus a soft iris glow, swelling
-     on hover via shadow-primary-lg. */
+  /* The depth under a primary CTA: a soft iris glow, swelling on hover via
+     shadow-primary-lg. Nothing inset — the fill stays a clean solid with no
+     lit edge. */
   --elevation-primary:
-    inset 0 1px 0 oklch(1 0 0 / 0.14),
     0 2px 4px -2px oklch(0.42 0.19 296 / 0.34), 0 6px 16px -4px oklch(0.42 0.19 296 / 0.3);
   --elevation-primary-lg:
-    inset 0 1px 0 oklch(1 0 0 / 0.14),
     0 4px 8px -2px oklch(0.42 0.19 296 / 0.36), 0 10px 24px -6px oklch(0.42 0.19 296 / 0.36);
 
   /* Gradients. Defined per theme so dark keeps the personality without the
      glare. Sunrise is the brand wash (hero bands, the wordmark tile, empty-
      state coins); page is the barely-there wash behind every screen. There is
-     deliberately NO CTA gradient: primary buttons are solid iris with an
-     inset highlight (--elevation-primary) — depth, not a rainbow. */
+     deliberately NO CTA gradient: primary buttons are a clean solid iris on
+     an iris glow (--elevation-primary) — depth, not a rainbow. */
   --gradient-sunrise: linear-gradient(
     115deg,
     var(--sunshine-200) 0%,
@@ -285,10 +283,8 @@
   --elevation-md: 0 4px 8px -2px oklch(0 0 0 / 0.45), 0 12px 28px -6px oklch(0 0 0 / 0.5);
   --elevation-lg: 0 8px 16px -4px oklch(0 0 0 / 0.5), 0 24px 48px -12px oklch(0 0 0 / 0.6);
   --elevation-primary:
-    inset 0 1px 0 oklch(1 0 0 / 0.25),
     0 2px 4px -2px oklch(0.77 0.13 296 / 0.2), 0 6px 16px -4px oklch(0.77 0.13 296 / 0.22);
   --elevation-primary-lg:
-    inset 0 1px 0 oklch(1 0 0 / 0.25),
     0 4px 8px -2px oklch(0.77 0.13 296 / 0.24), 0 10px 24px -6px oklch(0.77 0.13 296 / 0.28);
 
   /* Jewel-toned at night: the same sunrise, after dark. */

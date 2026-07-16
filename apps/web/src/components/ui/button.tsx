@@ -18,9 +18,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // The CTA: a confident solid iris with an inset top highlight and a
-        // soft iris glow (both live in --elevation-primary). Hover deepens
-        // the fill a touch and swells the glow.
+        // The CTA: a clean solid iris on a soft iris glow (shadow-primary).
+        // Hover deepens the fill a touch and swells the glow. No border, no
+        // inset edge — the fill alone carries it.
         default:
           "bg-primary text-primary-foreground shadow-primary hover:-translate-y-0.5 hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_8%)] hover:shadow-primary-lg active:translate-y-0",
         outline:

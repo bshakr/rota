@@ -255,7 +255,7 @@ export function Gallery() {
       <Section
         id="buttons"
         title="Buttons"
-        intro="Soft rounded rectangles, and tactile: the primary is a confident solid iris with an inset highlight and a soft glow, and it lifts on hover and squashes on press (spring-eased, stilled under reduced-motion). Ghost and outline hovers blush lilac rather than grey. `lg` is 44px — the comfortable touch target and the member page's CTA size; `default` (40px) is the admin workhorse; `xs`/`sm` are mouse-target sizes. `loading` shows a spinner, disables, and sets aria-busy."
+        intro="Soft rounded rectangles, and tactile: the primary is a clean solid iris on a soft glow, and it lifts on hover and squashes on press (spring-eased, stilled under reduced-motion). Ghost and outline hovers blush lilac rather than grey. `lg` is 44px — the comfortable touch target and the member page's CTA size; `default` (40px) is the admin workhorse; `xs`/`sm` are mouse-target sizes. `loading` shows a spinner, disables, and sets aria-busy."
       >
         <div className="flex flex-col gap-4">
           <Demo label="Variants" hint="variant=">
