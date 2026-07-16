@@ -57,7 +57,8 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             aria-current={active ? "page" : undefined}
             className={cn(
               // 44px tall (py-2.5 + text line) — a nav row is tapped on a phone.
-              "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+              // Pills, like every other tappable thing in Solstice.
+              "flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors",
               // Focus is an offset outline in --sidebar-ring, measured against the
               // sidebar. A ring here was invisible on the clay active item; the
               // offset puts a sidebar-coloured gap between item and outline so it
