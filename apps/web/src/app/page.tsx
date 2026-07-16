@@ -1,74 +1,9 @@
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { redirect } from "next/navigation";
 
-import { ThemeToggle } from "@/components/theme-toggle";
-import { Wordmark } from "@/components/wordmark";
-import { Button } from "@/components/ui/button";
-
-// A signpost, not a screen. Once AuthKit lands (BLO-1050) `/` redirects to
-// /dashboard for a signed-in admin and to the login flow otherwise. Until then
-// it is the quickest way into each of the three surfaces this ticket builds.
-const DESTINATIONS = [
-  {
-    href: "/styleguide",
-    title: "Styleguide",
-    blurb: "Every token and every component, in both themes.",
-  },
-  {
-    href: "/dashboard",
-    title: "Admin shell",
-    blurb: "Sidebar, nav, and the five admin screens.",
-  },
-  {
-    href: "/s/demo-token",
-    title: "Member page",
-    blurb: "No nav, no login. What arrives by text message.",
-  },
-] as const;
-
+// `/` is the admin's front door, so it goes straight to the dashboard. The
+// proxy already gates it: a signed-out visitor is bounced to WorkOS sign-in
+// before this ever renders. Members never land here — their world is
+// /s/[token], which lives outside the proxy matcher entirely.
 export default function Home() {
-  return (
-    <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between px-5 py-6 md:px-8">
-        <Wordmark />
-        <ThemeToggle />
-      </header>
-
-      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-5 pb-24">
-        <h1 className="font-heading font-wonky text-display mb-3 font-semibold text-balance">
-          Whose turn is it?
-        </h1>
-        <span
-          className="mb-4 block h-1.5 w-16 rounded-full bg-[image:var(--gradient-sunrise)]"
-          aria-hidden
-        />
-        <p className="text-muted-foreground mb-10 text-sm">
-          Shell and design system only. The screens themselves land in BLO-1051
-          through BLO-1055.
-        </p>
-
-        <ul className="flex flex-col gap-3">
-          {DESTINATIONS.map(({ href, title, blurb }) => (
-            <li key={href}>
-              <Button
-                asChild
-                variant="outline"
-                className="h-auto w-full justify-between px-4 py-4"
-              >
-                <Link href={href}>
-                  <span className="flex flex-col items-start gap-0.5 text-left">
-                    <span className="font-medium">{title}</span>
-                    <span className="text-muted-foreground text-xs font-normal">
-                      {blurb}
-                    </span>
-                  </span>
-                  <ArrowRight className="text-muted-foreground size-4 shrink-0" />
-                </Link>
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </main>
-    </div>
-  );
+  redirect("/dashboard");
 }

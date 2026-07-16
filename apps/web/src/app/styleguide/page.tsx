@@ -47,7 +47,7 @@ const SURFACES = [
     swatchClass: "bg-sidebar",
     token: "--sidebar",
     util: "bg-sidebar",
-    role: "The admin sidebar — a lilac mist panel, the one full wash of the brand hue.",
+    role: "The admin sidebar — warm paper, card-white against the cream page. The brand hue survives as its lilac hover blush.",
   },
   {
     swatchClass: "bg-accent",
@@ -110,7 +110,7 @@ const STATUS = [
     swatchClass: "bg-warning",
     token: "--warning",
     util: "text-warning",
-    role: "Sunshine. Sending, a stale reminder — and the today/tomorrow pill. Badge: variant=\"warning\".",
+    role: "Sunshine. Sending, a stale reminder — and the today/tomorrow badge. Badge: variant=\"warning\".",
   },
   {
     swatchClass: "bg-info",
@@ -159,10 +159,6 @@ const GRADIENTS = [
     role: "The brand wash: the wordmark tile, empty-state coins, a shift card's date coin, the greeting swash. Pastel gold → pink → lilac by day; jewel tones after dark.",
   },
   {
-    varName: "--gradient-cta",
-    role: "Fills every primary button: iris → raspberry, with an iris glow (shadow-primary) underneath. Both ends stay AA against the button's text.",
-  },
-  {
     varName: "--gradient-page",
     role: "The barely-there peach-and-sky corners behind every screen (aurora in dark). Applied once, on <body> — never on a component.",
   },
@@ -170,11 +166,11 @@ const GRADIENTS = [
 
 // Each with the ONE thing it is for, so engineer #3 doesn't guess.
 const RADII = [
-  { cls: "rounded-md", label: "md", use: "menu items, small chips" },
-  { cls: "rounded-lg", label: "lg · --radius (20px)", use: "the default" },
-  { cls: "rounded-xl", label: "xl", use: "cards, tiles" },
-  { cls: "rounded-2xl", label: "2xl", use: "dialogs, empty states, date coins" },
-  { cls: "rounded-full", label: "full", use: "buttons, inputs, badges — everything tappable is a pill" },
+  { cls: "rounded-md", label: "md", use: "badges, chips, menu items" },
+  { cls: "rounded-lg", label: "lg · --radius (8px)", use: "buttons, inputs, nav items — the tappable default" },
+  { cls: "rounded-xl", label: "xl", use: "cards, tiles, popovers" },
+  { cls: "rounded-2xl", label: "2xl", use: "dialogs, empty states, date coins, hero bands" },
+  { cls: "rounded-full", label: "full", use: "avatars and status dots — only the truly circular" },
 ];
 
 const SHADOWS = [
@@ -230,8 +226,8 @@ export default function StyleguidePage() {
             </p>
             <p className="mt-5 max-w-prose text-sm text-pretty md:text-base">
               A chore rota that feels like the brightest day of the year: sunlit
-              paper, violet ink, candy accents that mean something, pillowy
-              corners, and motion with a spring in its step. Friendly first —
+              paper, violet ink, candy accents that mean something, softly
+              rounded corners, and motion with a spring in its step. Friendly first —
               because the person reading it is standing in a kitchen, not
               sitting in a meeting.
             </p>
@@ -263,7 +259,7 @@ export default function StyleguidePage() {
                   },
                   {
                     n: "Mobile first.",
-                    body: "The member page is a phone page that happens to work on desktop. Design at 375px, then let it breathe. Everything tappable is at least 44px and shaped like a pill.",
+                    body: "The member page is a phone page that happens to work on desktop. Design at 375px, then let it breathe. Everything tappable is at least 44px, on softly rounded corners.",
                   },
                 ].map((r) => (
                   <li
@@ -329,7 +325,7 @@ export default function StyleguidePage() {
             <Section
               id="gradients"
               title="Gradients"
-              intro="Three, each a token with a light and a dark voice — components reference the token, never the stops. Gradients are decoration and CTA fills only: body text never sits on one without a solid card between them."
+              intro="Two, each a token with a light and a dark voice — components reference the token, never the stops. Gradients are decoration only — the primary button is deliberately a solid: body text never sits on a gradient without a solid card between them."
             >
               <div className="grid gap-4 md:grid-cols-3">
                 {GRADIENTS.map((g) => (
@@ -410,7 +406,7 @@ export default function StyleguidePage() {
             <Section
               id="shape"
               title="Shape & elevation"
-              intro="--radius is 1.25rem — pillowy, a full tier rounder than before — and everything tappable is a pill. Shadows are soft and VIOLET, never black or grey: a coloured shadow is what makes a light UI feel lit rather than printed. In dark they deepen to night. Each swatch names the ONE place it belongs."
+              intro="--radius is 0.5rem — soft rounded rectangles, not pills: buttons, inputs and nav share the 8px default, cards sit a step rounder, and only avatars and status dots are circles. Shadows are soft and VIOLET, never black or grey: a coloured shadow is what makes a light UI feel lit rather than printed. In dark they deepen to night. Each swatch names the ONE place it belongs."
             >
               <div className="grid gap-4 md:grid-cols-2">
                 <Demo label="Radius — assignment" className="block">
@@ -508,7 +504,7 @@ export default function StyleguidePage() {
                   </CardHeader>
                   <CardContent className="text-muted-foreground space-y-4">
                     <p className="text-pretty">
-                      Lilac sidebar on desktop, drawer on mobile, theme toggle,
+                      Warm-paper sidebar on desktop, drawer on mobile, theme toggle,
                       five nav entries. Signed in via AuthKit. Start every screen
                       with <code className="font-mono text-xs">&lt;PageHeader&gt;</code>,
                       wrap it in <code className="font-mono text-xs">&lt;Container&gt;</code>,
