@@ -7,9 +7,10 @@ module Api
   #   2. The original assignee can always take it back (cancel). The escape hatch for "actually, I'm
   #      around after all."
   #
-  # Every rejection is a 422 with a stable machine `error` code and a human `message`; a shift that is
-  # not in this member's group is a 404 (see MemberBaseController), which is what keeps a token from
-  # one house from probing another's shift ids.
+  # The lock that makes this safe under concurrency lives in ShiftCover, which every writer of a
+  # shift's cover goes through. This controller supplies the member rules as a guard (re-evaluated
+  # inside the lock) and, on success, texts the affected parties. A cross-group shift id is a 404
+  # (see MemberBaseController), which keeps a token from one house from probing another's shift ids.
   class MemberCoversController < MemberBaseController
     ERROR_MESSAGES = {
       past_shift: "This shift can no longer be covered.",
@@ -21,61 +22,50 @@ module Api
       not_original_assignee: "Only the original person for this shift can take it back."
     }.freeze
 
-    # Assign a cover (rule 1).
     def create
       shift = group_shifts.find(params[:id])
       cover = group_members.find_by(id: cover_params[:covering_member_id])
 
-      hand_over(shift, to: cover) { assignment_error(shift, cover) }
+      render_cover_result ShiftCover.change(shift: shift, to: cover, notify: method(:record_notices)) { |locked|
+        assignment_error(locked, cover)
+      }
     end
 
-    # Cancel a cover (rule 2).
     def destroy
       shift = group_shifts.find(params[:id])
 
-      hand_over(shift, to: nil) { cancellation_error(shift) }
+      render_cover_result ShiftCover.change(shift: shift, to: nil, notify: method(:record_notices)) { |locked|
+        cancellation_error(locked)
+      }
     end
 
     private
 
-    # Set the override under a row lock, then text everyone whose turn actually changed — excluding
-    # the caller, who is acting from the page and already sees the result.
-    #
-    # The lock is load-bearing, not decorative. Without it the flow is read-check-update, and two
-    # requests racing the same shift (a double-tap, or the current cover handing on while the original
-    # cancels) can BOTH pass their guard against the old state and BOTH update — a lost update, and
-    # worse, TWO unrecallable "you're covering" texts to two different people. `with_lock` reloads the
-    # row under `SELECT ... FOR UPDATE` and re-runs the guard against the current committed state, so
-    # the second request sees the first's change and is rejected (e.g. :not_responsible). Exactly one
-    # hand-over wins. The guard is passed as a block precisely so it is re-evaluated INSIDE the lock,
-    # not once before it.
-    #
-    # Comparing responsibility before and after covers every case in one line: on assign it is the new
-    # cover; on cancel the person who was covering; on a re-assignment the newcomer. Notices are
-    # enqueued only AFTER the transaction commits, so a rolled-back change never texts anyone.
-    def hand_over(shift, to:)
-      error_code = nil
-      affected = []
+    # Everyone whose turn actually changed, minus the caller, who acted from the page and already sees
+    # the result. Comparing responsibility before and after covers every case in one line: on assign
+    # the new cover; on cancel the person who was covering; on a re-assignment the newcomer. Run INSIDE
+    # ShiftCover's lock so the rows are laid down atomically with the change; the ids come back so the
+    # controller can enqueue the sends after the lock commits.
+    def record_notices(shift, previous_responsible, new_responsible)
+      affected = [ previous_responsible, new_responsible ].uniq - [ current_member ]
+      CoverNotice.record(shift: shift, to: affected)
+    end
 
-      shift.with_lock do
-        if (error_code = yield)
-          next # guard failed against the locked, current state — change nothing
-        end
+    def render_cover_result(result)
+      return render_cover_error(result.error) unless result.ok?
 
-        before = shift.responsible_member
-        shift.update!(covering_member: to)
-        affected = [ before, shift.responsible_member ].uniq - [ current_member ]
-      end
-
-      return render_cover_error(error_code) if error_code
-
-      CoverNotice.deliver(shift: shift, to: affected)
-      render json: { shift: serialize_shift(shift) }
+      CoverNotice.enqueue(result.notices)
+      render json: { shift: serialize_shift(result.shift) }
     end
 
     def assignment_error(shift, cover)
       return :past_shift unless future?(shift)
       return :not_responsible unless responsible?(shift)
+      # Re-read the cover's state under the lock: a member removal that raced this request has, by the
+      # time we hold the rota lock, committed its deactivation, so a just-removed member is caught here
+      # rather than assigned. (SendSmsJob's own contactable check is the backstop for the narrow
+      # cross-rota window this does not serialise.)
+      cover&.reload
       return :cover_unavailable if cover.nil? || !cover.contactable?
       return :self_cover if cover.id == current_member.id
       # covering == assigned is nonsensical (it would be a cancel, not a hand-on) and the Shift model
