@@ -8,6 +8,7 @@ import { z } from "zod";
 import {
   Inbox,
   MoreHorizontal,
+  OctagonAlert,
   Plus,
   RotateCcw,
   TriangleAlert,
@@ -310,16 +311,30 @@ export function Gallery() {
             <Badge variant="secondary">Fortnightly</Badge>
             <Badge variant="outline">Draft</Badge>
           </Demo>
-          <Demo label="Alert — the raised voice" className="block">
-            <Alert variant="warning" className="w-full">
-              <TriangleAlert />
-              <AlertTitle>Confirm your group&apos;s timezone.</AlertTitle>
-              <AlertDescription>
-                Reminders send at 9am in the group&apos;s timezone, and it has
-                never been confirmed. Texts may arrive at the wrong hour until it
-                is.
-              </AlertDescription>
-            </Alert>
+          <Demo
+            label="Alert — the raised voice"
+            hint="accent rail + icon coin"
+            className="block"
+          >
+            <div className="w-full space-y-3">
+              <Alert variant="warning">
+                <TriangleAlert />
+                <AlertTitle>Confirm your group&apos;s timezone.</AlertTitle>
+                <AlertDescription>
+                  Reminders send at 9am in the group&apos;s timezone, and it has
+                  never been confirmed. Texts may arrive at the wrong hour until
+                  it is.
+                </AlertDescription>
+              </Alert>
+              <Alert variant="destructive">
+                <OctagonAlert />
+                <AlertTitle>1 person didn&apos;t get a text</AlertTitle>
+                <AlertDescription>
+                  Bass had a reminder fail to send. A silently failed text is
+                  worse than no rota — check the carrier error.
+                </AlertDescription>
+              </Alert>
+            </div>
           </Demo>
           <Demo label="Destructive button — the shout">
             <ConfirmDialog
