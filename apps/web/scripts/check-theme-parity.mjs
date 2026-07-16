@@ -41,9 +41,11 @@ const CSS_PATH = resolve(
 
 // Paint is theme-independent by design: one pigment set, two mappings. Paint
 // lives only in :root and must NOT be redeclared under .dark.
-const PAINT = /^--(bone|clay|sage|amber|rust|dusk)-/;
-// Not colour — geometry, type, spacing. Skipped by both parity and contrast.
-const NON_COLOUR = /^--(font|text|radius|shadow|elevation|space)/;
+const PAINT = /^--(sunbeam|twilight|iris|flamingo|sunshine|meadow|sky|cherry)-/;
+// Not colour — geometry, type, spacing, motion. Skipped by both parity and
+// contrast. Gradient tokens are deliberately NOT here: they are semantic and
+// parity-checked, so a gradient defined for light must be restated for dark.
+const NON_COLOUR = /^--(font|text|radius|shadow|elevation|space|ease|animate)/;
 
 const TEXT = 4.5; // WCAG AA, normal text
 const UI = 3.0; //   WCAG AA, control boundaries and focus indicators

@@ -6,26 +6,31 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  // Focus is a real 2px OUTLINE offset from the control, in --ring, not a
-  // box-shadow ring. Three reasons, all from review: (1) an outline sits in a
-  // gap of the surface colour so it is visible on a clay button, where a
-  // same-colour ring was 1:1; (2) Windows High Contrast Mode strips box-shadow
-  // but keeps outline, so a ring-only focus vanishes there; (3) a solid outline
-  // can be contrast-checked, a `/50` ring cannot. Hover on solid variants
-  // darkens via color-mix toward --foreground rather than fading with `/80`,
-  // which washed the fill toward the page and failed AA.
-  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-hidden select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  // SOLSTICE buttons are PILLS, and they are tactile: hover lifts them a
+  // hair (with a bigger, softer shadow), press squashes them (scale 0.97, via
+  // ease-spring so the release bounces back). Focus stays a real 2px OUTLINE
+  // offset from the control, in --ring, not a box-shadow ring: (1) an outline
+  // sits in a gap of the surface colour so it is visible on an iris button;
+  // (2) Windows High Contrast Mode strips box-shadow but keeps outline;
+  // (3) a solid outline can be contrast-checked, a `/50` ring cannot.
+  "group/button inline-flex shrink-0 items-center justify-center rounded-full border border-transparent bg-clip-padding text-sm font-semibold whitespace-nowrap transition-all duration-200 ease-spring outline-hidden select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:not-aria-[haspopup]:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive motion-reduce:hover:translate-y-0 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
+        // The CTA: an iris→raspberry gradient with a soft iris glow. Hover
+        // brightens the gradient itself (both stops stay AA against white
+        // text) and swells the glow; there is no color-mix hover here because
+        // a gradient cannot be mixed.
         default:
-          "bg-primary text-primary-foreground hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_14%)]",
+          "bg-primary bg-[image:var(--gradient-cta)] text-primary-foreground shadow-primary hover:-translate-y-0.5 hover:shadow-primary-lg hover:brightness-105 active:translate-y-0 active:brightness-95",
         outline:
-          "border-input bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-input/30 dark:hover:bg-input/50",
+          "border-input bg-card hover:-translate-y-0.5 hover:bg-accent hover:text-accent-foreground hover:shadow-sm active:translate-y-0 aria-expanded:bg-accent aria-expanded:text-accent-foreground dark:bg-input/30 dark:hover:bg-input/50",
+        // Lilac fill, deep iris text: "Cancel" stays friendly.
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_6%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_7%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+        // Ghost hovers BLUSH LILAC (--accent), not grey — the signature hover.
         ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+          "hover:bg-accent hover:text-accent-foreground aria-expanded:bg-accent aria-expanded:text-accent-foreground dark:hover:bg-accent/60",
         // Solid, per the status idiom: a destructive button is a consequential
         // action and should shout. This is the sole use of --destructive-foreground.
         destructive:
@@ -38,20 +43,19 @@ const buttonVariants = cva(
       // minimum comfortable touch target. `lg` is exactly 44px and is what the
       // member page's CTAs use; `default` at 40px is the admin workhorse; `xs`
       // and `sm` stay tight because table-row actions are mouse targets.
+      // Everything is a pill, so no per-size radius overrides survive here.
       //
       // If you re-run `shadcn add button --overwrite`, you will lose this. Put
       // it back.
       size: {
         default:
-          "h-10 gap-2 px-4 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
-        xs: "h-7 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-8 gap-1.5 rounded-[min(var(--radius-md),12px)] px-3 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-11 gap-2 px-5 text-[0.9375rem] has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4",
+          "h-10 gap-2 px-5 has-data-[icon=inline-end]:pr-3.5 has-data-[icon=inline-start]:pl-3.5",
+        xs: "h-7 gap-1 px-2.5 text-xs has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-8 gap-1.5 px-3.5 text-[0.8rem] has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5 [&_svg:not([class*='size-'])]:size-3.5",
+        lg: "h-11 gap-2 px-6 text-[0.9375rem] has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4",
         icon: "size-10",
-        "icon-xs":
-          "size-7 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm":
-          "size-8 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
+        "icon-xs": "size-7 [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm": "size-8",
         "icon-lg": "size-11",
       },
     },

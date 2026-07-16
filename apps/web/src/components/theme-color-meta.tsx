@@ -11,11 +11,12 @@ import { useTheme } from "next-themes";
 // a sand page. next-themes knows the resolved theme; this keeps the meta in sync
 // with it. Renders no DOM — it owns the tag imperatively so there is exactly one.
 //
-// These two values MUST track --background in globals.css (bone-100 / bone-950);
-// a <meta> is read before any CSS exists, so it cannot reference the token — the
-// one sanctioned place for a raw colour, so the lint rule is disabled for it.
+// These two values MUST track --background in globals.css (sunbeam-100 /
+// twilight-950); a <meta> is read before any CSS exists, so it cannot reference
+// the token — the one sanctioned place for a raw colour, so the lint rule is
+// disabled for it.
 // eslint-disable-next-line no-restricted-syntax
-const COLORS = { light: "#f9f6ef", dark: "#18130f" } as const;
+const COLORS = { light: "#fbf7eb", dark: "#181428" } as const;
 
 export function ThemeColorMeta() {
   const { resolvedTheme } = useTheme();

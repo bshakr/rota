@@ -5,10 +5,12 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
-  // Focus is a solid offset outline in --ring, the same idiom as Button — not a
+  // SOLSTICE badges are little candy pills: a touch taller and bolder than
+  // stock so they read as cheerful stickers rather than metadata. Focus is a
+  // solid offset outline in --ring, the same idiom as Button — not a
   // translucent /50 ring, which this system's own rule forbids and the contrast
   // checker cannot verify. Only ever visible when a badge is a link.
-  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-4xl border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-all outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive [&>svg]:pointer-events-none [&>svg]:size-3!",
+  "group/badge inline-flex h-[1.375rem] w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-4xl border border-transparent px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap transition-all outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 aria-invalid:border-destructive [&>svg]:pointer-events-none [&>svg]:size-3!",
   {
     variants: {
       variant: {
@@ -20,7 +22,7 @@ const badgeVariants = cva(
         // HouseRota additions. The SMS delivery log has four outcomes and stock
         // shadcn only ships one of them (destructive), so without these each
         // screen would hand-roll its own green. Tinted rather than solid, to
-        // match `destructive` above and stay quiet next to the clay accent.
+        // match `destructive` above — a whisper, per the status idiom.
         //   delivered -> success | queued/sending -> info
         //   pending/stale -> warning | failed -> destructive
         success: "bg-success/10 text-success dark:bg-success/20",

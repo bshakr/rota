@@ -66,7 +66,9 @@ function DialogContent({
         className={cn(
           // Real elevation: a hairline border AND shadow-lg. A 2% lightness step
           // alone does not read as "floating" on a phone in daylight.
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-popover p-5 text-sm text-popover-foreground shadow-lg duration-100 outline-hidden sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          // Entrance is `animate-pop` — the springy Solstice arrival — and exit
+          // is a quick tw-animate fade/zoom.
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl border border-border bg-popover p-6 text-sm text-popover-foreground shadow-lg outline-hidden sm:max-w-sm data-open:animate-pop data-closed:animate-out data-closed:duration-100 data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}
@@ -113,9 +115,9 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        // Negative margins match the content's p-5 so the footer bleeds to the
+        // Negative margins match the content's p-6 so the footer bleeds to the
         // dialog edge.
-        "-mx-5 -mb-5 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-5 sm:flex-row sm:justify-end",
+        "-mx-6 -mb-6 flex flex-col-reverse gap-2 rounded-b-2xl border-t bg-muted/50 p-5 sm:flex-row sm:justify-end",
         className
       )}
       {...props}
@@ -138,7 +140,7 @@ function DialogTitle({
     <DialogPrimitive.Title
       data-slot="dialog-title"
       className={cn(
-        "font-heading text-base leading-none font-medium",
+        "font-heading text-lg leading-tight font-semibold",
         className
       )}
       {...props}

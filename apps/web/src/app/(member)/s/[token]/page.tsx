@@ -75,10 +75,21 @@ export default async function MemberShiftsPage({
 
   return (
     <>
-      <h1 className="text-display font-heading mb-1 font-semibold">Hi {firstName}</h1>
-      <p className="text-muted-foreground mb-8 text-sm text-pretty">
-        Here&apos;s what&apos;s coming up for you, across every rota.
-      </p>
+      {/* The greeting: Fraunces in its wonky cut — one hand-drawn letterform is
+          a wink, not a typo — over a little sunrise swash. It should feel like
+          a friend's note on the fridge, not a dashboard heading. */}
+      <div className="animate-rise mb-8">
+        <h1 className="text-display font-heading font-wonky mb-2 font-semibold">
+          Hi {firstName}
+        </h1>
+        <span
+          className="mb-3 block h-1.5 w-16 rounded-full bg-[image:var(--gradient-sunrise)]"
+          aria-hidden
+        />
+        <p className="text-muted-foreground text-sm text-pretty">
+          Here&apos;s what&apos;s coming up for you, across every rota.
+        </p>
+      </div>
 
       <ShiftList
         initialShifts={data.shifts}

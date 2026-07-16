@@ -12,14 +12,14 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        // The ONE card idiom: bg-card, a --border hairline, and shadow-xs. Every
-        // panel in the product is a <Card> — the styleguide's own panels included
-        // — so five screens cannot each invent their own boundary. The border is
-        // --border (what the styleguide documents "card edges" to be), not a
-        // translucent ring, and the shadow gives the lift a 2% lightness step
-        // cannot carry on a phone in daylight. --card-spacing (16px, 12px on sm)
-        // is the canonical card padding.
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl border border-border bg-card py-(--card-spacing) text-sm text-card-foreground shadow-xs [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
+        // The ONE card idiom: bg-card, a --border hairline, and a SOFT VIOLET
+        // shadow-xs — pillowy 26px corners, a touch more padding than stock.
+        // Every panel in the product is a <Card> — the styleguide's own panels
+        // included — so five screens cannot each invent their own boundary.
+        // The shadow gives the lift a 2% lightness step cannot carry on a
+        // phone in daylight. --card-spacing (20px, 14px on sm) is the
+        // canonical card padding.
+        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl border border-border bg-card py-(--card-spacing) text-sm text-card-foreground shadow-xs [--card-spacing:--spacing(5)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3.5)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
         className
       )}
       {...props}
@@ -45,7 +45,8 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-title"
       className={cn(
-        "font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm",
+        // Fraunces, semibold: every card title speaks in the display voice.
+        "font-heading text-lg leading-snug font-semibold group-data-[size=sm]/card:text-base",
         className
       )}
       {...props}

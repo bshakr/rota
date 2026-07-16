@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Figtree, JetBrains_Mono } from "next/font/google";
+import { Fraunces, Plus_Jakarta_Sans, Space_Mono } from "next/font/google";
 
 import { ThemeColorMeta } from "@/components/theme-color-meta";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -7,21 +7,34 @@ import { Toaster } from "@/components/ui/sonner";
 
 import "./globals.css";
 
-// Figtree carries the whole product. It is a geometric humanist — open
-// apertures, tall x-height, round terminals — which reads as friendly rather
-// than corporate, and stays legible on a phone held at arm's length. That is
-// the only place the member page is ever seen. globals.css records why Geist
-// was rejected.
-const figtree = Figtree({
-  variable: "--font-figtree",
+// SOLSTICE type pairing — two voices, one personality.
+//
+// Fraunces is the display voice: a warm, slightly wonky optical serif with a
+// SOFT axis. Set soft (globals.css does this for .font-heading), it smiles —
+// the greeting on the member page should feel like a friend's handwriting on
+// a kitchen note, not a heading in a dashboard.
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  display: "swap",
+  axes: ["SOFT", "WONK", "opsz"],
+});
+
+// Plus Jakarta Sans carries the body: a warm geometric humanist with open
+// counters that stays legible on a phone held at arm's length — the only place
+// the member page is ever seen.
+const jakarta = Plus_Jakarta_Sans({
+  variable: "--font-jakarta",
   subsets: ["latin"],
   display: "swap",
 });
 
-// Machine strings only: magic-link tokens, Twilio SIDs. Never body copy.
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
+// Machine strings only: magic-link tokens, Twilio SIDs. Space Mono because
+// even the machine strings get a little charm here.
+const spaceMono = Space_Mono({
+  variable: "--font-space-mono",
   subsets: ["latin"],
+  weight: ["400", "700"],
   display: "swap",
 });
 
@@ -36,9 +49,9 @@ export const viewport: Viewport = {
   // updates this same tag to the RESOLVED theme, because a media-query tag would
   // track the OS rather than the theme the user actually chose. A <meta> is read
   // before any CSS exists so it cannot reference a token — this raw hex must
-  // track --background (bone-100), and the lint rule is disabled for it.
+  // track --background (sunbeam-100), and the lint rule is disabled for it.
   // eslint-disable-next-line no-restricted-syntax
-  themeColor: "#f9f6ef",
+  themeColor: "#fbf7eb",
 };
 
 export default function RootLayout({
@@ -52,7 +65,7 @@ export default function RootLayout({
     // legitimately differ on this one element.
     <html
       lang="en"
-      className={`${figtree.variable} ${jetbrainsMono.variable} h-full`}
+      className={`${fraunces.variable} ${jakarta.variable} ${spaceMono.variable} h-full`}
       suppressHydrationWarning
     >
       <body className="flex min-h-full flex-col antialiased">

@@ -35,9 +35,13 @@ export default function Home() {
       </header>
 
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-5 pb-24">
-        <h1 className="font-heading text-display mb-2 font-semibold text-balance">
+        <h1 className="font-heading font-wonky text-display mb-3 font-semibold text-balance">
           Whose turn is it?
         </h1>
+        <span
+          className="mb-4 block h-1.5 w-16 rounded-full bg-[image:var(--gradient-sunrise)]"
+          aria-hidden
+        />
         <p className="text-muted-foreground mb-10 text-sm">
           Shell and design system only. The screens themselves land in BLO-1051
           through BLO-1055.

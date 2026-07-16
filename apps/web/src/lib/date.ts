@@ -54,8 +54,24 @@ const timestamp = new Intl.DateTimeFormat(LOCALE, {
   minute: "2-digit",
 });
 
+const dayNumber = new Intl.DateTimeFormat(LOCALE, {
+  timeZone: TIME_ZONE,
+  day: "numeric",
+});
+
+const monthShort = new Intl.DateTimeFormat(LOCALE, {
+  timeZone: TIME_ZONE,
+  month: "short",
+});
+
 /** "Sat 5 Jul" — the shift list, the dashboard, the member page. */
 export const formatShiftDate = (date: Date) => shiftDate.format(date);
+
+/** "5" — the day number on a shift card's date coin. Pinned like the rest. */
+export const formatDayNumber = (date: Date) => dayNumber.format(date);
+
+/** "Jul" — the month on a shift card's date coin. Pinned like the rest. */
+export const formatMonthShort = (date: Date) => monthShort.format(date);
 
 /** "Saturday 5 July 2026" — confirmation copy, where ambiguity costs. */
 export const formatLongDate = (date: Date) => longDate.format(date);

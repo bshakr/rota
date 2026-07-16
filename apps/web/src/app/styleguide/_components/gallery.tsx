@@ -5,7 +5,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Inbox, MoreHorizontal, Plus, TriangleAlert, Users } from "lucide-react";
+import {
+  Inbox,
+  MoreHorizontal,
+  Plus,
+  RotateCcw,
+  TriangleAlert,
+  Users,
+} from "lucide-react";
 
 import { Demo, Section } from "@/app/styleguide/_components/spec";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -185,6 +192,44 @@ function CoverForm() {
 
 /* -------------------------------------------------------------------------- */
 
+// The motion language, live. Remounting the row replays the entrances — the
+// exact choreography the member page's shift list uses.
+function MotionDemo() {
+  const [run, setRun] = React.useState(0);
+  return (
+    <div className="flex w-full flex-col gap-4">
+      <div className="grid gap-3 sm:grid-cols-3" key={run}>
+        {["First in", "Second in", "Third in"].map((label, index) => (
+          <Card
+            key={label}
+            size="sm"
+            className="animate-rise"
+            style={{ animationDelay: `${index * 90}ms` }}
+          >
+            <CardHeader>
+              <CardTitle>{label}</CardTitle>
+              <CardDescription>
+                animate-rise · {index * 90}ms delay
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="secondary" size="sm" onClick={() => setRun((n) => n + 1)}>
+          <RotateCcw /> Replay entrances
+        </Button>
+        <span className="text-muted-foreground text-xs">
+          Cards rise and settle with a spring; lists stagger by ~70–90ms per
+          item. Hover any button to feel the lift; press to feel the squash.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
 function LoadingButtonDemo() {
   const [loading, setLoading] = React.useState(false);
   return (
@@ -210,7 +255,7 @@ export function Gallery() {
       <Section
         id="buttons"
         title="Buttons"
-        intro="Sizes run one step larger than stock shadcn. `lg` is 44px — the comfortable touch target — and is what the member page uses for its one real action. `default` (40px) is the admin workhorse; `xs` and `sm` are for table-row actions, which are mouse targets. `loading` shows a spinner, disables, and sets aria-busy."
+        intro="Pills, and tactile: the primary is an iris→raspberry gradient with a soft glow that lifts on hover and squashes on press (spring-eased, stilled under reduced-motion). Ghost and outline hovers blush lilac rather than grey. `lg` is 44px — the comfortable touch target and the member page's CTA size; `default` (40px) is the admin workhorse; `xs`/`sm` are mouse-target sizes. `loading` shows a spinner, disables, and sets aria-busy."
       >
         <div className="flex flex-col gap-4">
           <Demo label="Variants" hint="variant=">
@@ -241,9 +286,19 @@ export function Gallery() {
       </Section>
 
       <Section
+        id="motion"
+        title="Motion"
+        intro="Springy, never slick — and always a garnish, never a requirement (prefers-reduced-motion stills everything). Two easings: ease-spring for anything that ARRIVES (entrances, hover lifts, the press-and-release of a button), ease-out-soft for fades and colour. Three named animations: animate-pop (dialogs), animate-rise (staggered lists), animate-float (the idle bob on decorative coins)."
+      >
+        <Demo label="Entrances — animate-rise, staggered" className="block">
+          <MotionDemo />
+        </Demo>
+      </Section>
+
+      <Section
         id="status"
         title="Status idiom"
-        intro="Three volumes, and which one to use is a decision, not a preference. A badge whispers (inline status in a table). An alert speaks up (a warning the admin must read). A destructive button shouts (a consequential action). success / warning / info are HouseRota additions — stock shadcn ships only destructive."
+        intro="Three volumes, and which one to use is a decision, not a preference. A badge whispers (inline status in a table). An alert speaks up (a warning the admin must read). A destructive button shouts (a consequential action). The choir assigns the hues: meadow = done, sky = on its way, sunshine = now/attention, cherry = went wrong."
       >
         <div className="flex flex-col gap-4">
           <Demo label="Badge — the whisper" hint='variant="success" …'>
@@ -288,7 +343,7 @@ export function Gallery() {
       <Section
         id="cards"
         title="Cards"
-        intro="One idiom, everywhere: bg-card, a --border hairline, shadow-xs. Every panel on this page is a <Card>. A card lifts off the page with border and shadow, not a lightness step a phone in daylight can't see."
+        intro="One idiom, everywhere: bg-card, a --border hairline, and a soft violet shadow-xs on pillowy corners. Every panel on this page is a <Card>. A card lifts off the page with border and shadow, not a lightness step a phone in daylight can't see. Titles speak in Fraunces."
       >
         <div className="grid gap-4 md:grid-cols-2">
           <Card>
