@@ -103,18 +103,20 @@ export function AdminShell({
           scrolls; the wrapper's padding is what the panel floats in. */}
       <div className="hidden shrink-0 p-3 md:block">
         <aside className="bg-sidebar border-sidebar-border sticky top-3 flex h-[calc(100svh-1.5rem)] w-60 flex-col overflow-y-auto rounded-xl border p-3 shadow-sm">
-          <Link href="/dashboard" className="mb-6 rounded-md px-1 py-1">
-            <Wordmark />
-          </Link>
+          {/* Wordmark + theme toggle share the top row, mirroring the mobile
+              header — which leaves the footer purely about the account. */}
+          <div className="mb-6 flex items-center justify-between gap-2">
+            <Link href="/dashboard" className="rounded-md px-1 py-1">
+              <Wordmark />
+            </Link>
+            <ThemeToggle />
+          </div>
           <NavLinks />
-          {/* The group name belongs here too, from Rails (/api/me) — deferred to the
-              dashboard ticket rather than stubbed with a plausible-looking house name.
-              BLO-1050 wires the account footer: who is signed in, and the way out. */}
-          <div className="mt-auto flex flex-col gap-3 px-1 pt-4">
+          {/* The account footer: who is signed in, and the way out (wired by the
+              (admin) layout, BLO-1050). The hairline bleeds to the panel edges —
+              a card-footer seam, not a floating rule. */}
+          <div className="border-sidebar-border -mx-3 mt-auto border-t px-3 pt-2.5">
             {account}
-            <div className="flex items-center justify-end">
-              <ThemeToggle />
-            </div>
           </div>
         </aside>
       </div>

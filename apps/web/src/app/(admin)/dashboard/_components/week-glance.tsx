@@ -10,29 +10,13 @@ import {
   formatShiftDate,
   relativeDay,
 } from "@/lib/date";
+import { avatarTint } from "@/lib/avatar-tint";
 import { civilDate } from "@/lib/group-dates";
 import { capitalise, initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /** A this-week shift carrying the rota it belongs to, so the glance names the job. */
 export type WeekShift = Shift & { rotaName: string };
-
-// Every member gets a hue from the chart choir, picked by name so it is
-// stable across visits and screens. A tint, not a solid: initials stay in
-// --foreground, so no pairing here depends on an unchecked contrast.
-const AVATAR_TINTS = [
-  "bg-chart-1/15",
-  "bg-chart-2/15",
-  "bg-chart-3/15",
-  "bg-chart-4/15",
-  "bg-chart-5/15",
-] as const;
-
-function avatarTint(name: string): string {
-  let hash = 0;
-  for (const ch of name) hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) % 9973;
-  return AVATAR_TINTS[hash % AVATAR_TINTS.length];
-}
 
 // The day's date coin — the member page's page-a-day calendar leaf, reused as
 // the day heading here so both surfaces speak the same language. Its colour
