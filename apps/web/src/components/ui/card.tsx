@@ -13,7 +13,7 @@ function Card({
       data-size={size}
       className={cn(
         // The ONE card idiom: bg-card, a --border hairline, and a SOFT VIOLET
-        // shadow-xs — pillowy 26px corners, a touch more padding than stock.
+        // shadow-xs — soft 12px corners, a touch more padding than stock.
         // Every panel in the product is a <Card> — the styleguide's own panels
         // included — so five screens cannot each invent their own boundary.
         // The shadow gives the lift a 2% lightness step cannot carry on a

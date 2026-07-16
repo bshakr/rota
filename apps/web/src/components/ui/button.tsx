@@ -6,23 +6,23 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  // SOLSTICE buttons are PILLS, and they are tactile: hover lifts them a
-  // hair (with a bigger, softer shadow), press squashes them (scale 0.97, via
-  // ease-spring so the release bounces back). Focus stays a real 2px OUTLINE
-  // offset from the control, in --ring, not a box-shadow ring: (1) an outline
-  // sits in a gap of the surface colour so it is visible on an iris button;
-  // (2) Windows High Contrast Mode strips box-shadow but keeps outline;
-  // (3) a solid outline can be contrast-checked, a `/50` ring cannot.
-  "group/button inline-flex shrink-0 items-center justify-center rounded-full border border-transparent bg-clip-padding text-sm font-semibold whitespace-nowrap transition-all duration-200 ease-spring outline-hidden select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:not-aria-[haspopup]:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive motion-reduce:hover:translate-y-0 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  // SOLSTICE buttons are soft rounded rectangles (rounded-lg, 8px — never
+  // pills), and they are tactile: hover lifts them a hair (with a bigger,
+  // softer shadow), press squashes them (scale 0.97, via ease-spring so the
+  // release bounces back). Focus stays a real 2px OUTLINE offset from the
+  // control, in --ring, not a box-shadow ring: (1) an outline sits in a gap
+  // of the surface colour so it is visible on an iris button; (2) Windows
+  // High Contrast Mode strips box-shadow but keeps outline; (3) a solid
+  // outline can be contrast-checked, a `/50` ring cannot.
+  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-semibold whitespace-nowrap transition-all duration-200 ease-spring outline-hidden select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:not-aria-[haspopup]:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive motion-reduce:hover:translate-y-0 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        // The CTA: an iris→raspberry gradient with a soft iris glow. Hover
-        // brightens the gradient itself (both stops stay AA against white
-        // text) and swells the glow; there is no color-mix hover here because
-        // a gradient cannot be mixed.
+        // The CTA: a confident solid iris with an inset top highlight and a
+        // soft iris glow (both live in --elevation-primary). Hover deepens
+        // the fill a touch and swells the glow.
         default:
-          "bg-primary bg-[image:var(--gradient-cta)] text-primary-foreground shadow-primary hover:-translate-y-0.5 hover:shadow-primary-lg hover:brightness-105 active:translate-y-0 active:brightness-95",
+          "bg-primary text-primary-foreground shadow-primary hover:-translate-y-0.5 hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_8%)] hover:shadow-primary-lg active:translate-y-0",
         outline:
           "border-input bg-card hover:-translate-y-0.5 hover:bg-accent hover:text-accent-foreground hover:shadow-sm active:translate-y-0 aria-expanded:bg-accent aria-expanded:text-accent-foreground dark:bg-input/30 dark:hover:bg-input/50",
         // Lilac fill, deep iris text: "Cancel" stays friendly.
@@ -43,7 +43,7 @@ const buttonVariants = cva(
       // minimum comfortable touch target. `lg` is exactly 44px and is what the
       // member page's CTAs use; `default` at 40px is the admin workhorse; `xs`
       // and `sm` stay tight because table-row actions are mouse targets.
-      // Everything is a pill, so no per-size radius overrides survive here.
+      // Every size shares the rounded-lg base radius.
       //
       // If you re-run `shadcn add button --overwrite`, you will lose this. Put
       // it back.

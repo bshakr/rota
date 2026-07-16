@@ -57,8 +57,8 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             aria-current={active ? "page" : undefined}
             className={cn(
               // 44px tall (py-2.5 + text line) — a nav row is tapped on a phone.
-              // Pills, like every other tappable thing in Solstice.
-              "flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors",
+              // Soft rounded rectangles, like every other tappable thing in Solstice.
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
               // Focus is an offset outline in --sidebar-ring, measured against the
               // sidebar. A ring here was invisible on the clay active item; the
               // offset puts a sidebar-coloured gap between item and outline so it
@@ -96,7 +96,9 @@ export function AdminShell({
 
   return (
     <div className="flex min-h-full flex-1">
-      {/* Desktop sidebar. Sits one step deeper than the page, like a worktop. */}
+      {/* Desktop sidebar. Warm paper — card-white against the cream page — so
+          the chrome and the page read as one family, separated by a butter
+          hairline rather than a hue shift. */}
       <aside className="bg-sidebar border-sidebar-border hidden w-64 shrink-0 flex-col border-r p-4 md:flex">
         <Link href="/dashboard" className="mb-8 rounded-md px-1 py-1">
           <Wordmark />

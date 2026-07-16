@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
  * shift card is the centre of the product — the thing someone reads after a
  * text — and in SOLSTICE it reads like a page-a-day calendar someone actually
  * enjoys: a DATE COIN carries the day, the rota name speaks in Fraunces, and
- * "today"/"tomorrow" wears a little sunshine pill.
+ * "today"/"tomorrow" wears a little sunshine badge.
  *
  * The coin's colour carries the state, so the card answers "what is this to
  * me?" before a word is read:
