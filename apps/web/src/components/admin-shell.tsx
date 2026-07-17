@@ -57,15 +57,21 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             aria-current={active ? "page" : undefined}
             className={cn(
               // 44px tall (py-2.5 + text line) — a nav row is tapped on a phone.
-              "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+              // Soft rounded rectangles, like every other tappable thing in Solstice.
+              "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
               // Focus is an offset outline in --sidebar-ring, measured against the
-              // sidebar. A ring here was invisible on the clay active item; the
-              // offset puts a sidebar-coloured gap between item and outline so it
-              // shows on any item background.
+              // sidebar. The offset puts a sidebar-coloured gap between item and
+              // outline so it shows on any item background.
               "outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring",
+              // "You are here" is TONAL, not loud: a quiet lilac fill, the label
+              // a weight up, the icon in iris, and a small iris rail on the left
+              // edge — the same accent-rail idiom the alerts use. Deliberately
+              // decoupled from the primary button's fill (hover uses a softer
+              // wash of the same tint, so rest → hover → active reads as one
+              // family getting progressively more certain).
               active
-                ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-xs"
-                : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary [&_svg]:text-primary"
+                : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
             )}
           >
             <Icon className="size-[18px] shrink-0" aria-hidden />
@@ -94,27 +100,46 @@ export function AdminShell({
   const [open, setOpen] = React.useState(false);
 
   return (
-    <div className="flex min-h-full flex-1">
-      {/* Desktop sidebar. Sits one step deeper than the page, like a worktop. */}
-      <aside className="bg-sidebar border-sidebar-border hidden w-64 shrink-0 flex-col border-r p-4 md:flex">
-        <Link href="/dashboard" className="mb-8 rounded-md px-1 py-1">
-          <Wordmark />
-        </Link>
-        <NavLinks />
-        {/* The group name belongs here too, from Rails (/api/me) — deferred to the
-            dashboard ticket rather than stubbed with a plausible-looking house name.
-            BLO-1050 wires the account footer: who is signed in, and the way out. */}
-        <div className="mt-auto flex flex-col gap-3 px-1 pt-4">
-          {account}
-          <div className="flex items-center justify-end">
+    <div className="relative flex min-h-full flex-1">
+      {/* The weather behind the glass: fixed sunrise blobs along the chrome's
+          edge, so the frosted sidebar (and the dashboard's frosted hero) have
+          something real to blur. Decorative only, pinned behind everything —
+          content and text always sit on their own translucent panes, never
+          directly on a blob. */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden>
+        <div className="absolute -top-28 -left-24 size-96 rounded-full bg-[image:var(--gradient-sunrise)] opacity-60 blur-3xl" />
+        <div className="absolute top-1/2 -left-36 size-80 rounded-full bg-primary/25 blur-3xl" />
+        <div className="absolute -top-20 -right-32 size-96 rotate-180 rounded-full bg-[image:var(--gradient-sunrise)] opacity-40 blur-3xl" />
+      </div>
+
+      {/* Desktop sidebar. A FLOATING pane of FROSTED GLASS: translucent warm
+          paper over the aurora blobs, detached from the window edge so the
+          page frames it — the same glass treatment as the dashboard hero.
+          Sticky, so it stays put while the page scrolls; the wrapper's
+          padding is what the panel floats in. */}
+      <div className="hidden shrink-0 p-3 md:block">
+        <aside className="bg-sidebar/70 border-sidebar-border/60 sticky top-3 flex h-[calc(100svh-1.5rem)] w-60 flex-col overflow-y-auto rounded-xl border p-3 shadow-sm backdrop-blur-xl">
+          {/* Wordmark + theme toggle share the top row, mirroring the mobile
+              header — which leaves the footer purely about the account. */}
+          <div className="mb-6 flex items-center justify-between gap-2">
+            <Link href="/dashboard" className="rounded-md px-1 py-1">
+              <Wordmark />
+            </Link>
             <ThemeToggle />
           </div>
-        </div>
-      </aside>
+          <NavLinks />
+          {/* The account footer: who is signed in, and the way out (wired by the
+              (admin) layout, BLO-1050). The hairline bleeds to the panel edges —
+              a card-footer seam, not a floating rule. */}
+          <div className="border-sidebar-border -mx-3 mt-auto border-t px-3 pt-2.5">
+            {account}
+          </div>
+        </aside>
+      </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile bar. Only exists below md. */}
-        <header className="bg-sidebar border-sidebar-border flex items-center justify-between border-b px-4 py-3 md:hidden">
+        {/* Mobile bar. Only exists below md — the same frost, worn thinner. */}
+        <header className="bg-sidebar/80 border-sidebar-border/60 flex items-center justify-between border-b px-4 py-3 backdrop-blur-lg md:hidden">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
               {/* icon-lg (44px): the primary mobile control. */}

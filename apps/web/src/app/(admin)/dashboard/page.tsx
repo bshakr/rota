@@ -3,7 +3,6 @@ import Link from "next/link";
 import { CalendarCheck, Repeat } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
-import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { getGroup, listMembers, listRotas, listShifts, listSmsMessages } from "@/lib/api/admin";
 import { isApiError } from "@/lib/api/errors";
@@ -11,6 +10,7 @@ import type { Rota, Shift, SmsMessage } from "@/lib/api/types";
 import { collectDashboardWarnings } from "@/lib/dashboard";
 import { compareCivil, groupToday, isThisWeek } from "@/lib/group-dates";
 
+import { DashboardHero } from "./_components/dashboard-hero";
 import { DashboardWarnings } from "./_components/dashboard-warnings";
 import { GroupSettings } from "./_components/group-settings";
 import { WeekGlance, type WeekShift } from "./_components/week-glance";
@@ -84,11 +84,20 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <PageHeader title="Dashboard" description="Who's up this week, across every rota." />
+      <DashboardHero
+        groupName={group.name}
+        todayCount={weekShifts.filter((shift) => shift.due_on === today).length}
+        weekCount={weekShifts.length}
+        coveredCount={weekShifts.filter((shift) => shift.covered).length}
+        memberCount={members.filter((member) => member.active).length}
+      />
 
       <DashboardWarnings warnings={warnings} />
 
-      <div className="space-y-10">
+      {/* The week is the main column; group settings sit in a right rail on
+          desktop so even a quiet week reads as a composed page rather than
+          two lonely cards stacked on cream. */}
+      <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)] lg:gap-8">
         {rotas.length === 0 ? (
           <EmptyState
             icon={Repeat}

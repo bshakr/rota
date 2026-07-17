@@ -66,14 +66,14 @@ export function ReminderOffsetsField({
         chips.map((days) => (
           <span
             key={days}
-            className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary py-1 pr-1 pl-3 text-sm text-secondary-foreground"
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary py-1 pr-1 pl-2.5 text-sm text-secondary-foreground"
           >
             {reminderOffsetLabel(days)}
             <button
               type="button"
               onClick={() => remove(days)}
               aria-label={`Remove reminder ${reminderOffsetLabel(days)}`}
-              className="grid size-5 place-items-center rounded-full text-muted-foreground transition-colors outline-hidden hover:bg-background hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+              className="grid size-5 place-items-center rounded-sm text-muted-foreground transition-colors outline-hidden hover:bg-background hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
             >
               <X className="size-3.5" aria-hidden />
             </button>

@@ -5,7 +5,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Inbox, MoreHorizontal, Plus, TriangleAlert, Users } from "lucide-react";
+import {
+  Inbox,
+  MoreHorizontal,
+  OctagonAlert,
+  Plus,
+  RotateCcw,
+  TriangleAlert,
+  Users,
+} from "lucide-react";
 
 import { Demo, Section } from "@/app/styleguide/_components/spec";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -185,6 +193,44 @@ function CoverForm() {
 
 /* -------------------------------------------------------------------------- */
 
+// The motion language, live. Remounting the row replays the entrances — the
+// exact choreography the member page's shift list uses.
+function MotionDemo() {
+  const [run, setRun] = React.useState(0);
+  return (
+    <div className="flex w-full flex-col gap-4">
+      <div className="grid gap-3 sm:grid-cols-3" key={run}>
+        {["First in", "Second in", "Third in"].map((label, index) => (
+          <Card
+            key={label}
+            size="sm"
+            className="animate-rise"
+            style={{ animationDelay: `${index * 90}ms` }}
+          >
+            <CardHeader>
+              <CardTitle>{label}</CardTitle>
+              <CardDescription>
+                animate-rise · {index * 90}ms delay
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="secondary" size="sm" onClick={() => setRun((n) => n + 1)}>
+          <RotateCcw /> Replay entrances
+        </Button>
+        <span className="text-muted-foreground text-xs">
+          Cards rise and settle with a spring; lists stagger by ~70–90ms per
+          item. Hover any button to feel the lift; press to feel the squash.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
 function LoadingButtonDemo() {
   const [loading, setLoading] = React.useState(false);
   return (
@@ -202,6 +248,8 @@ function LoadingButtonDemo() {
 
 /* -------------------------------------------------------------------------- */
 
+/* -------------------------------------------------------------------------- */
+
 export function Gallery() {
   const [date, setDate] = React.useState<Date | undefined>(SAMPLE_DAY);
 
@@ -210,7 +258,7 @@ export function Gallery() {
       <Section
         id="buttons"
         title="Buttons"
-        intro="Sizes run one step larger than stock shadcn. `lg` is 44px — the comfortable touch target — and is what the member page uses for its one real action. `default` (40px) is the admin workhorse; `xs` and `sm` are for table-row actions, which are mouse targets. `loading` shows a spinner, disables, and sets aria-busy."
+        intro="Soft rounded rectangles, and tactile: the primary is the QUIET OUTLINE — card-white with an iris border and iris label, filling lilac on hover — and every button lifts on hover and squashes on press (spring-eased, stilled under reduced-motion). The neutral outline and ghost hovers blush a fainter lilac, so hierarchy still reads at a glance. `lg` is 44px — the comfortable touch target and the member page's CTA size; `default` (40px) is the admin workhorse; `xs`/`sm` are mouse-target sizes. `loading` shows a spinner, disables, and sets aria-busy."
       >
         <div className="flex flex-col gap-4">
           <Demo label="Variants" hint="variant=">
@@ -241,9 +289,19 @@ export function Gallery() {
       </Section>
 
       <Section
+        id="motion"
+        title="Motion"
+        intro="Springy, never slick — and always a garnish, never a requirement (prefers-reduced-motion stills everything). Two easings: ease-spring for anything that ARRIVES (entrances, hover lifts, the press-and-release of a button), ease-out-soft for fades and colour. Three named animations: animate-pop (dialogs), animate-rise (staggered lists), animate-float (the idle bob on decorative coins)."
+      >
+        <Demo label="Entrances — animate-rise, staggered" className="block">
+          <MotionDemo />
+        </Demo>
+      </Section>
+
+      <Section
         id="status"
         title="Status idiom"
-        intro="Three volumes, and which one to use is a decision, not a preference. A badge whispers (inline status in a table). An alert speaks up (a warning the admin must read). A destructive button shouts (a consequential action). success / warning / info are HouseRota additions — stock shadcn ships only destructive."
+        intro="Three volumes, and which one to use is a decision, not a preference. A badge whispers (inline status in a table). An alert speaks up (a warning the admin must read). A destructive button shouts (a consequential action). The choir assigns the hues: meadow = done, sky = on its way, sunshine = now/attention, cherry = went wrong."
       >
         <div className="flex flex-col gap-4">
           <Demo label="Badge — the whisper" hint='variant="success" …'>
@@ -255,16 +313,30 @@ export function Gallery() {
             <Badge variant="secondary">Fortnightly</Badge>
             <Badge variant="outline">Draft</Badge>
           </Demo>
-          <Demo label="Alert — the raised voice" className="block">
-            <Alert variant="warning" className="w-full">
-              <TriangleAlert />
-              <AlertTitle>Confirm your group&apos;s timezone.</AlertTitle>
-              <AlertDescription>
-                Reminders send at 9am in the group&apos;s timezone, and it has
-                never been confirmed. Texts may arrive at the wrong hour until it
-                is.
-              </AlertDescription>
-            </Alert>
+          <Demo
+            label="Alert — the raised voice"
+            hint="accent rail + icon coin"
+            className="block"
+          >
+            <div className="w-full space-y-3">
+              <Alert variant="warning">
+                <TriangleAlert />
+                <AlertTitle>Confirm your group&apos;s timezone.</AlertTitle>
+                <AlertDescription>
+                  Reminders send at 9am in the group&apos;s timezone, and it has
+                  never been confirmed. Texts may arrive at the wrong hour until
+                  it is.
+                </AlertDescription>
+              </Alert>
+              <Alert variant="destructive">
+                <OctagonAlert />
+                <AlertTitle>1 person didn&apos;t get a text</AlertTitle>
+                <AlertDescription>
+                  Bass had a reminder fail to send. A silently failed text is
+                  worse than no rota — check the carrier error.
+                </AlertDescription>
+              </Alert>
+            </div>
           </Demo>
           <Demo label="Destructive button — the shout">
             <ConfirmDialog
@@ -288,7 +360,7 @@ export function Gallery() {
       <Section
         id="cards"
         title="Cards"
-        intro="One idiom, everywhere: bg-card, a --border hairline, shadow-xs. Every panel on this page is a <Card>. A card lifts off the page with border and shadow, not a lightness step a phone in daylight can't see."
+        intro="One idiom, everywhere: bg-card, a --border hairline, and a soft violet shadow-xs on softly rounded corners. Every panel on this page is a <Card>. A card lifts off the page with border and shadow, not a lightness step a phone in daylight can't see. Titles speak in Fraunces."
       >
         <div className="grid gap-4 md:grid-cols-2">
           <Card>

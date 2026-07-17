@@ -5,21 +5,30 @@
 @custom-variant dark (&:is(.dark *));
 
 /* =============================================================================
-   HouseRota design system — warm & domestic.
+   HouseRota design system — SOLSTICE. The longest, brightest day.
 
-   The member page is opened on a phone, from a text message, by someone who did
-   not ask to be there. It should read like a note on the fridge, not like
-   enterprise software. Warm sand base, ink-not-black text, one confident accent.
+   A chore rota should feel like a friendly consumer app, not enterprise
+   software: light and sunlit, generously round, a little bouncy. The member
+   page — opened from a text, on a phone, by someone who didn't ask to be
+   there — is the emotional hero, and it should make them smile before it asks
+   them to do anything.
+
+   The language: sunlit paper (never grey, never sand), deep violet ink (never
+   black), and a small choir of confident hues that each CARRY MEANING — iris
+   violet is "act", sunshine gold is "now", meadow green is "done", sky blue is
+   "on its way", cherry red is "went wrong", flamingo pink is pure decoration.
+   Shadows are soft and violet-tinted, corners are gently rounded, motion is
+   springy.
 
    THREE LAYERS, and the boundary between them is the whole point:
 
-     1. PAINT     raw pigment. Named --bone-*, --clay-*, etc. Defined below,
-                  OUTSIDE @theme on purpose, so Tailwind generates no utility for
-                  them — there is no `bg-clay-500`.
+     1. PAINT     raw pigment. Named --sunbeam-*, --iris-*, etc. Defined below,
+                  OUTSIDE @theme on purpose, so Tailwind generates no utility
+                  for them — there is no `bg-iris-500`.
 
      2. SEMANTIC  what a colour MEANS (--background, --primary, --success…).
                   Mapped from paint, once per theme. The only layer a component
-                  may touch.
+                  may touch. Gradients and elevations live here too.
 
      3. UTILITY   @theme inline republishes the semantic layer to Tailwind, so
                   `bg-background` / `text-muted-foreground` resolve per theme.
@@ -27,16 +36,15 @@
    WHY THE @theme RESET BELOW EXISTS. `@import "tailwindcss"` ships Tailwind's
    ENTIRE default palette — red-500, slate-800, white, black — and every one of
    them generates a utility. So `className="bg-red-500 text-white"` compiles,
-   renders, and has no dark variant, straight past the design system. Keeping the
-   pigments out of @theme is necessary but NOT sufficient; the defaults have to be
-   torn out too. `--color-*: initial` does that: after it, the ONLY colour
-   utilities that exist are the semantic ones republished below. The escape hatch
-   is closed in the compiler, and the ESLint rule is the fast feedback on top.
+   renders, and has no dark variant, straight past the design system. Keeping
+   the pigments out of @theme is necessary but NOT sufficient; the defaults have
+   to be torn out too. `--color-*: initial` does that: after it, the ONLY colour
+   utilities that exist are the semantic ones republished below.
 
    Every foreground/background pair is verified to meet WCAG AA in BOTH themes —
    4.5:1 for text, 3:1 for control borders and focus rings — with translucent
-   fills composited over their real backdrop. `npm run check:tokens` re-checks it
-   and fails CI on a regression.
+   fills composited over their real backdrop. `npm run check:tokens` re-checks
+   it and fails CI on a regression.
    ========================================================================== */
 
 /* Tear out Tailwind's default palette. Only semantic colours survive, plus the
@@ -50,195 +58,260 @@
 /* --- 1. PAINT ------------------------------------------------------------- */
 /* One pigment set, two mappings. Do not use these directly in components. */
 :root {
-  /* Warm neutral ramp. Sand and bone at the top, cocoa at the bottom.
-     There is no pure white and no pure black anywhere in this system. */
-  --bone-50: oklch(0.995 0.004 83);
-  --bone-100: oklch(0.973 0.009 83);
-  --bone-150: oklch(0.945 0.011 83);
-  --bone-200: oklch(0.9 0.013 78);
-  --bone-250: oklch(0.86 0.014 76);
-  --bone-300: oklch(0.705 0.016 72);
-  --bone-400: oklch(0.58 0.018 60);
-  --bone-500: oklch(0.56 0.018 62);
-  --bone-600: oklch(0.515 0.021 60);
-  --bone-700: oklch(0.36 0.016 62);
-  --bone-750: oklch(0.315 0.015 60);
-  --bone-800: oklch(0.275 0.014 60);
-  --bone-850: oklch(0.265 0.021 55);
-  --bone-900: oklch(0.238 0.014 60);
-  --bone-950: oklch(0.192 0.012 58);
+  /* Sunbeam. The warm-white end of the world: sunlit paper, cream panels,
+     butter hairlines. There is no grey and no pure white anywhere here — even
+     the cards carry a breath of sunshine. */
+  --sunbeam-50: oklch(0.996 0.006 95);
+  --sunbeam-100: oklch(0.977 0.017 92);
+  --sunbeam-150: oklch(0.952 0.026 90);
+  --sunbeam-200: oklch(0.922 0.036 88);
+  --sunbeam-300: oklch(0.86 0.05 86);
 
-  /* Clay. The one confident accent — terracotta, the colour of a plant pot.
-     -500 carries it on light, -300 on dark, -950 is text on top of it.
-     -700 and -250 are the FOCUS ring: a deeper/lighter clay, deliberately
-     distinct from --primary so a recoloured 1px focus border still shows on a
-     clay button. */
-  --clay-250: oklch(0.82 0.1 55);
-  --clay-300: oklch(0.7 0.128 45);
-  --clay-500: oklch(0.54 0.142 42);
-  --clay-700: oklch(0.43 0.13 40);
-  --clay-950: oklch(0.22 0.03 45);
+  /* Twilight. The ink end: violet-cast, never black, never slate. Text in
+     light, the night sky in dark. The violet cast is what keeps dark mode cozy
+     rather than corporate. */
+  --twilight-100: oklch(0.958 0.012 300);
+  --twilight-200: oklch(0.885 0.02 296);
+  --twilight-300: oklch(0.81 0.03 294);
+  --twilight-400: oklch(0.62 0.048 292);
+  --twilight-500: oklch(0.505 0.05 292);
+  --twilight-600: oklch(0.44 0.052 292);
+  --twilight-700: oklch(0.365 0.05 292);
+  --twilight-800: oklch(0.325 0.048 292);
+  --twilight-850: oklch(0.3 0.046 292);
+  --twilight-900: oklch(0.29 0.05 292);
+  --twilight-925: oklch(0.255 0.043 292);
+  --twilight-950: oklch(0.208 0.038 292);
 
-  /* Status. Muted and earthy so they sit beside clay rather than shout over it.
-     These carry the SMS delivery log: delivered / queued / failed. */
-  --sage-400: oklch(0.75 0.11 152);
-  --sage-600: oklch(0.47 0.1 150);
-  --amber-400: oklch(0.8 0.11 76);
-  --amber-600: oklch(0.485 0.11 66);
-  --rust-400: oklch(0.77 0.145 25);
-  --rust-600: oklch(0.5 0.18 27);
-  --dusk-400: oklch(0.79 0.085 235);
-  --dusk-600: oklch(0.478 0.095 245);
+  /* Iris. The action colour — a confident violet. CTAs, links, focus, the
+     active nav item. -600 carries it on light, -300 on dark. -100/-150/-200 are
+     the lilac mists (hover tints). -700 is the FOCUS ring: deeper than
+     --primary on purpose, so a recoloured outline still shows on an iris
+     button. */
+  --iris-100: oklch(0.955 0.024 296);
+  --iris-150: oklch(0.93 0.04 296);
+  --iris-200: oklch(0.9 0.055 296);
+  --iris-250: oklch(0.84 0.095 296);
+  --iris-300: oklch(0.77 0.13 296);
+  --iris-500: oklch(0.505 0.215 296);
+  --iris-600: oklch(0.42 0.19 296);
+  --iris-700: oklch(0.38 0.17 296);
+  --iris-950: oklch(0.24 0.06 296);
+
+  /* Flamingo. Pure joy — the pink in every gradient. Decorative only: it never
+     carries a status and never has to pass a text-contrast check. */
+  --flamingo-200: oklch(0.88 0.06 15);
+  --flamingo-300: oklch(0.78 0.13 12);
+  --flamingo-500: oklch(0.6 0.19 12);
+  --flamingo-600: oklch(0.56 0.21 350);
+
+  /* The status choir. Brighter and more confident than earthy — these are the
+     colours of a sticker sheet, not a spreadsheet. They carry the SMS delivery
+     log: delivered / queued / failed — and "today" wears sunshine. */
+  --sunshine-200: oklch(0.92 0.07 90);
+  --sunshine-300: oklch(0.85 0.13 88);
+  --sunshine-600: oklch(0.483 0.113 72);
+  --meadow-300: oklch(0.8 0.14 152);
+  --meadow-600: oklch(0.47 0.115 152);
+  --sky-200: oklch(0.9 0.045 235);
+  --sky-300: oklch(0.79 0.1 235);
+  --sky-600: oklch(0.47 0.115 245);
+  --cherry-300: oklch(0.78 0.135 18);
+  --cherry-600: oklch(0.515 0.19 20);
 }
 
 /* --- 2. SEMANTIC: light --------------------------------------------------- */
 :root {
   color-scheme: light;
 
-  /* Geometry. Generous and rounded — 14px, not shadcn's default 10px. */
-  --radius: 0.875rem;
+  /* Geometry. Soft, not pillowy — 8px at the base. Buttons, inputs and nav
+     items are gently rounded rectangles; cards sit a step rounder; only the
+     truly circular (avatars, status dots) stays a circle. */
+  --radius: 0.5rem;
 
-  /* Surfaces. The page is sand; cards lift off it by getting *lighter*. */
-  --background: var(--bone-100);
-  --foreground: var(--bone-850);
-  --card: var(--bone-50);
-  --card-foreground: var(--bone-850);
-  --popover: var(--bone-50);
-  --popover-foreground: var(--bone-850);
+  /* Surfaces. The page is sunlit paper; cards float above it as warm white. */
+  --background: var(--sunbeam-100);
+  --foreground: var(--twilight-900);
+  --card: var(--sunbeam-50);
+  --card-foreground: var(--twilight-900);
+  --popover: var(--sunbeam-50);
+  --popover-foreground: var(--twilight-900);
 
-  /* The accent. `--primary` is the clay: CTAs, links, focus fill. It is the only
-     saturated colour in a default screen. Note that shadcn's `--accent` below is
-     NOT the brand colour — it is the subtle hover tint. */
-  --primary: var(--clay-500);
-  --primary-foreground: var(--bone-50);
+  /* The action colour. `--primary` is iris: CTAs, links, focus fill. -600 —
+     a deep, confident violet — rather than the brighter -500, which read
+     cheap as a button fill. Note that shadcn's `--accent` below is NOT the
+     brand colour — it is the hover tint. */
+  --primary: var(--iris-600);
+  --primary-foreground: var(--sunbeam-50);
 
-  /* muted / secondary / accent. These occupy adjacent rungs of the neutral ramp
-     and their roles genuinely overlap in a palette this tight, so they map to
-     just TWO pigments, not three, and that is deliberate rather than accidental:
-       --muted     one step off the card — recessed panels, table headers.
-       --accent    the hover tint; one step STRONGER than muted so hover reads.
-       --secondary a secondary button's fill; shares the accent value.
-     Splitting secondary from accent here would be false precision. */
-  --muted: var(--bone-150);
-  --muted-foreground: var(--bone-600);
-  --accent: var(--bone-200);
-  --accent-foreground: var(--bone-850);
-  --secondary: var(--bone-200);
-  --secondary-foreground: var(--bone-850);
+  /* muted / secondary / accent — and unlike the last system, these are NOT the
+     same pigment, because the split is meaningful here:
+       --muted     warm cream, one step off the card — recessed panels, table
+                   headers. Stays in the sunbeam family.
+       --accent    the hover tint — and it BLUSHES LILAC. A hovered row or menu
+                   item glows faintly iris instead of going grey. That tiny
+                   moment of colour is a signature of this direction.
+       --secondary a secondary button's fill: a fuller lilac with deep iris
+                   text, so "Cancel" is friendly rather than administrative. */
+  --muted: var(--sunbeam-150);
+  --muted-foreground: var(--twilight-500);
+  --accent: var(--iris-150);
+  --accent-foreground: var(--twilight-900);
+  --secondary: var(--iris-200);
+  --secondary-foreground: var(--iris-700);
 
-  /* Status. In the settled idiom these are TINTS: a badge whispers (text-success
-     on success/10), an alert speaks up (text-warning + a border). None uses a
-     solid fill, so success/warning/info have no -foreground — that would be a
-     name for a pixel nothing paints. Only the destructive BUTTON is solid, so
-     only --destructive keeps a foreground. Add one back the day something solid
-     needs it, with intent. */
-  --success: var(--sage-600);
-  --warning: var(--amber-600);
-  --info: var(--dusk-600);
-  --destructive: var(--rust-600);
-  --destructive-foreground: var(--bone-50);
+  /* Status. In the settled idiom these are TINTS: a badge whispers
+     (text-success on success/10), an alert speaks up. None uses a solid fill,
+     so success/warning/info have no -foreground. Only the destructive BUTTON
+     is solid, so only --destructive keeps a foreground. */
+  --success: var(--meadow-600);
+  --warning: var(--sunshine-600);
+  --info: var(--sky-600);
+  --destructive: var(--cherry-600);
+  --destructive-foreground: var(--sunbeam-50);
 
   /* Lines. Two of them, and the distinction is not cosmetic:
-       --border is a decorative hairline (card edges, separators).
+       --border is a decorative hairline (card edges, separators) — butter.
        --input is a real UI boundary (form controls) and must clear 3:1. */
-  --border: var(--bone-200);
-  --input: var(--bone-400);
+  --border: var(--sunbeam-200);
+  --input: var(--twilight-400);
 
-  /* Focus. Its OWN colour, distinct from --primary, and always paired with
-     `ring-offset-2 ring-offset-<surface>` so the ring sits in a gap of the
-     surface colour and is measured against THAT, not against a same-colour
-     button. Solid, never translucent — a `/50` ring cannot be contrast-checked. */
-  --ring: var(--clay-700);
+  /* Focus. Its OWN colour, a deeper iris distinct from --primary, always
+     paired with an offset so the ring sits in a gap of the surface colour.
+     Solid, never translucent — a `/50` ring cannot be contrast-checked. */
+  --ring: var(--iris-700);
 
-  /* The wash behind a modal. Warm ink in light. Kept as a token because
-     `bg-black/10` is invisible over a dark page and there is no pure black in
-     this system anyway. */
-  --overlay: oklch(0.265 0.021 55 / 0.42);
+  /* The wash behind a modal. Violet ink in light. */
+  --overlay: oklch(0.29 0.05 292 / 0.45);
 
-  /* Elevation. Shadows are warm brown, never black — a black shadow on sand
-     reads as grime. This system separates surfaces by lightness first and shadow
-     second, but a floating surface (dialog, popover) needs both. */
-  --elevation-xs: 0 1px 2px 0 oklch(0.265 0.021 55 / 0.05);
-  --elevation-sm: 0 1px 3px 0 oklch(0.265 0.021 55 / 0.08), 0 1px 2px -1px oklch(0.265 0.021 55 / 0.06);
-  --elevation-md: 0 4px 12px -2px oklch(0.265 0.021 55 / 0.1), 0 2px 6px -2px oklch(0.265 0.021 55 / 0.06);
-  --elevation-lg: 0 12px 28px -6px oklch(0.265 0.021 55 / 0.14), 0 6px 12px -6px oklch(0.265 0.021 55 / 0.08);
+  /* Elevation. Shadows are SOFT AND VIOLET, never black or brown — a coloured
+     shadow is what makes a light UI feel lit rather than printed. Ambient +
+     key at low alpha, large blur. */
+  --elevation-xs:
+    0 1px 2px 0 oklch(0.35 0.09 296 / 0.05), 0 2px 8px -2px oklch(0.35 0.09 296 / 0.08);
+  --elevation-sm:
+    0 2px 4px -1px oklch(0.35 0.09 296 / 0.07), 0 6px 16px -4px oklch(0.35 0.09 296 / 0.11);
+  --elevation-md:
+    0 4px 8px -2px oklch(0.35 0.09 296 / 0.09), 0 12px 28px -6px oklch(0.35 0.09 296 / 0.15);
+  --elevation-lg:
+    0 8px 16px -4px oklch(0.35 0.09 296 / 0.11), 0 24px 48px -12px oklch(0.35 0.09 296 / 0.2);
+  /* The iris glow — held in reserve. The quiet-outline primary rests on
+     shadow-xs; keep these for a future moment that earns a glow. */
+  --elevation-primary:
+    0 2px 4px -2px oklch(0.42 0.19 296 / 0.34), 0 6px 16px -4px oklch(0.42 0.19 296 / 0.3);
+  --elevation-primary-lg:
+    0 4px 8px -2px oklch(0.42 0.19 296 / 0.36), 0 10px 24px -6px oklch(0.42 0.19 296 / 0.36);
 
-  /* Charts: clay, sage, amber, dusk, and a plum to round out five. */
-  --chart-1: var(--clay-500);
-  --chart-2: var(--sage-600);
-  --chart-3: var(--amber-600);
-  --chart-4: var(--dusk-600);
-  --chart-5: oklch(0.52 0.1 330);
+  /* Gradients. Defined per theme so dark keeps the personality without the
+     glare. Sunrise is the brand wash (hero bands, the wordmark tile, empty-
+     state coins); page is the barely-there wash behind every screen. There is
+     deliberately NO CTA gradient: the primary button is a QUIET OUTLINE —
+     card-white with an iris border and label — presence through contrast,
+     not fill. */
+  --gradient-sunrise: linear-gradient(
+    115deg,
+    var(--sunshine-200) 0%,
+    var(--flamingo-200) 48%,
+    var(--iris-250) 100%
+  );
+  --gradient-page:
+    radial-gradient(1100px 520px at 88% -6%, oklch(0.88 0.06 15 / 0.26), transparent 64%),
+    radial-gradient(950px 480px at -12% -2%, oklch(0.9 0.045 235 / 0.22), transparent 60%);
 
-  /* The admin sidebar sits one step deeper than the page, like a worktop. */
-  --sidebar: var(--bone-150);
-  --sidebar-foreground: var(--bone-850);
-  --sidebar-primary: var(--clay-500);
-  --sidebar-primary-foreground: var(--bone-50);
-  --sidebar-accent: var(--bone-250);
-  --sidebar-accent-foreground: var(--bone-850);
-  --sidebar-border: var(--bone-250);
+  /* Charts: the full choir, one hue each. */
+  --chart-1: var(--iris-500);
+  --chart-2: var(--flamingo-500);
+  --chart-3: var(--sunshine-600);
+  --chart-4: var(--meadow-600);
+  --chart-5: var(--sky-600);
+
+  /* The admin sidebar is WARM PAPER — card-white against the cream page, so
+     the chrome stays in the sunbeam family and the deep-iris active item is
+     the only saturated thing on it. The brand hue survives as the lilac
+     hover blush (--sidebar-accent). */
+  --sidebar: var(--sunbeam-50);
+  --sidebar-foreground: var(--twilight-900);
+  --sidebar-primary: var(--iris-600);
+  --sidebar-primary-foreground: var(--sunbeam-50);
+  --sidebar-accent: var(--iris-150);
+  --sidebar-accent-foreground: var(--twilight-900);
+  --sidebar-border: var(--sunbeam-200);
   /* Focus ring for controls sitting ON the sidebar, measured against it. */
-  --sidebar-ring: var(--clay-700);
+  --sidebar-ring: var(--iris-700);
 }
 
 /* --- 2. SEMANTIC: dark ---------------------------------------------------- */
-/* Warm dark — cocoa and espresso, not slate. Same pigments, remapped. Cards
-   lift off the page by getting *lighter*, the same rule as in light. */
+/* Midsummer night — deep violet-navy, warm white text, the accents switched to
+   their bright register. Same pigments, remapped; cards still lift by getting
+   lighter. Cozy, not gloomy: the aurora page-wash keeps a hint of colour. */
 .dark {
   color-scheme: dark;
 
-  --background: var(--bone-950);
-  --foreground: var(--bone-150);
-  --card: var(--bone-900);
-  --card-foreground: var(--bone-150);
-  --popover: var(--bone-900);
-  --popover-foreground: var(--bone-150);
+  --background: var(--twilight-950);
+  --foreground: var(--twilight-100);
+  --card: var(--twilight-925);
+  --card-foreground: var(--twilight-100);
+  --popover: var(--twilight-925);
+  --popover-foreground: var(--twilight-100);
 
-  --primary: var(--clay-300);
-  --primary-foreground: var(--clay-950);
+  --primary: var(--iris-300);
+  --primary-foreground: var(--iris-950);
 
-  --muted: var(--bone-800);
-  --muted-foreground: var(--bone-300);
-  --accent: var(--bone-750);
-  --accent-foreground: var(--bone-150);
-  --secondary: var(--bone-750);
-  --secondary-foreground: var(--bone-150);
+  --muted: var(--twilight-850);
+  --muted-foreground: var(--twilight-300);
+  --accent: var(--twilight-800);
+  --accent-foreground: var(--twilight-100);
+  --secondary: var(--twilight-800);
+  --secondary-foreground: var(--twilight-100);
 
-  --success: var(--sage-400);
-  --warning: var(--amber-400);
-  --info: var(--dusk-400);
-  --destructive: var(--rust-400);
-  --destructive-foreground: var(--bone-950);
+  --success: var(--meadow-300);
+  --warning: var(--sunshine-300);
+  --info: var(--sky-300);
+  --destructive: var(--cherry-300);
+  --destructive-foreground: var(--twilight-950);
 
-  --border: var(--bone-700);
-  --input: var(--bone-500);
-  --ring: var(--clay-250);
+  --border: var(--twilight-700);
+  --input: var(--twilight-400);
+  --ring: var(--iris-250);
 
-  /* A dark page has nothing for a warm wash to tint, so the scrim goes black and
-     leans harder — the modal's separation has to come from the wash and the
-     shadow, not from a lightness step. */
-  --overlay: oklch(0 0 0 / 0.62);
+  /* A dark page needs a heavier wash — the modal's separation comes from the
+     scrim and the shadow, not a lightness step. */
+  --overlay: oklch(0.13 0.03 292 / 0.66);
 
-  --elevation-xs: 0 1px 2px 0 oklch(0 0 0 / 0.3);
-  --elevation-sm: 0 1px 3px 0 oklch(0 0 0 / 0.45), 0 1px 2px -1px oklch(0 0 0 / 0.4);
-  --elevation-md: 0 4px 12px -2px oklch(0 0 0 / 0.5), 0 2px 6px -2px oklch(0 0 0 / 0.4);
-  --elevation-lg: 0 12px 28px -6px oklch(0 0 0 / 0.6), 0 6px 12px -6px oklch(0 0 0 / 0.45);
+  --elevation-xs: 0 1px 2px 0 oklch(0 0 0 / 0.35), 0 2px 8px -2px oklch(0 0 0 / 0.35);
+  --elevation-sm: 0 2px 4px -1px oklch(0 0 0 / 0.4), 0 6px 16px -4px oklch(0 0 0 / 0.45);
+  --elevation-md: 0 4px 8px -2px oklch(0 0 0 / 0.45), 0 12px 28px -6px oklch(0 0 0 / 0.5);
+  --elevation-lg: 0 8px 16px -4px oklch(0 0 0 / 0.5), 0 24px 48px -12px oklch(0 0 0 / 0.6);
+  --elevation-primary:
+    0 2px 4px -2px oklch(0.77 0.13 296 / 0.2), 0 6px 16px -4px oklch(0.77 0.13 296 / 0.22);
+  --elevation-primary-lg:
+    0 4px 8px -2px oklch(0.77 0.13 296 / 0.24), 0 10px 24px -6px oklch(0.77 0.13 296 / 0.28);
 
-  --chart-1: var(--clay-300);
-  --chart-2: var(--sage-400);
-  --chart-3: var(--amber-400);
-  --chart-4: var(--dusk-400);
-  --chart-5: oklch(0.72 0.1 330);
+  /* Jewel-toned at night: the same sunrise, after dark. */
+  --gradient-sunrise: linear-gradient(
+    115deg,
+    oklch(0.45 0.09 60) 0%,
+    oklch(0.42 0.12 356) 48%,
+    oklch(0.42 0.14 296) 100%
+  );
+  --gradient-page:
+    radial-gradient(1100px 520px at 88% -6%, oklch(0.45 0.12 296 / 0.22), transparent 64%),
+    radial-gradient(950px 480px at -12% -2%, oklch(0.5 0.11 350 / 0.14), transparent 60%);
 
-  --sidebar: var(--bone-900);
-  --sidebar-foreground: var(--bone-150);
-  --sidebar-primary: var(--clay-300);
-  --sidebar-primary-foreground: var(--clay-950);
-  --sidebar-accent: var(--bone-750);
-  --sidebar-accent-foreground: var(--bone-150);
-  --sidebar-border: var(--bone-700);
-  --sidebar-ring: var(--clay-250);
+  --chart-1: var(--iris-300);
+  --chart-2: var(--flamingo-300);
+  --chart-3: var(--sunshine-300);
+  --chart-4: var(--meadow-300);
+  --chart-5: var(--sky-300);
+
+  --sidebar: var(--twilight-925);
+  --sidebar-foreground: var(--twilight-100);
+  --sidebar-primary: var(--iris-300);
+  --sidebar-primary-foreground: var(--iris-950);
+  --sidebar-accent: var(--twilight-800);
+  --sidebar-accent-foreground: var(--twilight-100);
+  --sidebar-border: var(--twilight-700);
+  --sidebar-ring: var(--iris-250);
 }
 
 /* --- 3. UTILITY: republish semantics to Tailwind -------------------------- */
@@ -283,35 +356,97 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  /* Type. Figtree is a geometric humanist: open apertures, tall x-height, round
-     terminals. Friendly rather than corporate, and legible on a phone held at
-     arm's length — the only place the member page is ever seen. Geist was
-     rejected for being Vercel's typeface, which lands straight back in the
-     dev-tool aesthetic. Mono is for machine strings only: tokens, Twilio SIDs. */
-  --font-sans: var(--font-figtree);
-  --font-heading: var(--font-figtree);
-  --font-mono: var(--font-jetbrains-mono);
+  /* Type. An EXPRESSIVE pairing:
+       --font-heading  Fraunces — a warm, slightly wonky display serif with a
+                       SOFT axis. It is the voice of the product: greetings,
+                       card titles, the wordmark. Set soft; it smiles.
+       --font-sans     Plus Jakarta Sans — a warm geometric humanist for body
+                       copy. Friendly counters, legible on a phone at arm's
+                       length, which is the only place the member page is seen.
+       --font-mono     Space Mono — machine strings only (tokens, Twilio SIDs),
+                       and even those get a little charm. */
+  --font-sans: var(--font-jakarta);
+  --font-heading: var(--font-fraunces);
+  --font-mono: var(--font-space-mono);
 
-  /* One step above Tailwind's text-3xl, for the member page's greeting. */
-  --text-display: 2rem;
-  --text-display--line-height: 1.15;
-  --text-display--letter-spacing: -0.02em;
+  /* The member page's greeting. Fraunces carries it, so it can sit bigger than
+     the old system's 2rem without shouting. */
+  --text-display: 2.5rem;
+  --text-display--line-height: 1.08;
+  --text-display--letter-spacing: -0.01em;
 
   /* Radii derive from --radius, so re-rounding the whole system is one edit.
-     Keep 4xl: Badge relies on `rounded-4xl` for its pill shape, and a missing
-     token means Tailwind emits no utility and badges turn into rectangles. */
+     With --radius at 8px this scale runs 4 → 24px: lg (8px) is everything
+     tappable — buttons, inputs, nav items; md is badges, chips and menu
+     items; xl (12px) is cards; 2xl (16px) is dialogs, date coins and empty
+     states; 3xl (20px) is the hero band. Nothing interactive is a pill. */
   --radius-sm: calc(var(--radius) * 0.5);
-  --radius-md: calc(var(--radius) * 0.7);
+  --radius-md: calc(var(--radius) * 0.75);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.3);
-  --radius-2xl: calc(var(--radius) * 1.7);
-  --radius-3xl: calc(var(--radius) * 2.1);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-xl: calc(var(--radius) * 1.5);
+  --radius-2xl: calc(var(--radius) * 2);
+  --radius-3xl: calc(var(--radius) * 2.5);
+  --radius-4xl: calc(var(--radius) * 3);
 
   --shadow-xs: var(--elevation-xs);
   --shadow-sm: var(--elevation-sm);
   --shadow-md: var(--elevation-md);
   --shadow-lg: var(--elevation-lg);
+  /* shadow-primary / shadow-primary-lg: the iris glow under a CTA. */
+  --shadow-primary: var(--elevation-primary);
+  --shadow-primary-lg: var(--elevation-primary-lg);
+
+  /* Motion. Springy, never slick. `ease-spring` overshoots and settles — use
+     it for anything that ARRIVES (cards, dialogs, hover lifts). `ease-out-soft`
+     is the calm sibling for fades and colour. Durations: 150–250ms for
+     feedback, 400–500ms for entrances. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Entrance choreography. `animate-pop` is the standard arrival (dialogs, the
+     first paint of a hero); `animate-rise` is for list items, staggered with an
+     inline animation-delay; `animate-float` is the idle bob on decorative
+     coins. All are stilled by the reduced-motion block below. */
+  --animate-pop: solstice-pop 0.45s var(--ease-spring) both;
+  --animate-rise: solstice-rise 0.5s var(--ease-spring) both;
+  --animate-float: solstice-float 5s ease-in-out infinite;
+
+  /* These animate the INDEPENDENT scale/translate/rotate properties, not
+     `transform`, so they compose with layout transforms (a dialog's centering
+     -translate-x-1/2 survives its own entrance). */
+  @keyframes solstice-pop {
+    from {
+      opacity: 0;
+      scale: 0.94;
+    }
+    to {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+  @keyframes solstice-rise {
+    from {
+      opacity: 0;
+      translate: 0 14px;
+      scale: 0.98;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+      scale: 1;
+    }
+  }
+  @keyframes solstice-float {
+    0%,
+    100% {
+      translate: 0 0;
+      rotate: -3deg;
+    }
+    50% {
+      translate: 0 -6px;
+      rotate: 3deg;
+    }
+  }
 }
 
 @layer base {
@@ -326,9 +461,46 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* The page wash: a breath of peach and sky in the top corners (aurora in
+       dark). Fixed so it doesn't scroll away, subtle enough that every text
+       token still clears AA over it. */
+    background-image: var(--gradient-page);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+  }
+  /* Fraunces smiles when it's soft. WONK stays 0 by default — see .font-wonky. */
+  .font-heading {
+    font-variation-settings:
+      "SOFT" 100,
+      "WONK" 0;
+  }
+  /* Selection in lilac, because even highlighting text can be cheerful. */
+  ::selection {
+    background: var(--accent);
+    color: var(--accent-foreground);
   }
   /* Dates and counts must not jitter as they change. */
   :where(table, time, [data-numeric]) {
     font-variant-numeric: tabular-nums;
+  }
+}
+
+/* The wonky cut of Fraunces — reserved for the display greeting, where one
+   slightly hand-drawn letterform is a wink, not a typo. */
+@utility font-wonky {
+  font-variation-settings:
+    "SOFT" 100,
+    "WONK" 1;
+}
+
+/* Springy motion is a garnish, never a requirement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

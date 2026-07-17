@@ -14,8 +14,11 @@ export default async function AdminLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const { user } = await withAuth({ ensureSignedIn: true });
+  const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || undefined;
 
   return (
-    <AdminShell account={<SignOutButton email={user.email} />}>{children}</AdminShell>
+    <AdminShell account={<SignOutButton email={user.email} name={name} />}>
+      {children}
+    </AdminShell>
   );
 }

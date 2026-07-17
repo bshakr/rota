@@ -83,11 +83,18 @@ export function ShiftList({
 
   return (
     <ul className="flex flex-col gap-4">
-      {shifts.map((shift) => {
+      {shifts.map((shift, index) => {
         const state = shiftStateFor(shift, memberId);
         if (!state) return null;
         return (
-          <li key={shift.id}>
+          // Staggered arrival: each card rises and settles a beat after the
+          // one above it (springy, stilled under prefers-reduced-motion).
+          // Capped so a long list doesn't keep the reader waiting.
+          <li
+            key={shift.id}
+            className="animate-rise"
+            style={{ animationDelay: `${Math.min(index, 5) * 70}ms` }}
+          >
             <ShiftCard
               rota={shift.rota_name}
               date={civilDate(shift.due_on)}

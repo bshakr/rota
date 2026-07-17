@@ -15,12 +15,22 @@ import { authkitProxy } from "@workos-inc/authkit-nextjs";
 //     it in here; the proxy then stamps an `x-redirect-uri` header that
 //     `getSignInUrl()` / `withAuth()` reuse when building the sign-in redirect.
 //
-//   - `middlewareAuth` is left disabled. Auth is enforced in one obvious, testable
-//     place — the admin layout's `withAuth({ ensureSignedIn: true })` — rather than
-//     by an allowlist here, which also lets the member route stay entirely off the
-//     matcher (see the exclusions below).
+//   - `middlewareAuth` is ENABLED, and it has to be. `withAuth({ ensureSignedIn: true })`
+//     starts sign-in by writing the short-lived PKCE cookie, but Next 16 forbids
+//     writing a cookie during a layout/page render ("Cookies can only be modified in
+//     a Server Action or Route Handler"). In middleware-auth mode the *proxy* performs
+//     the unauthenticated redirect — cookie writes are allowed here — so a logged-out
+//     visitor is bounced to WorkOS before the admin layout ever renders. Every matched
+//     path therefore requires a session except those in `unauthenticatedPaths`. The
+//     member route stays off the matcher entirely (see the exclusions below); the
+//     landing page at `/` is public (the page itself redirects a signed-in admin
+//     to /dashboard); the styleguide is the one open dev page.
 export default authkitProxy({
   redirectUri: process.env.WORKOS_REDIRECT_URI,
+  middlewareAuth: {
+    enabled: true,
+    unauthenticatedPaths: ["/", "/styleguide"],
+  },
 });
 
 // The matcher MUST be an inline literal: Next statically parses this field at
