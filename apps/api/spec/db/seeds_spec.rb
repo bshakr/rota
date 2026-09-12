@@ -21,8 +21,8 @@ RSpec.describe "db/seeds.rb" do
     expect(group.timezone).to eq("Europe/London")
   end
 
-  it "produces three members with dialable numbers" do
-    expect(group.members.pluck(:name)).to contain_exactly("Alice", "Bob", "Cara")
+  it "produces four members with dialable numbers" do
+    expect(group.members.pluck(:name)).to contain_exactly("Ciara", "Bass", "Eliza", "Raph")
     expect(group.members).to all(be_contactable)
     expect(group.members.map { |m| Phonelib.parse(m.phone_e164).valid? }).to all(be(true))
   end
@@ -39,7 +39,7 @@ RSpec.describe "db/seeds.rb" do
   it "puts the whole house on the kitchen rota, in running order" do
     kitchen = group.rotas.find_by!(name: "Kitchen deep clean")
 
-    expect(kitchen.members.map(&:name)).to eq(%w[Alice Bob Cara])
+    expect(kitchen.members.map(&:name)).to eq(%w[Ciara Bass Eliza Raph])
     expect(kitchen.reminder_offsets).to eq([ 3, 0 ])
   end
 
@@ -47,7 +47,7 @@ RSpec.describe "db/seeds.rb" do
   it "puts only some of the house on the bins rota" do
     bins = group.rotas.find_by!(name: "Bins out")
 
-    expect(bins.members.map(&:name)).to eq(%w[Bob Cara])
+    expect(bins.members.map(&:name)).to eq(%w[Bass Eliza])
   end
 
   # Shifts come from ShiftGenerator. Inventing rows here would mean inventing them by a different
