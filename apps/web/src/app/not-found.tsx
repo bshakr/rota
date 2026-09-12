@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/wordmark";
 
 // 404. Renders inside the bare root layout, so it works whether the missing URL
-// looked like an admin route or a member link.
+// looked like an admin route or a member magic link. The copy assumes the
+// second case, because that is the one a housemate hits: a link from a text
+// that has already been used, or retyped with a character missing.
 export default function NotFound() {
   return (
     <div className="flex min-h-full flex-1 flex-col">
@@ -19,10 +21,10 @@ export default function NotFound() {
       <Container width="prose" className="flex flex-1 items-center py-16">
         <EmptyState
           icon={MapPinOff}
-          title="This page isn't here"
-          description="The link may be old, or mistyped. If it came from a text message about your turn, ask whoever sent it for a fresh one."
+          title="That page wandered off."
+          description="The link may be old, or it may have a typo in it. If it came from a text about your turn, ask whoever sent it for a fresh one."
           action={
-            <Button asChild variant="outline">
+            <Button asChild>
               <Link href="/">Back to the start</Link>
             </Button>
           }
