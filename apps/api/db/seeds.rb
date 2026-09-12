@@ -22,10 +22,11 @@ group = Group.find_or_create_by!(workos_organization_id: "org_demo_flat_4") do |
   g.timezone = "Europe/London"
 end
 
-alice, bob, cara = [
-  [ "Alice", "+447400123001" ],
-  [ "Bob",   "+447400123002" ],
-  [ "Cara",  "+447400123003" ]
+ciara, bass, eliza, raph = [
+  [ "Ciara", "+447400123001" ],
+  [ "Bass",  "+447400123002" ],
+  [ "Eliza", "+447400123003" ],
+  [ "Raph",  "+447400123004" ]
 ].map do |name, phone|
   group.members.find_or_create_by!(name: name) { |member| member.phone_e164 = phone }
 end
@@ -52,13 +53,13 @@ bins = group.rotas.find_or_create_by!(name: "Bins out") do |rota|
 end
 
 # Everyone takes a turn at the kitchen...
-[ alice, bob, cara ].each_with_index do |member, position|
+[ ciara, bass, eliza, raph ].each_with_index do |member, position|
   kitchen.rota_positions.find_or_create_by!(member: member) { |p| p.position = position }
 end
 
-# ...but the bins are only Bob and Cara's, because a rota's roster is its own ordered subset of
+# ...but the bins are only Bass and Eliza's, because a rota's roster is its own ordered subset of
 # the group, not the whole house.
-[ bob, cara ].each_with_index do |member, position|
+[ bass, eliza ].each_with_index do |member, position|
   bins.rota_positions.find_or_create_by!(member: member) { |p| p.position = position }
 end
 
