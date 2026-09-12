@@ -9,6 +9,10 @@ is the Soft Clay visual direction, and [`docs/superpowers/specs/2026-07-13-house
 is the product and scheduling design. Read them before changing anything structural. The
 decisions in them were made on purpose.
 
+Household member access: [`docs/household-entry.md`](docs/household-entry.md)
+explains sharing the `/h/<slug>` entry link from dashboard settings, requesting
+personal links by SMS, delivery limits, and API-first rollout checks.
+
 ## Layout
 
 ```
