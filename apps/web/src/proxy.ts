@@ -29,7 +29,9 @@ export default authkitProxy({
   redirectUri: process.env.WORKOS_REDIRECT_URI,
   middlewareAuth: {
     enabled: true,
-    unauthenticatedPaths: ["/", "/styleguide"],
+    // The sign-in handler owns PKCE initiation; don't bounce it back to itself
+    // through proxy-initiated login. The reauth prompt must also remain readable.
+    unauthenticatedPaths: ["/", "/styleguide", "/auth/sign-in", "/auth/reauth"],
   },
 });
 

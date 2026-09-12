@@ -42,6 +42,7 @@ describe("admin API client", () => {
     vi.clearAllMocks();
     (withAuth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       accessToken: "JWT_ADMIN_TOKEN",
+      organizationId: "org_house",
       user: { id: "u1" },
     });
     vi.stubGlobal("fetch", vi.fn(async () => respond(200, { ok: true })));
@@ -58,7 +59,7 @@ describe("admin API client", () => {
     await getMe();
     const { url, headers } = lastFetchCall();
 
-    expect(withAuth).toHaveBeenCalledWith({ ensureSignedIn: true });
+    expect(withAuth).toHaveBeenCalledWith();
     expect(headers.Authorization).toBe("Bearer JWT_ADMIN_TOKEN");
     expect(url).toBe("http://rails.test/api/me");
   });
@@ -105,9 +106,21 @@ describe("admin API client", () => {
       respond(401, { error: "unauthorized" }),
     );
 
-    await expect(getMe()).rejects.toThrow("REDIRECT:https://auth.workos.test/sign-in");
-    expect(getSignInUrl).toHaveBeenCalledOnce();
-    expect(redirectMock).toHaveBeenCalledWith("https://auth.workos.test/sign-in");
+    await expect(getMe()).rejects.toThrow("REDIRECT:/auth/reauth");
+    expect(getSignInUrl).not.toHaveBeenCalled();
+    expect(redirectMock).toHaveBeenCalledWith("/auth/reauth");
+  });
+
+  it("sends an organization-less signup to setup before any household API request", async () => {
+    vi.mocked(withAuth).mockResolvedValue({ user: { id: "new_user" } } as never);
+    await expect(getMe()).rejects.toThrow("REDIRECT:/setup");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("sends an expired session to a cookie-capable login handler", async () => {
+    vi.mocked(withAuth).mockResolvedValue({ user: null });
+    await expect(getMe()).rejects.toThrow("REDIRECT:/auth/sign-in");
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("propagates other errors as a typed ApiError without redirecting", async () => {
