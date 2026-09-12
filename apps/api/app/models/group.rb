@@ -19,6 +19,9 @@ class Group < ApplicationRecord
 
   validates :workos_organization_id, presence: true, uniqueness: true
   validates :name, presence: true
+  before_validation :assign_slug, on: :create
+  validates :slug, presence: true, uniqueness: true, format: { with: /\A[a-z0-9]+(?:-[a-z0-9]+)*\z/ }, length: { maximum: 80 }
+  attr_readonly :slug
   validates :timezone, presence: true
   validate :timezone_must_be_recognised
 
@@ -54,6 +57,13 @@ class Group < ApplicationRecord
   end
 
   private
+
+  def assign_slug
+    # Names are not globally unique. A short suffix keeps links stable and avoids
+    # making household creation contend for a name. Renaming never breaks a link.
+    base = name.to_s.parameterize.gsub(/[^a-z0-9]+/, "-").first(60).gsub(/\A-+|-+\z/, "").presence || "household"
+    self.slug ||= "#{base}-#{SecureRandom.hex(4)}"
+  end
 
   def timezone_must_be_recognised
     return if timezone.blank?

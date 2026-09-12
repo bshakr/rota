@@ -26,6 +26,8 @@ class SmsMessageSerializer < ApplicationSerializer
   end
 
   def shift
+    return nil unless record.shift
+
     {
       id: record.shift_id,
       rota_id: record.shift.rota_id,

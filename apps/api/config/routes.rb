@@ -5,6 +5,11 @@ Rails.application.routes.draw do
   # Can be used by load balancers and uptime monitors to verify that the app is live.
   get "up" => "rails/health#show", as: :rails_health_check
 
+  namespace :public do
+    get "households/:slug", to: "households#show"
+    post "households/:slug/request_link", to: "households#request_link"
+  end
+
   # Twilio's delivery receipts. Unauthenticated by design and signature-validated instead — see
   # Webhooks::TwilioStatusController.
   post "webhooks/twilio/status" => "webhooks/twilio_status#create", as: :twilio_status_webhook
