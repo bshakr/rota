@@ -63,6 +63,7 @@ export interface Me {
 export interface Group {
   id: number;
   name: string;
+  slug: string;
   timezone: string;
   timezone_confirmed: boolean;
   timezone_confirmed_at: string | null;
@@ -286,7 +287,7 @@ export interface ShiftUpdateParams {
 // SMS delivery log — /api/sms_messages
 // ---------------------------------------------------------------------------
 
-export type SmsKind = "reminder" | "cover_notice";
+export type SmsKind = "reminder" | "cover_notice" | "member_login";
 
 /**
  * The carrier's delivery status (queued, sending, sent, delivered, undelivered,
@@ -314,7 +315,7 @@ export interface SmsMessage {
   sent_at: string | null;
   created_at: string;
   member: MemberRef;
-  shift: SmsMessageShiftRef;
+  shift: SmsMessageShiftRef | null;
 }
 
 export interface SmsMessagesResponse {

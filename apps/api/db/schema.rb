@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_13_110001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_12_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -27,10 +27,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_13_110001) do
   create_table "groups", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "name", null: false
+    t.string "slug", default: -> { "('household-'::text || substr(md5((random())::text), 1, 16))" }, null: false
     t.string "timezone", null: false
     t.datetime "timezone_confirmed_at"
     t.datetime "updated_at", null: false
     t.string "workos_organization_id", null: false
+    t.index ["slug"], name: "index_groups_on_slug", unique: true
     t.index ["workos_organization_id"], name: "index_groups_on_workos_organization_id", unique: true
   end
 
@@ -99,17 +101,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_13_110001) do
     t.string "kind", null: false
     t.bigint "member_id", null: false
     t.datetime "sent_at"
-    t.bigint "shift_id", null: false
+    t.bigint "shift_id"
     t.string "status", default: "pending", null: false
     t.string "twilio_sid"
     t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_sms_messages_on_login_time", where: "((kind)::text = 'member_login'::text)"
     t.index ["member_id"], name: "index_sms_messages_on_member_id"
     t.index ["shift_id", "days_before"], name: "index_sms_messages_on_reminder_idempotency", unique: true, where: "((kind)::text = 'reminder'::text)"
     t.index ["shift_id"], name: "index_sms_messages_on_shift_id"
     t.index ["twilio_sid"], name: "index_sms_messages_on_twilio_sid", unique: true
     t.check_constraint "days_before IS NULL OR days_before >= 0", name: "sms_messages_days_before_non_negative"
     t.check_constraint "kind::text <> 'reminder'::text OR days_before IS NOT NULL", name: "sms_messages_reminder_has_days_before"
-    t.check_constraint "kind::text = ANY (ARRAY['reminder'::character varying, 'cover_notice'::character varying]::text[])", name: "sms_messages_kind_known"
+    t.check_constraint "kind::text = 'member_login'::text AND shift_id IS NULL AND days_before IS NULL OR kind::text <> 'member_login'::text AND shift_id IS NOT NULL", name: "sms_messages_shift_for_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['reminder'::character varying, 'cover_notice'::character varying, 'member_login'::character varying]::text[])", name: "sms_messages_kind_known"
     t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'sending'::character varying, 'sent'::character varying, 'delivered'::character varying, 'failed'::character varying]::text[])", name: "sms_messages_status_known"
   end
 

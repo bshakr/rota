@@ -7,6 +7,7 @@ class GroupSerializer < ApplicationSerializer
     {
       id: record.id,
       name: record.name,
+      slug: record.slug,
       timezone: record.timezone,
       timezone_confirmed: record.timezone_confirmed?,
       timezone_confirmed_at: record.timezone_confirmed_at

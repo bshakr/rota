@@ -6,7 +6,7 @@
 # later moves the row to `delivered` or `failed`, so "I never got the text" is answerable with a
 # carrier status rather than a shrug.
 class SmsMessage < ApplicationRecord
-  KINDS = { reminder: "reminder", cover_notice: "cover_notice" }.freeze
+  KINDS = { reminder: "reminder", cover_notice: "cover_notice", member_login: "member_login" }.freeze
   # `sending` is the claimed-but-not-yet-confirmed waypoint. SendSmsJob moves a row pending ->
   # sending in one atomic UPDATE before it calls Twilio, and sending -> sent only once the carrier
   # has accepted the message. A crash in between leaves the row `sending`, never `pending`, so it
@@ -27,7 +27,10 @@ class SmsMessage < ApplicationRecord
   INVALID_TEMPLATE = "invalid_template".freeze
   INTERNAL_ERROR = "internal_error".freeze
 
-  belongs_to :shift
+  belongs_to :shift, optional: true
+  validates :shift, presence: true, unless: :member_login?
+  validates :shift, absence: true, if: :member_login?
+  validates :days_before, absence: true, if: :member_login?
   belongs_to :member
 
   enum :kind, KINDS, validate: true

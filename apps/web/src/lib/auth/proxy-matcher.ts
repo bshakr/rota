@@ -4,6 +4,7 @@
 // magic-link route is never intercepted.
 //
 // The matcher runs the proxy on everything EXCEPT:
+//   - `h/...`    household entry, public and limited to admin-added members.
 //   - `s/...`    the member magic-link page. PUBLIC, authenticated by the member
 //                token rather than a WorkOS session, so AuthKit must never touch
 //                it. Getting this wrong breaks every SMS link we will ever send.
@@ -16,7 +17,7 @@
 //
 // Everything else — `/`, `/dashboard`, `/members`, … — is covered, which is what
 // lets the admin layout call `withAuth()` (it requires the proxy to have run).
-export const PROXY_MATCHER = "/((?!s/|callback|_next/|.*\\..*).*)";
+export const PROXY_MATCHER = "/((?!s/|h/|callback|_next/|.*\\..*).*)";
 
 /** True when the AuthKit proxy runs on `pathname`. Mirrors what Next does with `PROXY_MATCHER`. */
 export function proxyMatches(pathname: string): boolean {

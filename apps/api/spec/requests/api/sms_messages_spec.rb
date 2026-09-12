@@ -13,6 +13,20 @@ RSpec.describe "Api::SmsMessages" do
   end
 
   describe "GET /api/sms_messages" do
+    it "lists and filters shift-free personal links within the authenticated household" do
+      member = create(:member, group: group)
+      login = SmsMessage.create!(member: member, kind: :member_login)
+      SmsMessage.create!(member: create(:member), kind: :member_login)
+      message_in_group
+
+      get "/api/sms_messages", params: { kind: "member_login" }, headers: headers
+
+      expect(response).to have_http_status(:ok)
+      rows = response.parsed_body.fetch("sms_messages")
+      expect(rows.map { |row| row.fetch("id") }).to eq([ login.id ])
+      expect(rows.first).to include("kind" => "member_login", "shift" => nil)
+    end
+
     it "returns the group's delivery log, newest first" do
       older = message_in_group
       older.update_columns(created_at: 2.days.ago)

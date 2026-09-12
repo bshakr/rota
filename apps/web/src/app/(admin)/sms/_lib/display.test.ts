@@ -18,9 +18,10 @@ describe("statusDisplay", () => {
 });
 
 describe("kindDisplay", () => {
-  it("names the two kinds in human words", () => {
+  it("names all message kinds in human words", () => {
     expect(kindDisplay("reminder")).toBe("Reminder");
     expect(kindDisplay("cover_notice")).toBe("Cover notice");
+    expect(kindDisplay("member_login")).toBe("Personal link");
   });
 });
 

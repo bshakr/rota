@@ -47,7 +47,7 @@ const KNOWN_STATUSES = new Set<SmsStatus>([
   "delivered",
   "failed",
 ]);
-const KNOWN_KINDS = new Set<SmsKind>(["reminder", "cover_notice"]);
+const KNOWN_KINDS = new Set<SmsKind>(["reminder", "cover_notice", "member_login"]);
 
 type RawParams = Record<string, string | string[] | undefined>;
 
@@ -217,8 +217,8 @@ function MessageRows({ message: m }: { message: SmsMessage }) {
         <TableCell>{m.member.name}</TableCell>
         <TableCell>
           <div className="flex flex-col">
-            <span className="font-medium">{m.shift.rota_name}</span>
-            <span className="text-muted-foreground text-xs">{shiftDay(m.shift.due_on)}</span>
+            <span className="font-medium">{m.shift?.rota_name ?? "Personal link"}</span>
+            <span className="text-muted-foreground text-xs">{m.shift ? shiftDay(m.shift.due_on) : "Household entry"}</span>
           </div>
         </TableCell>
         <TableCell>
@@ -258,8 +258,8 @@ function MessageCard({ message: m }: { message: SmsMessage }) {
   return (
     <Card size="sm" className={failed ? FAILED_ROW : undefined}>
       <CardHeader>
-        <CardTitle className="text-sm">{m.shift.rota_name}</CardTitle>
-        <CardDescription>{shiftDay(m.shift.due_on)}</CardDescription>
+        <CardTitle className="text-sm">{m.shift?.rota_name ?? "Personal link"}</CardTitle>
+        <CardDescription>{m.shift ? shiftDay(m.shift.due_on) : "Household entry"}</CardDescription>
         <CardAction>
           <Badge variant={s.tone}>{s.label}</Badge>
         </CardAction>

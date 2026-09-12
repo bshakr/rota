@@ -31,8 +31,9 @@ export function statusDisplay(status: SmsStatus): { label: string; tone: StatusT
   return STATUS[status] ?? { label: status, tone: "secondary" };
 }
 
-/** The two kinds of message this house sends, in human words. */
+/** The message kinds this house sends, in human words. */
 export function kindDisplay(kind: SmsKind): string {
+  if (kind === "member_login") return "Personal link";
   return kind === "cover_notice" ? "Cover notice" : "Reminder";
 }
 

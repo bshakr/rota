@@ -35,6 +35,7 @@ const STATUS_OPTIONS: Option[] = [
 ];
 
 const KIND_OPTIONS: Option[] = [
+  { value: "member_login", label: "Personal link" },
   { value: "reminder", label: "Reminder" },
   { value: "cover_notice", label: "Cover notice" },
 ];

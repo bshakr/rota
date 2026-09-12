@@ -40,9 +40,9 @@ export default authkitProxy({
 // `/s/[token]` and `/callback` are excluded — lives in src/lib/auth/proxy-matcher.ts
 // (`PROXY_MATCHER`), and proxy-matcher.test.ts asserts this literal stays in sync.
 //
-// Runs the proxy on everything EXCEPT: the member magic-link route (`s/…`, public,
+// Runs the proxy on everything EXCEPT: household entry (`h/…`, public), the member magic-link route (`s/…`, public,
 // token-authenticated — must never be intercepted), the OAuth callback (owns its
 // own PKCE cookie), Next internals (`_next/`), and static files (`*.*`).
 export const config = {
-  matcher: ["/((?!s/|callback|_next/|.*\\..*).*)"],
+  matcher: ["/((?!s/|h/|callback|_next/|.*\\..*).*)"],
 };
