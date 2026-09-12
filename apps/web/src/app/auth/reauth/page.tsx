@@ -32,7 +32,9 @@ export default function ReauthenticatePage() {
                 <KeyRound className="size-6" strokeWidth={2.25} />
               </span>
               <CardTitle className="text-xl text-balance">
-                <h1>One more sign-in, then you&apos;re in</h1>
+                <h1>
+                  One more <span className="whitespace-nowrap">sign-in</span>, then you&apos;re in
+                </h1>
               </CardTitle>
               <CardDescription className="text-pretty">
                 We couldn&apos;t check your access to the house. Sign in again and

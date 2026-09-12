@@ -535,14 +535,14 @@ export default function StyleguidePage() {
           {/* The hero is the pitch. A lavender pane, Fredoka at full size, and
               the whole personality in one band. No blobs here: those belong to
               the landing and dashboard heroes, and are demonstrated below. */}
-          <div className="bg-lavender-pane animate-pop text-plum relative mb-14 overflow-hidden rounded-4xl p-8 shadow-md md:p-12">
+          <div className="bg-lavender-pane animate-pop relative mb-14 overflow-hidden rounded-4xl p-8 shadow-md md:p-12 dark:bg-card">
             <Badge variant="secondary" className="mb-5">
               Soft Clay
             </Badge>
-            <p className="font-heading text-display max-w-[16ch] font-semibold text-balance">
+            <p className="font-heading text-display text-foreground max-w-[16ch] font-semibold text-balance">
               Whose turn? Sorted.
             </p>
-            <p className="mt-5 max-w-prose text-sm text-pretty md:text-base">
+            <p className="text-muted-foreground mt-5 max-w-prose text-sm text-pretty md:text-base">
               A chore rota should feel like a fridge magnet, not enterprise
               software. Lavender paper, plum ink, one grape action colour, and a
               sheet of pastel stickers that each carry a meaning. Surfaces are
