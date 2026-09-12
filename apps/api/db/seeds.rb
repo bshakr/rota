@@ -52,16 +52,21 @@ bins = group.rotas.find_or_create_by!(name: "Bins out") do |rota|
   rota.reminder_offsets = [ 1 ]
 end
 
-# Everyone takes a turn at the kitchen...
-[ ciara, bass, eliza, raph ].each_with_index do |member, position|
-  kitchen.rota_positions.find_or_create_by!(member: member) { |p| p.position = position }
+# A new position goes after whatever the rota already holds. On a fresh database that is running
+# order from zero; on a database seeded with an earlier cast it appends instead of colliding on the
+# (rota, position) unique index, so re-seeding never aborts halfway.
+append_position = ->(rota, member) do
+  rota.rota_positions.find_or_create_by!(member: member) do |p|
+    p.position = (rota.rota_positions.maximum(:position) || -1) + 1
+  end
 end
+
+# Everyone takes a turn at the kitchen...
+[ ciara, bass, eliza, raph ].each { |member| append_position.call(kitchen, member) }
 
 # ...but the bins are only Bass and Eliza's, because a rota's roster is its own ordered subset of
 # the group, not the whole house.
-[ bass, eliza ].each_with_index do |member, position|
-  bins.rota_positions.find_or_create_by!(member: member) { |p| p.position = position }
-end
+[ bass, eliza ].each { |member| append_position.call(bins, member) }
 
 puts "Seeded #{group.name}: #{group.members.count} members, #{group.rotas.count} rotas."
 group.members.each { |m| puts "  #{m.name.ljust(6)} #{m.phone_e164}  /s/#{m.access_token}" }

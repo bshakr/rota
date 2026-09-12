@@ -50,6 +50,20 @@ RSpec.describe "db/seeds.rb" do
     expect(bins.members.map(&:name)).to eq(%w[Bass Eliza])
   end
 
+  # A developer's database may already hold a roster from an earlier cast. Re-seeding has to append
+  # after it rather than abort on the (rota, position) unique index.
+  it "re-seeds a database seeded with an earlier cast without colliding on position" do
+    kitchen = group.rotas.find_by!(name: "Kitchen deep clean")
+    kitchen.rota_positions.delete_all
+    %w[Alice Bob Cara].each_with_index do |name, position|
+      stale = group.members.create!(name: name, phone_e164: "+4474001230#{10 + position}")
+      kitchen.rota_positions.create!(member: stale, position: position)
+    end
+
+    expect { load_seeds }.not_to raise_error
+    expect(kitchen.reload.members.map(&:name)).to eq(%w[Alice Bob Cara Ciara Bass Eliza Raph])
+  end
+
   # Shifts come from ShiftGenerator. Inventing rows here would mean inventing them by a different
   # rule than the one the app actually uses.
   it "generates no shifts" do
