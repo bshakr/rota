@@ -32,7 +32,7 @@ end
 
 kitchen = group.rotas.find_or_create_by!(name: "Kitchen deep clean") do |rota|
   rota.message_template =
-    "Hi {{name}}! It's your turn for {{rota}} on {{date}} ({{days_until}}). Thanks 💛"
+    "Hi {{name}} 🌷 you're up for {{rota}} on {{date}} ({{days_until}}). Can't make it? Tap to hand it on."
   rota.starts_on = Date.current.next_occurring(:saturday)
   rota.interval_count = 1
   rota.interval_unit = "week"
@@ -42,7 +42,7 @@ kitchen = group.rotas.find_or_create_by!(name: "Kitchen deep clean") do |rota|
 end
 
 bins = group.rotas.find_or_create_by!(name: "Bins out") do |rota|
-  rota.message_template = "{{name}} — {{rota}} tomorrow ({{date}}). Black bin + recycling."
+  rota.message_template = "{{name}}, it's your turn for {{rota}} tomorrow ({{date}}). Black bin and recycling."
   rota.starts_on = Date.current.next_occurring(:tuesday)
   rota.interval_count = 2
   rota.interval_unit = "week"
