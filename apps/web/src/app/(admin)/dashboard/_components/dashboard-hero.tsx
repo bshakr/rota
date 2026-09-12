@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils";
 // The blobs behind the hero. Organic rather than circular, each with its own
 // lopsided radius so no two read as the same shape, drifting on the slow 6s bob
 // (translate only, stilled outright under prefers-reduced-motion by globals.css).
-// Decorative and theme-independent: the pane is a sticker, so it looks the same
-// at night, and every word on it is plum ink.
+// Decorative. The blobs are stickers and keep their pastels at night; the pane
+// itself becomes a plum panel (dark:bg-card), matching the landing hero.
 const BLOBS = [
   {
     tint: "bg-peach",
@@ -75,7 +75,7 @@ export function DashboardHero({
   return (
     <section
       aria-labelledby="dashboard-title"
-      className="animate-pop bg-lavender-pane relative mb-8 overflow-hidden rounded-4xl p-6 shadow-sm md:p-9"
+      className="animate-pop bg-lavender-pane relative mb-8 overflow-hidden rounded-4xl p-6 shadow-sm md:p-9 dark:bg-card"
     >
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         {BLOBS.map((blob) => (
@@ -89,16 +89,16 @@ export function DashboardHero({
 
       <div className="relative grid items-center gap-8 md:grid-cols-[minmax(0,1fr)_auto] md:gap-10">
         <div>
-          <p className="text-plum-muted text-xs font-semibold tracking-widest uppercase">
+          <p className="text-muted-foreground text-xs font-semibold tracking-widest uppercase">
             Dashboard
           </p>
           <h1
             id="dashboard-title"
-            className="font-heading text-plum mt-1.5 text-3xl font-semibold break-words text-balance md:text-4xl"
+            className="font-heading text-foreground mt-1.5 text-3xl font-semibold break-words text-balance md:text-4xl"
           >
             {groupName}
           </h1>
-          <p className="text-plum mt-2 max-w-prose text-sm md:text-base">
+          <p className="text-foreground mt-2 max-w-prose text-sm md:text-base">
             Who&apos;s up this week, across every rota. Rota Monster texts whoever&apos;s up.
           </p>
         </div>
@@ -107,7 +107,7 @@ export function DashboardHero({
           {stats.map(({ label, value, icon: Icon, coin }) => (
             <li
               key={label}
-              className="bg-lavender min-w-32 rounded-2xl px-4 py-3.5 shadow-xs"
+              className="bg-lavender min-w-32 rounded-2xl px-4 py-3.5 shadow-xs dark:bg-background"
             >
               <span className="flex items-center gap-2.5">
                 <span
@@ -117,13 +117,13 @@ export function DashboardHero({
                   <Icon className="text-plum size-3.5" strokeWidth={2.5} />
                 </span>
                 <span
-                  className="font-heading text-plum text-2xl leading-none font-semibold"
+                  className="font-heading text-foreground text-2xl leading-none font-semibold"
                   data-numeric
                 >
                   {value}
                 </span>
               </span>
-              <span className="text-plum-muted mt-1.5 block text-xs">{label}</span>
+              <span className="text-muted-foreground mt-1.5 block text-xs">{label}</span>
             </li>
           ))}
         </ul>

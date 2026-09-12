@@ -12,7 +12,7 @@ export function apiBaseUrl(): string {
   const url = process.env.API_URL;
   if (!url) {
     throw new Error(
-      "API_URL is not set — the web app cannot reach the Rails API. Set it in the repo-root .env (see .env.example).",
+      "API_URL is not set. The web app cannot reach the Rails API. Set it in the repo-root .env (see .env.example).",
     );
   }
   return url.replace(/\/+$/, "");

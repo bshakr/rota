@@ -73,7 +73,7 @@ export function ReminderOffsetsField({
               type="button"
               onClick={() => remove(days)}
               aria-label={`Remove reminder ${reminderOffsetLabel(days)}`}
-              className="text-secondary-foreground/70 hover:bg-card hover:text-foreground focus-visible:outline-ring grid size-5 place-items-center rounded-full transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-offset-1"
+              className="text-secondary-foreground/70 hover:bg-card hover:text-foreground focus-visible:outline-ring grid size-5 place-items-center rounded-full transition-colors outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1"
             >
               <X className="size-3.5" aria-hidden />
             </button>

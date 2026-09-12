@@ -62,7 +62,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
               // Focus is an offset outline in --sidebar-ring, measured against the
               // sidebar. The offset puts a sidebar-coloured gap between item and
               // outline so it shows on any item background.
-              "outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring",
+              "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring",
               // "You are here" is a LILAC PILL pressed into the panel: the quiet
               // secondary fill, the soft clay squash, and the icon in grape (the
               // text cut of it, so it lifts at night). Hover is the same family
