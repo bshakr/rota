@@ -143,8 +143,8 @@ function CoverActions({
     // passing it on), otherwise it's their own turn.
     const iAmCovering = shift.covered;
     return (
-      <div className="space-y-2">
-        <p className="text-sm text-muted-foreground">
+      <div className="space-y-2.5">
+        <p className="text-muted-foreground text-sm">
           {iAmCovering ? "Can't make it after all?" : "Can't make it?"}
         </p>
         <AskCoverDialog
@@ -172,7 +172,7 @@ function CoverActions({
         title="Take this shift back?"
         description={`${coveringName} is covering ${shift.rota_name} on ${formatShiftDate(
           civilDate(shift.due_on),
-        )} (${when}). Take it back and you're down for it again — we'll let ${coveringName} know.`}
+        )} (${when}). Take it back and you're down for it again. We'll let ${coveringName} know.`}
         confirmLabel="Take it back"
         onConfirm={async () => {
           const result = await runCancel(cancelAction, shift.id);
@@ -184,7 +184,7 @@ function CoverActions({
             throw new Error("cancel-cover-failed");
           }
           onUpdate(result.shift);
-          toast.success("Got it — you're back down for this one.");
+          toast.success("Got it. You're back down for this one.");
         }}
       />
     );
@@ -261,16 +261,23 @@ function AskCoverDialog({
           <DialogTitle>Ask someone to cover</DialogTitle>
           <DialogDescription>
             {shift.rota_name} · {formatShiftDate(civilDate(shift.due_on))} ({when}). Pick who to
-            ask — we&apos;ll text them.
+            ask. We&apos;ll text them.
           </DialogDescription>
         </DialogHeader>
 
         {targets.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm text-pretty">
             There&apos;s no one else free to ask right now. Whoever runs your rota can help.
           </p>
         ) : (
-          <div role="radiogroup" aria-label="Who to ask" className="grid gap-2">
+          // A big house makes a long list, and this dialog opens on a phone:
+          // cap it at half the viewport and let the names scroll rather than
+          // pushing the footer off the bottom of the screen.
+          <div
+            role="radiogroup"
+            aria-label="Who to ask"
+            className="-mx-1 grid max-h-[45vh] gap-2 overflow-y-auto px-1 py-0.5"
+          >
             {targets.map((member) => {
               const active = selectedId === member.id;
               const Icon = active ? CircleCheck : Circle;
@@ -294,15 +301,28 @@ function AskCoverDialog({
           </div>
         )}
 
+        {/* `size="lg"` on both, not the 40px default: this dialog is opened on
+            a phone by a thumb, and 44px is the floor for a comfortable target.
+            The footer stacks on mobile, so they are full width there anyway. */}
         <DialogFooter>
-          <Button variant="secondary" onClick={() => change(false)} disabled={pending}>
+          <Button
+            variant="secondary"
+            size="lg"
+            onClick={() => change(false)}
+            disabled={pending}
+          >
             Cancel
           </Button>
           {/* `disabled={!selected || pending}`, NOT `loading` alone: Button derives
               its disabled state as `disabled ?? loading`, and an explicit
               `disabled={false}` (a target IS selected) shortcuts that — so `loading`
               would never block the click and a double-tap would text twice. */}
-          <Button onClick={confirm} disabled={!selected || pending} loading={pending}>
+          <Button
+            size="lg"
+            onClick={confirm}
+            disabled={!selected || pending}
+            loading={pending}
+          >
             {selected ? `Ask ${selected.name}` : "Ask them to cover"}
           </Button>
         </DialogFooter>

@@ -9,6 +9,11 @@ import { Wordmark } from "@/components/wordmark";
  * they were forgotten, but because a member has exactly one thing to do and
  * every extra control is one more thing to ignore. The theme follows the
  * phone's own setting. Single column, comfortable measure, thumb-reachable.
+ *
+ * In SOFT CLAY the chrome is deliberately almost nothing: lavender paper, the
+ * wordmark in muted type, and then white clay cards. The page's one piece of
+ * personality is the greeting and the peach date coins below it, and they only
+ * land because there is nothing else competing for the eye.
  */
 export default function MemberLayout({
   children,
@@ -22,7 +27,9 @@ export default function MemberLayout({
         </header>
       </Container>
       <Container width="member" asChild>
-        <main className="flex-1 pt-4 pb-16">{children}</main>
+        {/* Deep bottom padding: the last card's CTA must clear the phone's own
+            home indicator and browser chrome, not sit under them. */}
+        <main className="flex-1 pt-4 pb-20">{children}</main>
       </Container>
     </div>
   );
