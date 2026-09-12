@@ -12,14 +12,15 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        // The ONE card idiom: bg-card, a --border hairline, and a SOFT VIOLET
-        // shadow-xs — soft 12px corners, a touch more padding than stock.
-        // Every panel in the product is a <Card> — the styleguide's own panels
-        // included — so five screens cannot each invent their own boundary.
-        // The shadow gives the lift a 2% lightness step cannot carry on a
-        // phone in daylight. --card-spacing (20px, 14px on sm) is the
-        // canonical card padding.
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl border border-border bg-card py-(--card-spacing) text-sm text-card-foreground shadow-xs [--card-spacing:--spacing(5)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3.5)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
+        // The ONE card idiom: white, 24px corners, a --border hairline, and the
+        // CARD CLAY (shadow-sm) — a white inset highlight along the top edge, a
+        // plum inset squash along the bottom, and a long soft plum drop. Every
+        // panel in the product is a <Card>, the styleguide's own panels
+        // included, so five screens cannot each invent their own boundary.
+        // Nothing here is grey: the lift comes from plum light, not from a 2%
+        // lightness step a phone in daylight cannot see. --card-spacing (20px,
+        // 14px on sm) is the canonical card padding.
+        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-2xl border border-border bg-card py-(--card-spacing) text-sm text-card-foreground shadow-sm [--card-spacing:--spacing(5)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3.5)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-2xl *:[img:last-child]:rounded-b-2xl",
         className
       )}
       {...props}
@@ -32,7 +33,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-header"
       className={cn(
-        "group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-xl px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)",
+        "group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-2xl px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)",
         className
       )}
       {...props}
@@ -45,7 +46,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-title"
       className={cn(
-        // Fraunces, semibold: every card title speaks in the display voice.
+        // Fredoka, semibold: every card title speaks in the display voice.
         "font-heading text-lg leading-snug font-semibold group-data-[size=sm]/card:text-base",
         className
       )}
@@ -92,7 +93,9 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-footer"
       className={cn(
-        "flex items-center rounded-b-xl border-t bg-muted/50 p-(--card-spacing)",
+        // The quiet fill, so the footer reads as a recessed shelf under the card
+        // rather than a second panel.
+        "flex items-center rounded-b-2xl border-t border-border bg-muted/60 p-(--card-spacing)",
         className
       )}
       {...props}

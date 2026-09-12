@@ -4,8 +4,11 @@ import { cn } from "@/lib/utils";
  * The top of every admin screen. Use it rather than hand-rolling an <h1>: it is
  * what keeps five separately-built screens looking like one product.
  *
- * `actions` is the right-hand slot — the primary button for the screen
- * ("Add member", "New rota"). It drops below the title on narrow screens.
+ * The title speaks in Fredoka, pressed wide, because a page title is the loudest
+ * type on an admin screen and Soft Clay's voice lives in the display face.
+ *
+ * `actions` is the right-hand slot, the primary button for the screen ("Add
+ * member", "New rota"). It drops below the title on narrow screens.
  */
 export function PageHeader({
   title,
@@ -26,11 +29,11 @@ export function PageHeader({
       )}
     >
       <div className="space-y-1.5">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight text-balance">
+        <h1 className="font-heading text-2xl font-semibold tracking-[-0.01em] text-balance">
           {title}
         </h1>
         {description ? (
-          <p className="text-muted-foreground max-w-prose text-sm">
+          <p className="max-w-prose text-sm text-muted-foreground">
             {description}
           </p>
         ) : null}

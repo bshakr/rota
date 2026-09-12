@@ -32,7 +32,15 @@ export function ThemeToggle() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Change theme">
+        {/* `relative` is load-bearing: the Moon below is absolutely positioned
+            and would otherwise anchor to whatever ancestor happens to be
+            positioned, which is a different element on every screen. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Change theme"
+          className="relative"
+        >
           <Sun className="size-[18px] scale-100 rotate-0 transition-transform dark:scale-0 dark:-rotate-90" />
           <Moon className="absolute size-[18px] scale-0 rotate-90 transition-transform dark:scale-100 dark:rotate-0" />
         </Button>

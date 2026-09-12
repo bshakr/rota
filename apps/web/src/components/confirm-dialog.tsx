@@ -15,13 +15,14 @@ import {
 
 /**
  * The one confirmation dialog. It exists to fix a hierarchy that is easy to get
- * backwards — and did get backwards in this system's first reference dialog,
- * where "Remove Dave" was the pale button and "Keep him" was the solid one, so
+ * backwards, and did get backwards in this system's first reference dialog,
+ * where "Remove Raph" was the pale button and "Keep him" was the solid one, so
  * the destructive action looked like the safe default.
  *
  * Here the shape is fixed and correct: the CONFIRM button is prominent and, when
- * `destructive`, solid red; CANCEL is the quiet secondary and is what a stray
- * Enter or a mis-tap lands on. "Removing Dave reassigns 2 shifts" is the kind of
+ * `destructive`, wears the one saturated red in the system; CANCEL is the lilac
+ * secondary, which is what a stray Enter or a mis-tap lands on and is friendly
+ * rather than administrative. "Removing Raph reassigns 2 shifts" is the kind of
  * consequence that must be stated before it happens, so `description` is where
  * the screen spells out exactly what will change.
  *

@@ -4,33 +4,33 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const alertVariants = cva(
-  // SOLSTICE alerts are not stock tinted rectangles. Three bespoke moves:
-  //   1. A leading ACCENT RAIL in the status hue (the before: bar, drawn in
-  //      currentColor so each variant colours it for free) — the eye-catch.
-  //   2. The icon sits on a soft tinted COIN (the raw svg child is styled
-  //      into a 36px rounded square with its own padding), echoing the date
-  //      coins and avatar chips, instead of floating as a bare glyph.
-  //   3. Card-tier geometry: rounded-xl, a soft violet shadow, and roomier
-  //      padding, so the alert belongs beside the cards it interrupts.
-  "group/alert relative grid w-full gap-y-1 overflow-hidden rounded-xl border px-4 py-3.5 text-left text-sm shadow-xs before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r-full before:bg-current has-data-[slot=alert-action]:pr-18 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-3 *:[svg]:row-span-2 *:[svg]:rounded-lg *:[svg]:p-2 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-9",
+  // SOFT CLAY alerts are a big sticker: the status tint fills the whole slab,
+  // plum ink carries every word, and the icon sits on a COIN of its own (the raw
+  // svg child is styled into a 36px rounded square with its own padding),
+  // echoing the date coins and the empty-state coin instead of floating as a
+  // bare glyph. 20px corners put it between a control and a card, and the soft
+  // clay lifts it off the page without a border doing the work.
+  "group/alert relative grid w-full gap-y-1 overflow-hidden rounded-[1.25rem] border px-4 py-3.5 text-left text-sm shadow-xs has-data-[slot=alert-action]:pr-18 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-3 *:[svg]:row-span-2 *:[svg]:rounded-xl *:[svg]:p-2 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-9",
   {
-    // The "raised voice" tier of the status idiom. Where a Badge whispers inline
-    // status, an Alert is a message the user must read — so the status variants
-    // are strongly tinted AND bordered in the status colour (a --border hairline
-    // wouldn't carry the urgency). The icon and title take the full status
-    // colour; the description drops to /90 so the block stays readable; the
-    // icon coin sits one tint deeper (/15) than the panel (/10). The BLO-1053
-    // "confirm your timezone" warning is exactly this.
     variants: {
+      // The "raised voice" tier of the status idiom. Where a Badge whispers
+      // inline status, an Alert is a message the user must read, so it takes the
+      // full sticker rather than a tint of it: `bg-warning text-warning-foreground`
+      // is one pair of class names that is correct in both themes (pastel fill
+      // with plum ink by day, a 16% wash with pastel ink at night). Never add an
+      // opacity modifier to those, or the night value gets washed twice. The
+      // icon coin is `bg-current/10`, a tint of whatever the ink currently is, so
+      // it darkens by day and lightens at night without a second token.
       variant: {
-        default: "bg-card text-card-foreground *:[svg]:bg-muted",
-        success:
-          "border-success/30 bg-success/10 text-success *:[svg]:bg-success/15 *:data-[slot=alert-description]:text-success/90",
-        warning:
-          "border-warning/30 bg-warning/10 text-warning *:[svg]:bg-warning/15 *:data-[slot=alert-description]:text-warning/90",
-        info: "border-info/30 bg-info/10 text-info *:[svg]:bg-info/15 *:data-[slot=alert-description]:text-info/90",
+        default:
+          "border-border bg-card text-card-foreground *:[svg]:bg-muted",
+        success: "border-transparent bg-success text-success-foreground *:[svg]:bg-current/10",
+        warning: "border-transparent bg-warning text-warning-foreground *:[svg]:bg-current/10",
+        info: "border-transparent bg-info text-info-foreground *:[svg]:bg-current/10",
+        // Blush, the "went wrong" sticker, not the saturated red of a delete
+        // BUTTON. The variant keeps the name every caller spells.
         destructive:
-          "border-destructive/30 bg-destructive/10 text-destructive *:[svg]:bg-destructive/15 *:data-[slot=alert-description]:text-destructive/90",
+          "border-transparent bg-danger text-danger-foreground *:[svg]:bg-current/10",
       },
     },
     defaultVariants: {
@@ -59,7 +59,7 @@ function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="alert-title"
       className={cn(
-        "font-semibold group-has-[>svg]/alert:col-start-2 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground",
+        "font-heading font-semibold group-has-[>svg]/alert:col-start-2 [&_a]:underline [&_a]:underline-offset-3",
         className
       )}
       {...props}
@@ -74,8 +74,11 @@ function AlertDescription({
   return (
     <div
       data-slot="alert-description"
+      // Inherit the alert's ink at 90% rather than dropping to
+      // --muted-foreground: on a mint or lemon sticker the muted plum is the
+      // wrong family, and at night it would fight the pastel ink.
       className={cn(
-        "text-sm text-balance text-muted-foreground md:text-pretty [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4",
+        "text-sm text-current/90 text-balance md:text-pretty [&_a]:underline [&_a]:underline-offset-3 [&_p:not(:last-child)]:mb-4",
         className
       )}
       {...props}

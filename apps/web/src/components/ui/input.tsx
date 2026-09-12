@@ -2,8 +2,14 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-// HouseRota: raised from stock shadcn's h-8 to h-10, so an input and a
-// default Button line up in a row and neither is a cramped target on a phone.
+// SOFT CLAY inputs are PILLS on white, bounded by --input (plum 55%, which is
+// the one line in the system that has to clear 3:1 because it IS the control).
+// Focus is a solid 2px ring in --ring plus a grape edge: solid rather than a
+// translucent `/50`, because a translucent ring cannot be contrast-checked.
+//
+// Height is raised from stock shadcn's h-8 to h-10, so an input and a default
+// Button line up in a row and neither is a cramped target on a phone. The pill
+// eats its own corners, so horizontal padding grows to px-4.
 //
 // `text-base md:text-sm` is stock and must stay: below 16px, iOS Safari zooms
 // the viewport when the field takes focus, which yanks the page sideways
@@ -14,9 +20,7 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
       type={type}
       data-slot="input"
       className={cn(
-        // SOLSTICE: soft rounded rectangles, the same rounded-lg as the
-        // buttons they sit beside.
-        "h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-3.5 py-2 text-base transition-colors outline-hidden file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+        "h-10 w-full min-w-0 rounded-full border border-input bg-card px-4 py-2 text-base shadow-xs transition-colors outline-hidden file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive md:text-sm",
         className
       )}
       {...props}

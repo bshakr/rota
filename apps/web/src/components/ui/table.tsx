@@ -23,10 +23,10 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      // A quiet cream band. The consumers' card wrapper (rounded-xl +
-      // overflow-hidden) clips it into the corners, so the header reads as
-      // part of the card rather than a stripe floating inside it.
-      className={cn("bg-muted/50 [&_tr]:border-b", className)}
+      // No band and no zebra. A Soft Clay table is ruled, not striped: the
+      // header is distinguished by its type (Outfit 600, small, uppercase) and
+      // one plum hairline underneath it, so the card it sits in stays white.
+      className={cn("[&_tr]:border-b [&_tr]:border-border", className)}
       {...props}
     />
   )
@@ -47,7 +47,7 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
     <tfoot
       data-slot="table-footer"
       className={cn(
-        "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+        "border-t border-border bg-muted/60 font-medium [&>tr]:last:border-b-0",
         className
       )}
       {...props}
@@ -60,8 +60,9 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        // Rows blush lilac on hover — the signature hover — not grey.
-        "border-b transition-colors hover:bg-accent/40 has-aria-expanded:bg-accent/40 data-[state=selected]:bg-accent/60",
+        // Hairline plum rules between rows, and rows blush LILAC on hover.
+        // Never grey: a hovered row should glow faintly grape.
+        "border-b border-border transition-colors hover:bg-accent/60 has-aria-expanded:bg-accent/60 data-[state=selected]:bg-accent",
         className
       )}
       {...props}
