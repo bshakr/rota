@@ -6,6 +6,11 @@ import { describe, expect, it } from "vitest";
 import { proxyMatches, PROXY_MATCHER } from "./proxy-matcher";
 
 describe("AuthKit proxy matcher", () => {
+  it("keeps household entry public without exposing admin paths", () => {
+    expect(proxyMatches("/h/park-vista")).toBe(false);
+    expect(proxyMatches("/households")).toBe(true);
+    expect(proxyMatches("/setup")).toBe(true);
+  });
   // The whole point of the member path. `/s/<token>` is public and authenticates
   // by the member token, not a WorkOS session; if the proxy ever intercepts it,
   // every SMS link we send is broken. This is the assertion the ticket demands.

@@ -17,6 +17,7 @@ function group(overrides: Partial<Group> = {}): Group {
     timezone: "Europe/London",
     timezone_confirmed: true,
     timezone_confirmed_at: "2026-07-01T09:00:00Z",
+    slug: "park-vista-1234",
     ...overrides,
   };
 }
