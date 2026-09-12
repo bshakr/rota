@@ -12,6 +12,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    server: { deps: { inline: ["@workos-inc/authkit-nextjs"] } },
   },
   resolve: {
     alias: {

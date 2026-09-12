@@ -8,4 +8,9 @@ import { handleAuth } from "@workos-inc/authkit-nextjs";
 // one-shot PKCE cookie, which is exactly why /callback is excluded from the proxy
 // matcher (see src/lib/auth/proxy-matcher.ts) — running the session proxy over it
 // would only fight that.
-export const GET = handleAuth({ returnPathname: "/dashboard" });
+export const GET = handleAuth({
+  returnPathname: "/dashboard",
+  // Behind Railway's proxy, request.nextUrl uses the container's 0.0.0.0:3001
+  // origin. AuthKit must redirect to our configured public origin after login.
+  baseURL: process.env.APP_URL,
+});
