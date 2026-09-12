@@ -1,19 +1,17 @@
-import { withAuth } from "@workos-inc/authkit-nextjs";
+import { requireHousehold } from "@/lib/auth/household";
 
 import { AdminShell } from "@/components/admin-shell";
 import { SignOutButton } from "@/components/admin/sign-out-button";
 
 /**
- * Everything behind the admin login. `withAuth({ ensureSignedIn: true })` redirects
- * an unauthenticated visitor to WorkOS before any admin screen renders — this is
- * the one place admin auth is enforced (the proxy covers these routes but does not
- * itself redirect; see proxy.ts). The member route `/s/[token]` is in a separate
- * route group and is deliberately not under this layout.
+ * The proxy starts login for unauthenticated visitors. This guard also requires
+ * a selected household; the API client repeats it because pages and layouts may
+ * render concurrently. Setup and the member route live outside this layout.
  */
 export default async function AdminLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const { user } = await withAuth({ ensureSignedIn: true });
+  const { user } = await requireHousehold();
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || undefined;
 
   return (

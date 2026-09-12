@@ -35,6 +35,8 @@ describe("AuthKit proxy matcher", () => {
       "/rotas/3/edit",
       "/shifts",
       "/sms",
+      "/setup",
+      "/auth/sign-in",
     ]) {
       expect(proxyMatches(path)).toBe(true);
     }
@@ -43,6 +45,14 @@ describe("AuthKit proxy matcher", () => {
   it("exposes the matcher as a string for Next's config", () => {
     expect(typeof PROXY_MATCHER).toBe("string");
     expect(PROXY_MATCHER.startsWith("/(")).toBe(true);
+  });
+
+  it("lets the login handler and reauth prompt run without proxy-initiated login", () => {
+    const source = readFileSync(fileURLToPath(new URL("../../proxy.ts", import.meta.url)), "utf8");
+    const paths = source.match(/unauthenticatedPaths:\s*\[([^\]]*)\]/)?.[1];
+    expect(paths).toContain('"/auth/sign-in"');
+    expect(paths).toContain('"/auth/reauth"');
+    expect(paths).not.toContain('"/setup"');
   });
 
   // Next requires `config.matcher` to be an inline literal (it is statically

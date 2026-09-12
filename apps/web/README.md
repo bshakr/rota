@@ -20,6 +20,22 @@ Config comes from the **single `.env` at the repo root** — not from `apps/web/
 `apps/api/config/application.rb` reads. Copy `.env.example` to `.env` at the repo
 root once and both apps are configured.
 
+## First household setup
+
+After signing in, users without a selected WorkOS organisation go to `/setup`
+before the admin layout or API client requests household data. New users enter a
+household name and timezone; users with active memberships choose an existing
+household instead. Setup switches to an organisation-bound session before calling
+Rails to provision and configure the household, then opens `/dashboard`.
+
+Setup saves progress in WorkOS and reuses a user-specific organisation external ID
+so retries recover the initial household instead of creating duplicates. Inactive
+or previously removed memberships are not automatically restored.
+
+If Rails rejects a household session, `/auth/reauth` shows an explicit sign-in
+prompt. `/auth/sign-in` starts AuthKit login in a route handler, where writing
+login cookies is allowed, rather than during a Server Component render.
+
 ## The gate
 
 ```bash

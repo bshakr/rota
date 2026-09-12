@@ -1,7 +1,7 @@
 import "server-only";
 
-import { getSignInUrl, withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
+import { requireHousehold } from "@/lib/auth/household";
 
 import { isApiError } from "./errors";
 import { type ApiRequestInit, requestJson } from "./http";
@@ -40,18 +40,18 @@ import type {
 /**
  * The core request. Resolves the caller's access token (redirecting to sign-in if
  * there is no session at all), forwards it, and — the one piece of judgement here
- * — turns a Rails 401 into a clean re-auth rather than a crash: AuthKit gave us a
- * token but Rails refused it (rotated signing key, revoked session), so the honest
- * move is to send the admin back through sign-in for a fresh one.
+ * — turns a Rails 401 into a re-auth prompt rather than a crash. Starting sign-in
+ * writes PKCE cookies and must happen in a route handler, never during rendering.
+ * Requiring a household here keeps organization-less tokens away from Rails.
  */
 async function adminRequest<T>(path: string, init?: ApiRequestInit): Promise<T> {
-  const { accessToken } = await withAuth({ ensureSignedIn: true });
+  const { accessToken } = await requireHousehold();
 
   try {
     return await requestJson<T>(path, accessToken, init);
   } catch (error) {
     if (isApiError(error) && error.status === 401) {
-      redirect(await getSignInUrl());
+      redirect("/auth/reauth");
     }
     throw error;
   }
