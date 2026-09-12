@@ -5,33 +5,40 @@
 @custom-variant dark (&:is(.dark *));
 
 /* =============================================================================
-   HouseRota design system — SOLSTICE. The longest, brightest day.
+   Rota Monster design system — SOFT CLAY.
 
-   A chore rota should feel like a friendly consumer app, not enterprise
-   software: light and sunlit, generously round, a little bouncy. The member
-   page — opened from a text, on a phone, by someone who didn't ask to be
-   there — is the emotional hero, and it should make them smile before it asks
-   them to do anything.
+   A chore rota should feel like a fridge magnet, not enterprise software:
+   lavender paper, plum ink, one grape action colour, and a sheet of pastel
+   stickers that each carry a meaning. Surfaces are pillowy — lit from above
+   with a white inset highlight, squashed below with a plum inset shadow, and
+   dropped onto the page with a soft plum shadow. Nothing is grey. Nothing is a
+   gradient. The member page — opened from a text, on a phone, by someone who
+   didn't ask to be there — is the emotional hero.
 
-   The language: sunlit paper (never grey, never sand), deep violet ink (never
-   black), and a small choir of confident hues that each CARRY MEANING — iris
-   violet is "act", sunshine gold is "now", meadow green is "done", sky blue is
-   "on its way", cherry red is "went wrong", flamingo pink is pure decoration.
-   Shadows are soft and violet-tinted, corners are gently rounded, motion is
-   springy.
+   The pastels are ONE OKLCH FAMILY: L 0.90, C 0.06–0.085, only the hue moves
+   (mint 160 done, peach 60 warmth and date coins, lemon 95 now, sky 234 on its
+   way, blush 354 went wrong, lilac 296 quiet). Because they share a lightness,
+   plum ink reads on every one of them at about 10:1, and a sticker looks the
+   same at night as it does by day.
 
    THREE LAYERS, and the boundary between them is the whole point:
 
-     1. PAINT     raw pigment. Named --sunbeam-*, --iris-*, etc. Defined below,
-                  OUTSIDE @theme on purpose, so Tailwind generates no utility
-                  for them — there is no `bg-iris-500`.
+     1. PAINT     raw pigment. Named --lavender-*, --plum-*, --grape-*, --mint-*,
+                  --peach-*, --lemon-*, --sky-*, --blush-*, --lilac-*. Defined
+                  below, OUTSIDE @theme, so no utility is generated from the
+                  ramp — there is no `bg-grape-500`.
 
      2. SEMANTIC  what a colour MEANS (--background, --primary, --success…).
                   Mapped from paint, once per theme. The only layer a component
-                  may touch. Gradients and elevations live here too.
+                  may reach for when the colour carries a meaning. Elevations
+                  live here too, so the clay recipe differs by theme.
 
      3. UTILITY   @theme inline republishes the semantic layer to Tailwind, so
                   `bg-background` / `text-muted-foreground` resolve per theme.
+                  It ALSO publishes a short list of pastels by name (bg-mint,
+                  bg-peach, text-plum, text-grape…). Those are DECORATION and
+                  are deliberately theme-independent: a peach date coin with
+                  plum numerals is a sticker, and a sticker does not invert.
 
    WHY THE @theme RESET BELOW EXISTS. `@import "tailwindcss"` ships Tailwind's
    ENTIRE default palette — red-500, slate-800, white, black — and every one of
@@ -39,7 +46,7 @@
    renders, and has no dark variant, straight past the design system. Keeping
    the pigments out of @theme is necessary but NOT sufficient; the defaults have
    to be torn out too. `--color-*: initial` does that: after it, the ONLY colour
-   utilities that exist are the semantic ones republished below.
+   utilities that exist are the ones republished below.
 
    Every foreground/background pair is verified to meet WCAG AA in BOTH themes —
    4.5:1 for text, 3:1 for control borders and focus rings — with translucent
@@ -47,8 +54,8 @@
    it and fails CI on a regression.
    ========================================================================== */
 
-/* Tear out Tailwind's default palette. Only semantic colours survive, plus the
-   two keyword "colours" components legitimately need. */
+/* Tear out Tailwind's default palette. Only the design system's colours
+   survive, plus the two keyword "colours" components legitimately need. */
 @theme {
   --color-*: initial;
   --color-transparent: transparent;
@@ -56,265 +63,272 @@
 }
 
 /* --- 1. PAINT ------------------------------------------------------------- */
-/* One pigment set, two mappings. Do not use these directly in components. */
+/* One pigment set, two mappings. Do not use these directly in components; use
+   the semantic tokens, or the named pastel utilities published at the bottom. */
 :root {
-  /* Sunbeam. The warm-white end of the world: sunlit paper, cream panels,
-     butter hairlines. There is no grey and no pure white anywhere here — even
-     the cards carry a breath of sunshine. */
-  --sunbeam-50: oklch(0.996 0.006 95);
-  --sunbeam-100: oklch(0.977 0.017 92);
-  --sunbeam-150: oklch(0.952 0.026 90);
-  --sunbeam-200: oklch(0.922 0.036 88);
-  --sunbeam-300: oklch(0.86 0.05 86);
+  /* Lavender. The paper family: white cards floating on a lavender page, with
+     a deeper pane behind heroes. There is no grey and no off-white here — even
+     the quiet fills carry the violet cast. */
+  --lavender-50: oklch(1 0 0); /* #FFFFFF card, popover, sidebar */
+  --lavender-100: oklch(0.965 0.019 299); /* #F5F1FF page */
+  --lavender-200: oklch(0.942 0.031 296); /* #EDE8FF quiet fill */
+  --lavender-300: oklch(0.929 0.038 296); /* #E9E3FF hero / pane */
 
-  /* Twilight. The ink end: violet-cast, never black, never slate. Text in
-     light, the night sky in dark. The violet cast is what keeps dark mode cozy
-     rather than corporate. */
-  --twilight-100: oklch(0.958 0.012 300);
-  --twilight-200: oklch(0.885 0.02 296);
-  --twilight-300: oklch(0.81 0.03 294);
-  --twilight-400: oklch(0.62 0.048 292);
-  --twilight-500: oklch(0.505 0.05 292);
-  --twilight-600: oklch(0.44 0.052 292);
-  --twilight-700: oklch(0.365 0.05 292);
-  --twilight-800: oklch(0.325 0.048 292);
-  --twilight-850: oklch(0.3 0.046 292);
-  --twilight-900: oklch(0.29 0.05 292);
-  --twilight-925: oklch(0.255 0.043 292);
-  --twilight-950: oklch(0.208 0.038 292);
+  /* Plum. The ink family by day and the whole sky at night. Never black,
+     never slate: the violet cast is what keeps dark mode cosy. */
+  --plum-50: oklch(0.96 0.015 300); /* night text */
+  --plum-200: oklch(0.8 0.03 300); /* night muted text */
+  --plum-400: oklch(0.52 0.066 301); /* #6F6089 day muted text */
+  --plum-500: oklch(0.62 0.05 300); /* night control boundary */
+  --plum-600: oklch(0.38 0.05 300); /* night hairline */
+  --plum-700: oklch(0.34 0.05 300); /* night quiet fill */
+  --plum-800: oklch(0.3 0.074 300); /* #34244D ink */
+  --plum-850: oklch(0.29 0.055 300); /* night card / panel */
+  --plum-900: oklch(0.235 0.055 300); /* night page */
 
-  /* Iris. The action colour — a confident violet. CTAs, links, focus, the
-     active nav item. -600 carries it on light, -300 on dark. -100/-150/-200 are
-     the lilac mists (hover tints). -700 is the FOCUS ring: deeper than
-     --primary on purpose, so a recoloured outline still shows on an iris
-     button. */
-  --iris-100: oklch(0.955 0.024 296);
-  --iris-150: oklch(0.93 0.04 296);
-  --iris-200: oklch(0.9 0.055 296);
-  --iris-250: oklch(0.84 0.095 296);
-  --iris-300: oklch(0.77 0.13 296);
-  --iris-500: oklch(0.505 0.215 296);
-  --iris-600: oklch(0.42 0.19 296);
-  --iris-700: oklch(0.38 0.17 296);
-  --iris-950: oklch(0.24 0.06 296);
+  /* Grape. The one action colour: buttons, focus, the active nav item. -500 is
+     the fill in BOTH themes (white on grape is 7.3:1 either way, because a
+     fill carries its own contrast). -600 is pressed, and the focus ring by day.
+     -300 is the lifted cut used at night for anything that is TEXT rather than
+     fill — a link on a deep plum page needs to come up, not go down. */
+  --grape-300: oklch(0.8 0.12 290); /* night link / ring */
+  --grape-500: oklch(0.48 0.216 290); /* #6334CB primary fill */
+  --grape-600: oklch(0.42 0.2 290); /* #5325AF pressed, day ring */
 
-  /* Flamingo. Pure joy — the pink in every gradient. Decorative only: it never
-     carries a status and never has to pass a text-contrast check. */
-  --flamingo-200: oklch(0.88 0.06 15);
-  --flamingo-300: oklch(0.78 0.13 12);
-  --flamingo-500: oklch(0.6 0.19 12);
-  --flamingo-600: oklch(0.56 0.21 350);
+  /* Lilac. Grape gone quiet: secondary buttons, hover blush, the "later" day
+     coin. Same hue as grape, pastel lightness. */
+  --lilac-100: oklch(0.945 0.03 296); /* hover tint */
+  --lilac-200: oklch(0.9 0.055 296); /* #E0D7FF secondary fill */
+  --lilac-300: oklch(0.86 0.08 296); /* deeper chip */
+  --lilac-night: oklch(0.36 0.07 295); /* the same job after dark */
+  --lilac-night-hover: oklch(0.32 0.06 295);
 
-  /* The status choir. Brighter and more confident than earthy — these are the
-     colours of a sticker sheet, not a spreadsheet. They carry the SMS delivery
-     log: delivered / queued / failed — and "today" wears sunshine. */
-  --sunshine-200: oklch(0.92 0.07 90);
-  --sunshine-300: oklch(0.85 0.13 88);
-  --sunshine-600: oklch(0.483 0.113 72);
-  --meadow-300: oklch(0.8 0.14 152);
-  --meadow-600: oklch(0.47 0.115 152);
-  --sky-200: oklch(0.9 0.045 235);
-  --sky-300: oklch(0.79 0.1 235);
-  --sky-600: oklch(0.47 0.115 245);
-  --cherry-300: oklch(0.78 0.135 18);
-  --cherry-600: oklch(0.515 0.19 20);
+  /* The sticker sheet. One lightness, one chroma band, six hues. -300 is the
+     sticker; -400/-500 are the deeper cuts for coins and chart series. */
+  --mint-300: oklch(0.9 0.075 160); /* #B3EECD done */
+  --mint-500: oklch(0.72 0.13 160);
+  --peach-300: oklch(0.9 0.07 60); /* #FFD2AF warmth, date coins */
+  --peach-400: oklch(0.855 0.095 58); /* #FFC091 deep peach */
+  --peach-500: oklch(0.74 0.13 58);
+  --lemon-300: oklch(0.9 0.085 95); /* #F9E8A7 now */
+  --lemon-500: oklch(0.76 0.13 95);
+  --sky-300: oklch(0.9 0.06 234); /* #B8E5FF on its way */
+  --sky-500: oklch(0.7 0.12 234);
+  --blush-300: oklch(0.9 0.06 354); /* #FFCEE0 went wrong */
+  --blush-500: oklch(0.7 0.15 354);
+  /* The two saturated pigments in the set: a real destructive BUTTON, which has
+     to shout where the blush sticker only whispers, plus the cut that carries
+     that same job after dark. Pulled a little towards red (hue 15) so nobody
+     mistakes "delete this" for "a message failed". */
+  --blush-400: oklch(0.78 0.2 15); /* night destructive */
+  --blush-600: oklch(0.55 0.2 15); /* day destructive */
 }
 
 /* --- 2. SEMANTIC: light --------------------------------------------------- */
 :root {
   color-scheme: light;
 
-  /* Geometry. Soft, not pillowy — 8px at the base. Buttons, inputs and nav
-     items are gently rounded rectangles; cards sit a step rounder; only the
-     truly circular (avatars, status dots) stays a circle. */
-  --radius: 0.5rem;
+  /* Geometry. Pillowy: 12px at the base, and the ramp reaches the four sizes
+     the system actually uses — 18px date coins, 24px cards, 28px dialogs and
+     panels, 32px the sidebar and the hero band. Anything tappable (buttons,
+     inputs, badges, chips, tabs) is a PILL (`rounded-full`), not a ramp step. */
+  --radius: 0.75rem;
 
-  /* Surfaces. The page is sunlit paper; cards float above it as warm white. */
-  --background: var(--sunbeam-100);
-  --foreground: var(--twilight-900);
-  --card: var(--sunbeam-50);
-  --card-foreground: var(--twilight-900);
-  --popover: var(--sunbeam-50);
-  --popover-foreground: var(--twilight-900);
+  /* Surfaces. White cards floating on lavender paper. */
+  --background: var(--lavender-100);
+  --foreground: var(--plum-800);
+  --card: var(--lavender-50);
+  --card-foreground: var(--plum-800);
+  --popover: var(--lavender-50);
+  --popover-foreground: var(--plum-800);
 
-  /* The action colour. `--primary` is iris: CTAs, links, focus fill. -600 —
-     a deep, confident violet — rather than the brighter -500, which read
-     cheap as a button fill. Note that shadcn's `--accent` below is NOT the
-     brand colour — it is the hover tint. */
-  --primary: var(--iris-600);
-  --primary-foreground: var(--sunbeam-50);
+  /* The action colour. `--primary` is a FILL and stays grape in both themes;
+     `--link` is the same colour doing a TEXT job and lifts at night. Reach for
+     `text-link` on links, icons and quiet labels, never `text-primary`. */
+  --primary: var(--grape-500);
+  --primary-foreground: var(--lavender-50);
+  --link: var(--grape-500);
 
-  /* muted / secondary / accent — and unlike the last system, these are NOT the
-     same pigment, because the split is meaningful here:
-       --muted     warm cream, one step off the card — recessed panels, table
-                   headers. Stays in the sunbeam family.
-       --accent    the hover tint — and it BLUSHES LILAC. A hovered row or menu
-                   item glows faintly iris instead of going grey. That tiny
-                   moment of colour is a signature of this direction.
-       --secondary a secondary button's fill: a fuller lilac with deep iris
-                   text, so "Cancel" is friendly rather than administrative. */
-  --muted: var(--sunbeam-150);
-  --muted-foreground: var(--twilight-500);
-  --accent: var(--iris-150);
-  --accent-foreground: var(--twilight-900);
-  --secondary: var(--iris-200);
-  --secondary-foreground: var(--iris-700);
+  /* muted / secondary / accent, and the split is meaningful:
+       --muted     the quiet fill — recessed panels, table headers, skeletons.
+       --accent    the HOVER tint, and it blushes lilac. A hovered row glows
+                   faintly grape instead of going grey.
+       --secondary a secondary button's fill: lilac with plum ink, so "Cancel"
+                   is friendly rather than administrative. */
+  --muted: var(--lavender-200);
+  --muted-foreground: var(--plum-400);
+  --accent: var(--lilac-100);
+  --accent-foreground: var(--plum-800);
+  --secondary: var(--lilac-200);
+  --secondary-foreground: var(--plum-800);
 
-  /* Status. In the settled idiom these are TINTS: a badge whispers
-     (text-success on success/10), an alert speaks up. None uses a solid fill,
-     so success/warning/info have no -foreground. Only the destructive BUTTON
-     is solid, so only --destructive keeps a foreground. */
-  --success: var(--meadow-600);
-  --warning: var(--sunshine-600);
-  --info: var(--sky-600);
-  --destructive: var(--cherry-600);
-  --destructive-foreground: var(--sunbeam-50);
+  /* Status is a STICKER: the pastel is the fill, the paired -foreground is the
+     text on it. By day that text is plum ink; at night the fill drops to a 16%
+     wash of itself and the pastel becomes the text. One pair of class names —
+     `bg-success text-success-foreground` — is correct in both themes.
+     `--danger` is the blush "went wrong" sticker; `--destructive` is the
+     saturated real-destructive BUTTON, which is a different job. */
+  --success: var(--mint-300);
+  --success-foreground: var(--plum-800);
+  --warning: var(--lemon-300);
+  --warning-foreground: var(--plum-800);
+  --info: var(--sky-300);
+  --info-foreground: var(--plum-800);
+  --danger: var(--blush-300);
+  --danger-foreground: var(--plum-800);
+  --destructive: var(--blush-600);
+  --destructive-foreground: var(--lavender-50);
 
   /* Lines. Two of them, and the distinction is not cosmetic:
-       --border is a decorative hairline (card edges, separators) — butter.
-       --input is a real UI boundary (form controls) and must clear 3:1. */
-  --border: var(--sunbeam-200);
-  --input: var(--twilight-400);
+       --border is a decorative hairline (card edges, separators, table rules),
+                plum at 12% so it tints rather than draws.
+       --input is a real UI boundary (form controls) and must clear 3:1. The
+                board's 35% plum lands at 2.1:1 over the quiet fill, so it is
+                carried at 55% here: same pigment, same read, actually legible. */
+  --border: oklch(0.3 0.074 300 / 0.12);
+  --input: oklch(0.3 0.074 300 / 0.55);
 
-  /* Focus. Its OWN colour, a deeper iris distinct from --primary, always
-     paired with an offset so the ring sits in a gap of the surface colour.
-     Solid, never translucent — a `/50` ring cannot be contrast-checked. */
-  --ring: var(--iris-700);
+  /* Focus. Its OWN colour, a deeper grape than --primary, always paired with an
+     offset so the ring sits in a gap of the surface colour. Solid, never
+     translucent — a `/50` ring cannot be contrast-checked. */
+  --ring: var(--grape-600);
 
-  /* The wash behind a modal. Violet ink in light. */
-  --overlay: oklch(0.29 0.05 292 / 0.45);
+  /* The wash behind a modal. Plum ink at 55%. */
+  --overlay: oklch(0.3 0.074 300 / 0.55);
 
-  /* Elevation. Shadows are SOFT AND VIOLET, never black or brown — a coloured
-     shadow is what makes a light UI feel lit rather than printed. Ambient +
-     key at low alpha, large blur. */
+  /* Elevation — THE CLAY RECIPE. Every surface is lit from above by a white
+     inset highlight and squashed below by a plum inset shadow; the drop shadow
+     is plum too, long and soft. Nothing here is grey and nothing is black.
+       xs  soft   — chips, coins, the things that barely lift
+       sm  card   — cards, list rows, toasts
+       md  lift   — dialogs, popovers, hovering cards
+       lg         — md with the drop at half alpha, for the biggest panels */
   --elevation-xs:
-    0 1px 2px 0 oklch(0.35 0.09 296 / 0.05), 0 2px 8px -2px oklch(0.35 0.09 296 / 0.08);
+    inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 -3px 0 rgb(52 36 77 / 0.08);
   --elevation-sm:
-    0 2px 4px -1px oklch(0.35 0.09 296 / 0.07), 0 6px 16px -4px oklch(0.35 0.09 296 / 0.11);
+    inset 0 2px 0 rgb(255 255 255 / 0.95), inset 0 -5px 0 rgb(52 36 77 / 0.07),
+    0 22px 34px -22px rgb(52 36 77 / 0.38), 0 2px 6px -3px rgb(52 36 77 / 0.08);
   --elevation-md:
-    0 4px 8px -2px oklch(0.35 0.09 296 / 0.09), 0 12px 28px -6px oklch(0.35 0.09 296 / 0.15);
+    inset 0 2px 0 rgb(255 255 255 / 0.95), inset 0 -6px 0 rgb(52 36 77 / 0.06),
+    0 30px 48px -26px rgb(52 36 77 / 0.4), 0 4px 10px -4px rgb(52 36 77 / 0.08);
   --elevation-lg:
-    0 8px 16px -4px oklch(0.35 0.09 296 / 0.11), 0 24px 48px -12px oklch(0.35 0.09 296 / 0.2);
-  /* The iris glow — held in reserve. The quiet-outline primary rests on
-     shadow-xs; keep these for a future moment that earns a glow. */
-  --elevation-primary:
-    0 2px 4px -2px oklch(0.42 0.19 296 / 0.34), 0 6px 16px -4px oklch(0.42 0.19 296 / 0.3);
-  --elevation-primary-lg:
-    0 4px 8px -2px oklch(0.42 0.19 296 / 0.36), 0 10px 24px -6px oklch(0.42 0.19 296 / 0.36);
+    inset 0 2px 0 rgb(255 255 255 / 0.95), inset 0 -6px 0 rgb(52 36 77 / 0.06),
+    0 30px 48px -26px rgb(52 36 77 / 0.5), 0 4px 10px -4px rgb(52 36 77 / 0.08);
+  /* The primary button's own clay: the highlight and squash are drawn INSIDE
+     the grape fill, and the drop is grape rather than plum so the button looks
+     pressed out of the same material it sits on. Published as `shadow-grape`. */
+  --elevation-grape:
+    inset 0 2px 0 rgb(255 255 255 / 0.35), inset 0 -4px 0 rgb(0 0 0 / 0.2),
+    0 16px 26px -12px rgb(99 52 203 / 0.7);
 
-  /* Gradients. Defined per theme so dark keeps the personality without the
-     glare. Sunrise is the brand wash (hero bands, the wordmark tile, empty-
-     state coins); page is the barely-there wash behind every screen. There is
-     deliberately NO CTA gradient: the primary button is a QUIET OUTLINE —
-     card-white with an iris border and label — presence through contrast,
-     not fill. */
-  --gradient-sunrise: linear-gradient(
-    115deg,
-    var(--sunshine-200) 0%,
-    var(--flamingo-200) 48%,
-    var(--iris-250) 100%
-  );
-  --gradient-page:
-    radial-gradient(1100px 520px at 88% -6%, oklch(0.88 0.06 15 / 0.26), transparent 64%),
-    radial-gradient(950px 480px at -12% -2%, oklch(0.9 0.045 235 / 0.22), transparent 60%);
+  /* Charts: the sticker sheet at its deeper cuts, one hue each. */
+  --chart-1: var(--grape-500);
+  --chart-2: var(--mint-500);
+  --chart-3: var(--peach-500);
+  --chart-4: var(--sky-500);
+  --chart-5: var(--blush-500);
 
-  /* Charts: the full choir, one hue each. */
-  --chart-1: var(--iris-500);
-  --chart-2: var(--flamingo-500);
-  --chart-3: var(--sunshine-600);
-  --chart-4: var(--meadow-600);
-  --chart-5: var(--sky-600);
-
-  /* The admin sidebar is WARM PAPER — card-white against the cream page, so
-     the chrome stays in the sunbeam family and the deep-iris active item is
-     the only saturated thing on it. The brand hue survives as the lilac
-     hover blush (--sidebar-accent). */
-  --sidebar: var(--sunbeam-50);
-  --sidebar-foreground: var(--twilight-900);
-  --sidebar-primary: var(--iris-600);
-  --sidebar-primary-foreground: var(--sunbeam-50);
-  --sidebar-accent: var(--iris-150);
-  --sidebar-accent-foreground: var(--twilight-900);
-  --sidebar-border: var(--sunbeam-200);
+  /* The admin sidebar is a WHITE CLAY PANEL against the lavender page, so the
+     chrome stays in the paper family and the grape active item is the only
+     saturated thing on it. The brand hue survives as the lilac hover blush. */
+  --sidebar: var(--lavender-50);
+  --sidebar-foreground: var(--plum-800);
+  --sidebar-primary: var(--grape-500);
+  --sidebar-primary-foreground: var(--lavender-50);
+  --sidebar-accent: var(--lilac-100);
+  --sidebar-accent-foreground: var(--plum-800);
+  --sidebar-border: oklch(0.3 0.074 300 / 0.12);
   /* Focus ring for controls sitting ON the sidebar, measured against it. */
-  --sidebar-ring: var(--iris-700);
+  --sidebar-ring: var(--grape-600);
 }
 
 /* --- 2. SEMANTIC: dark ---------------------------------------------------- */
-/* Midsummer night — deep violet-navy, warm white text, the accents switched to
-   their bright register. Same pigments, remapped; cards still lift by getting
-   lighter. Cozy, not gloomy: the aurora page-wash keeps a hint of colour. */
+/* Clay at night. Deep plum instead of lavender, the same pastels, the same
+   personality: panels still lift, stickers still read, the grape button is
+   pixel-identical because a fill carries its own contrast. What changes is the
+   direction of the light — the highlight drops to 8% white and the drop shadow
+   becomes true night. */
 .dark {
   color-scheme: dark;
 
-  --background: var(--twilight-950);
-  --foreground: var(--twilight-100);
-  --card: var(--twilight-925);
-  --card-foreground: var(--twilight-100);
-  --popover: var(--twilight-925);
-  --popover-foreground: var(--twilight-100);
+  --background: var(--plum-900);
+  --foreground: var(--plum-50);
+  --card: var(--plum-850);
+  --card-foreground: var(--plum-50);
+  --popover: var(--plum-850);
+  --popover-foreground: var(--plum-50);
 
-  --primary: var(--iris-300);
-  --primary-foreground: var(--iris-950);
+  /* The fill does not move. The text job does. */
+  --primary: var(--grape-500);
+  --primary-foreground: var(--lavender-50);
+  --link: var(--grape-300);
 
-  --muted: var(--twilight-850);
-  --muted-foreground: var(--twilight-300);
-  --accent: var(--twilight-800);
-  --accent-foreground: var(--twilight-100);
-  --secondary: var(--twilight-800);
-  --secondary-foreground: var(--twilight-100);
+  --muted: var(--plum-700);
+  --muted-foreground: var(--plum-200);
+  --accent: var(--lilac-night-hover);
+  --accent-foreground: var(--plum-50);
+  --secondary: var(--lilac-night);
+  --secondary-foreground: var(--plum-50);
 
-  --success: var(--meadow-300);
-  --warning: var(--sunshine-300);
-  --info: var(--sky-300);
-  --destructive: var(--cherry-300);
-  --destructive-foreground: var(--twilight-950);
+  /* Stickers after dark: the pastel becomes the TEXT, sitting on a 16% wash of
+     itself over the panel. The values are restated as literals rather than
+     derived from paint so the contrast checker can composite them. */
+  --success: oklch(0.9 0.075 160 / 0.16);
+  --success-foreground: var(--mint-300);
+  --warning: oklch(0.9 0.085 95 / 0.16);
+  --warning-foreground: var(--lemon-300);
+  --info: oklch(0.9 0.06 234 / 0.16);
+  --info-foreground: var(--sky-300);
+  --danger: oklch(0.9 0.06 354 / 0.16);
+  --danger-foreground: var(--blush-300);
+  /* Destructive does the same two jobs as every other colour here — a button
+     fill AND the red of an error message — and at night one value cannot do
+     both with white on it. So the loud colour comes UP and the ink goes DOWN,
+     exactly like the stickers: a bright salmon fill with deep plum text, which
+     also leaves `text-destructive` legible on a card at 5.7:1. */
+  --destructive: var(--blush-400);
+  --destructive-foreground: var(--plum-900);
 
-  --border: var(--twilight-700);
-  --input: var(--twilight-400);
-  --ring: var(--iris-250);
+  --border: var(--plum-600);
+  --input: var(--plum-500);
+  --ring: var(--grape-300);
 
-  /* A dark page needs a heavier wash — the modal's separation comes from the
+  /* A dark page needs a heavier wash: the modal's separation comes from the
      scrim and the shadow, not a lightness step. */
-  --overlay: oklch(0.13 0.03 292 / 0.66);
+  --overlay: oklch(0.15 0.04 300 / 0.7);
 
-  --elevation-xs: 0 1px 2px 0 oklch(0 0 0 / 0.35), 0 2px 8px -2px oklch(0 0 0 / 0.35);
-  --elevation-sm: 0 2px 4px -1px oklch(0 0 0 / 0.4), 0 6px 16px -4px oklch(0 0 0 / 0.45);
-  --elevation-md: 0 4px 8px -2px oklch(0 0 0 / 0.45), 0 12px 28px -6px oklch(0 0 0 / 0.5);
-  --elevation-lg: 0 8px 16px -4px oklch(0 0 0 / 0.5), 0 24px 48px -12px oklch(0 0 0 / 0.6);
-  --elevation-primary:
-    0 2px 4px -2px oklch(0.77 0.13 296 / 0.2), 0 6px 16px -4px oklch(0.77 0.13 296 / 0.22);
-  --elevation-primary-lg:
-    0 4px 8px -2px oklch(0.77 0.13 296 / 0.24), 0 10px 24px -6px oklch(0.77 0.13 296 / 0.28);
+  --elevation-xs:
+    inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 -3px 0 rgb(0 0 0 / 0.35);
+  --elevation-sm:
+    inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 -5px 0 rgb(0 0 0 / 0.35),
+    0 22px 34px -22px rgb(0 0 0 / 0.75), 0 2px 6px -3px rgb(0 0 0 / 0.4);
+  --elevation-md:
+    inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 -6px 0 rgb(0 0 0 / 0.35),
+    0 30px 48px -26px rgb(0 0 0 / 0.8), 0 4px 10px -4px rgb(0 0 0 / 0.45);
+  --elevation-lg:
+    inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 -6px 0 rgb(0 0 0 / 0.35),
+    0 30px 48px -26px rgb(0 0 0 / 0.9), 0 4px 10px -4px rgb(0 0 0 / 0.5);
+  --elevation-grape:
+    inset 0 2px 0 rgb(255 255 255 / 0.28), inset 0 -4px 0 rgb(0 0 0 / 0.3),
+    0 16px 26px -12px rgb(99 52 203 / 0.8);
 
-  /* Jewel-toned at night: the same sunrise, after dark. */
-  --gradient-sunrise: linear-gradient(
-    115deg,
-    oklch(0.45 0.09 60) 0%,
-    oklch(0.42 0.12 356) 48%,
-    oklch(0.42 0.14 296) 100%
-  );
-  --gradient-page:
-    radial-gradient(1100px 520px at 88% -6%, oklch(0.45 0.12 296 / 0.22), transparent 64%),
-    radial-gradient(950px 480px at -12% -2%, oklch(0.5 0.11 350 / 0.14), transparent 60%);
+  --chart-1: var(--grape-300);
+  --chart-2: var(--mint-300);
+  --chart-3: var(--peach-300);
+  --chart-4: var(--sky-300);
+  --chart-5: var(--blush-300);
 
-  --chart-1: var(--iris-300);
-  --chart-2: var(--flamingo-300);
-  --chart-3: var(--sunshine-300);
-  --chart-4: var(--meadow-300);
-  --chart-5: var(--sky-300);
-
-  --sidebar: var(--twilight-925);
-  --sidebar-foreground: var(--twilight-100);
-  --sidebar-primary: var(--iris-300);
-  --sidebar-primary-foreground: var(--iris-950);
-  --sidebar-accent: var(--twilight-800);
-  --sidebar-accent-foreground: var(--twilight-100);
-  --sidebar-border: var(--twilight-700);
-  --sidebar-ring: var(--iris-250);
+  --sidebar: var(--plum-850);
+  --sidebar-foreground: var(--plum-50);
+  --sidebar-primary: var(--grape-500);
+  --sidebar-primary-foreground: var(--lavender-50);
+  --sidebar-accent: var(--lilac-night-hover);
+  --sidebar-accent-foreground: var(--plum-50);
+  --sidebar-border: var(--plum-600);
+  --sidebar-ring: var(--grape-300);
 }
 
-/* --- 3. UTILITY: republish semantics to Tailwind -------------------------- */
+/* --- 3. UTILITY: republish to Tailwind ------------------------------------ */
 /* `inline` matters: it emits var() references rather than resolved values, so a
    single utility class picks up the right value on each side of the .dark
    boundary. Without it, dark mode silently does nothing. */
@@ -327,6 +341,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-link: var(--link);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -334,8 +349,13 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
@@ -356,45 +376,68 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  /* Type. An EXPRESSIVE pairing:
-       --font-heading  Fraunces — a warm, slightly wonky display serif with a
-                       SOFT axis. It is the voice of the product: greetings,
-                       card titles, the wordmark. Set soft; it smiles.
-       --font-sans     Plus Jakarta Sans — a warm geometric humanist for body
-                       copy. Friendly counters, legible on a phone at arm's
-                       length, which is the only place the member page is seen.
-       --font-mono     Space Mono — machine strings only (tokens, Twilio SIDs),
-                       and even those get a little charm. */
-  --font-sans: var(--font-jakarta);
-  --font-heading: var(--font-fraunces);
+  /* The sticker sheet, by name. THEME-INDEPENDENT on purpose: a peach date
+     coin with plum numerals is a physical object, and it looks the same at
+     night. Pair a pastel fill with `text-plum`, never with `text-foreground`,
+     or the numerals go white on dark. */
+  --color-lavender: var(--lavender-100);
+  --color-lavender-pane: var(--lavender-300);
+  --color-plum: var(--plum-800);
+  --color-plum-muted: var(--plum-400);
+  --color-grape: var(--grape-500);
+  --color-grape-deep: var(--grape-600);
+  --color-lilac: var(--lilac-200);
+  --color-lilac-soft: var(--lilac-100);
+  --color-lilac-deep: var(--lilac-300);
+  --color-mint: var(--mint-300);
+  --color-peach: var(--peach-300);
+  --color-peach-deep: var(--peach-400);
+  --color-lemon: var(--lemon-300);
+  --color-sky: var(--sky-300);
+  --color-blush: var(--blush-300);
+
+  /* Type. A ROUNDED pairing:
+       --font-heading  Fredoka — a soft, wide-shouldered display face with a
+                       `wdth` axis. Set at 600 / wdth 108 (see .font-heading)
+                       it looks pressed out of clay: greetings, headings, card
+                       titles, buttons, date numerals, the wordmark.
+       --font-sans     Outfit — a clean geometric sans whose round bowls sit
+                       under Fredoka without competing. Body, tables, forms.
+       --font-mono     Space Mono — machine strings only (magic-link tokens,
+                       Twilio SIDs), and even those get a little charm. */
+  --font-sans: var(--font-outfit);
+  --font-heading: var(--font-fredoka);
   --font-mono: var(--font-space-mono);
 
-  /* The member page's greeting. Fraunces carries it, so it can sit bigger than
-     the old system's 2rem without shouting. */
-  --text-display: 2.5rem;
-  --text-display--line-height: 1.08;
-  --text-display--letter-spacing: -0.01em;
+  /* The greeting on the member page and the landing headline. */
+  --text-display: 2.75rem;
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.02em;
 
-  /* Radii derive from --radius, so re-rounding the whole system is one edit.
-     With --radius at 8px this scale runs 4 → 24px: lg (8px) is everything
-     tappable — buttons, inputs, nav items; md is badges, chips and menu
-     items; xl (12px) is cards; 2xl (16px) is dialogs, date coins and empty
-     states; 3xl (20px) is the hero band. Nothing interactive is a pill. */
+  /* Radii. sm/md/lg/xl/2xl derive from --radius so re-rounding the ramp is one
+     edit; 3xl and 4xl are pinned to the two panel sizes the system uses.
+       sm   6px  the smallest garnish
+       md   9px  nested chips inside a control
+       lg  12px  the base step
+       xl  18px  date coins, empty-state coins
+       2xl 24px  cards
+       3xl 28px  dialogs, sheets, popovers, dropdowns, panes
+       4xl 32px  the admin sidebar panel and the hero band
+     Controls are pills (`rounded-full`), not a step on this ramp. */
   --radius-sm: calc(var(--radius) * 0.5);
   --radius-md: calc(var(--radius) * 0.75);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.5);
   --radius-2xl: calc(var(--radius) * 2);
-  --radius-3xl: calc(var(--radius) * 2.5);
-  --radius-4xl: calc(var(--radius) * 3);
+  --radius-3xl: 1.75rem;
+  --radius-4xl: 2rem;
 
   --shadow-xs: var(--elevation-xs);
   --shadow-sm: var(--elevation-sm);
   --shadow-md: var(--elevation-md);
   --shadow-lg: var(--elevation-lg);
-  /* shadow-primary / shadow-primary-lg: the iris glow under a CTA. */
-  --shadow-primary: var(--elevation-primary);
-  --shadow-primary-lg: var(--elevation-primary-lg);
+  /* shadow-grape: the primary button's clay. Nothing else wears it. */
+  --shadow-grape: var(--elevation-grape);
 
   /* Motion. Springy, never slick. `ease-spring` overshoots and settles — use
      it for anything that ARRIVES (cards, dialogs, hover lifts). `ease-out-soft`
@@ -403,18 +446,20 @@
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 
-  /* Entrance choreography. `animate-pop` is the standard arrival (dialogs, the
-     first paint of a hero); `animate-rise` is for list items, staggered with an
-     inline animation-delay; `animate-float` is the idle bob on decorative
-     coins. All are stilled by the reduced-motion block below. */
-  --animate-pop: solstice-pop 0.45s var(--ease-spring) both;
-  --animate-rise: solstice-rise 0.5s var(--ease-spring) both;
-  --animate-float: solstice-float 5s ease-in-out infinite;
+  /* Entrance choreography plus one idle loop. `animate-pop` is the standard
+     arrival (dialogs, the first paint of a hero); `animate-rise` is for list
+     items, staggered with an inline animation-delay; `animate-bob` is the slow
+     6s drift on the decorative blobs and coins — TRANSLATE ONLY, no rotation
+     and no scale, so nothing wobbles. All three are stilled by the
+     reduced-motion block at the bottom of this file. */
+  --animate-pop: clay-pop 0.45s var(--ease-spring) both;
+  --animate-rise: clay-rise 0.5s var(--ease-spring) both;
+  --animate-bob: clay-bob 6s ease-in-out infinite;
 
-  /* These animate the INDEPENDENT scale/translate/rotate properties, not
-     `transform`, so they compose with layout transforms (a dialog's centering
+  /* These animate the INDEPENDENT scale/translate properties, not `transform`,
+     so they compose with layout transforms (a dialog's centering
      -translate-x-1/2 survives its own entrance). */
-  @keyframes solstice-pop {
+  @keyframes clay-pop {
     from {
       opacity: 0;
       scale: 0.94;
@@ -424,7 +469,7 @@
       scale: 1;
     }
   }
-  @keyframes solstice-rise {
+  @keyframes clay-rise {
     from {
       opacity: 0;
       translate: 0 14px;
@@ -436,15 +481,13 @@
       scale: 1;
     }
   }
-  @keyframes solstice-float {
+  @keyframes clay-bob {
     0%,
     100% {
       translate: 0 0;
-      rotate: -3deg;
     }
     50% {
-      translate: 0 -6px;
-      rotate: 3deg;
+      translate: 0 -10px;
     }
   }
 }
@@ -461,18 +504,14 @@
   }
   body {
     @apply bg-background text-foreground;
-    /* The page wash: a breath of peach and sky in the top corners (aurora in
-       dark). Fixed so it doesn't scroll away, subtle enough that every text
-       token still clears AA over it. */
-    background-image: var(--gradient-page);
-    background-attachment: fixed;
-    background-repeat: no-repeat;
   }
-  /* Fraunces smiles when it's soft. WONK stays 0 by default — see .font-wonky. */
+  /* Fredoka is pressed, not drawn: a touch wider than default and set at 600,
+     which is where the letterforms go pillowy. Width is a variation axis, so it
+     has to be set here; weight is a normal font-weight, so any `font-bold` /
+     `font-semibold` utility still wins over this. */
   .font-heading {
-    font-variation-settings:
-      "SOFT" 100,
-      "WONK" 0;
+    font-variation-settings: "wdth" 108;
+    font-weight: 600;
   }
   /* Selection in lilac, because even highlighting text can be cheerful. */
   ::selection {
@@ -485,15 +524,8 @@
   }
 }
 
-/* The wonky cut of Fraunces — reserved for the display greeting, where one
-   slightly hand-drawn letterform is a wink, not a typo. */
-@utility font-wonky {
-  font-variation-settings:
-    "SOFT" 100,
-    "WONK" 1;
-}
-
-/* Springy motion is a garnish, never a requirement. */
+/* Springy motion is a garnish, never a requirement. The idle bob is stilled
+   outright rather than sped up, so a blob simply sits where it is. */
 @media (prefers-reduced-motion: reduce) {
   *,
   ::before,
@@ -502,5 +534,8 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  .animate-bob {
+    animation: none !important;
   }
 }

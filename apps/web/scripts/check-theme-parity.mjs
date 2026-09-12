@@ -41,10 +41,10 @@ const CSS_PATH = resolve(
 
 // Paint is theme-independent by design: one pigment set, two mappings. Paint
 // lives only in :root and must NOT be redeclared under .dark.
-const PAINT = /^--(sunbeam|twilight|iris|flamingo|sunshine|meadow|sky|cherry)-/;
+const PAINT = /^--(lavender|plum|grape|mint|peach|lemon|sky|blush|lilac)-/;
 // Not colour — geometry, type, spacing, motion. Skipped by both parity and
-// contrast. Gradient tokens are deliberately NOT here: they are semantic and
-// parity-checked, so a gradient defined for light must be restated for dark.
+// contrast. Elevation tokens carry colour but not a foreground/background
+// pairing, so they are parity-exempt; the clay recipe differs by theme anyway.
 const NON_COLOUR = /^--(font|text|radius|shadow|elevation|space|ease|animate)/;
 
 const TEXT = 4.5; // WCAG AA, normal text
@@ -180,30 +180,62 @@ function flattenBackground(stack, scope) {
 
 const surfaces = ["--background", "--card", "--muted"];
 
+// The pastel sticker sheet, published as theme-independent utilities
+// (bg-mint, bg-peach…). Every one of them is designed to carry plum ink, in
+// BOTH themes, because a sticker does not invert.
+const STICKERS = [
+  "--mint-300",
+  "--peach-300",
+  "--peach-400",
+  "--lemon-300",
+  "--sky-300",
+  "--blush-300",
+  "--lilac-200",
+  "--lilac-300",
+  "--lavender-300",
+];
+
 const PAIRS = [
   ...surfaces.flatMap((bg) => [
     { fg: "--foreground", bg, min: TEXT },
     { fg: "--muted-foreground", bg, min: TEXT },
-    { fg: "--primary", bg, min: TEXT, note: "primary as link/icon" },
+    // --primary is a FILL in this system and never a text colour; --link is the
+    // same grape doing the text job, and it lifts at night. Checking --primary
+    // here would be checking a pairing nothing renders.
+    { fg: "--link", bg, min: TEXT, note: "link / icon" },
+    // --destructive does both jobs: the button fill AND the red of an error
+    // message, so it has to read as text on every surface too.
+    { fg: "--destructive", bg, min: TEXT, note: "error text" },
   ]),
 
   // Solid fills: foreground on its own fill.
   { fg: "--primary-foreground", bg: "--primary", min: TEXT },
   { fg: "--secondary-foreground", bg: "--secondary", min: TEXT },
   { fg: "--accent-foreground", bg: "--accent", min: TEXT },
-  // success/warning/info are tint-only in the settled idiom, so they have no
-  // solid foreground to check. Only the destructive button is solid.
   { fg: "--destructive-foreground", bg: "--destructive", min: TEXT, note: "destructive button" },
 
-  // Tinted status badges: text-STATUS over STATUS@10% over the surface. The pair
-  // the first checker never modelled. The Alert's description is a TRANSLUCENT
-  // foreground (text-STATUS/90) over that tint — strictly lower, and it composites
-  // the foreground too.
-  ...["--success", "--warning", "--info", "--destructive"].flatMap((s) => [
-    { fg: s, bg: [`${s} 0.10`, "--card"], min: TEXT, note: "tinted badge on card" },
-    { fg: s, bg: [`${s} 0.10`, "--background"], min: TEXT, note: "tinted badge on page" },
-    { fg: `${s} 0.90`, bg: [`${s} 0.10`, "--card"], min: TEXT, note: "alert description on card" },
+  // Status stickers: `bg-STATUS text-STATUS-foreground`, one pair of class
+  // names that has to be right in both themes. By day --STATUS is an opaque
+  // pastel carrying plum ink; at night it is a 16% wash of that pastel over
+  // the surface, carrying the pastel itself — so the fill is TRANSLUCENT and
+  // must be composited over its real backdrop, which is what this models. The
+  // Alert's description is a translucent foreground on top of that, strictly
+  // lower, and it composites the foreground too.
+  ...["--success", "--warning", "--info", "--danger"].flatMap((s) => [
+    { fg: `${s}-foreground`, bg: [s, "--card"], min: TEXT, note: "status sticker on card" },
+    { fg: `${s}-foreground`, bg: [s, "--background"], min: TEXT, note: "status sticker on page" },
+    {
+      fg: `${s}-foreground 0.90`,
+      bg: [s, "--card"],
+      min: TEXT,
+      note: "alert description on card",
+    },
   ]),
+
+  // The pastel utilities are theme-independent, so the ONLY text colour that is
+  // safe on them is plum ink — never --foreground, which goes white at night.
+  // This is the promise `bg-peach text-plum` rests on.
+  ...STICKERS.map((bg) => ({ fg: "--plum-800", bg, min: TEXT, note: "plum ink on a sticker" })),
 
   // Control borders — real UI boundary.
   ...surfaces.map((bg) => ({ fg: "--input", bg, min: UI, note: "input border" })),
