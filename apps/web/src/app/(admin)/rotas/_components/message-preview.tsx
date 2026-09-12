@@ -80,14 +80,14 @@ export function MessagePreview({
 
   if (members.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
-        Add a member to your group to preview the message against a real recipient.
+      <div className="border-border text-muted-foreground rounded-2xl border border-dashed px-4 py-3 text-sm">
+        Add someone to your house to preview the message against a real recipient.
       </div>
     );
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-border bg-muted/40 p-4">
+    <div className="bg-muted space-y-3 rounded-2xl p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm font-medium">Live preview</p>
         <div className="flex items-center gap-2">
@@ -128,7 +128,9 @@ export function MessagePreview({
 
       {state.status === "ok" ? (
         <>
-          <div className="rounded-lg border border-border bg-background p-3 text-sm whitespace-pre-wrap">
+          {/* A TEXT BUBBLE, not a code block: one squared-off corner is the
+              whole cue, and it is what lands on a member's phone. */}
+          <div className="bg-card rounded-2xl rounded-bl-sm p-3.5 text-sm whitespace-pre-wrap shadow-xs">
             {state.text}
           </div>
           <p className="text-xs text-muted-foreground">

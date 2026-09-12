@@ -37,9 +37,10 @@ function RotaList({ children }: { children: React.ReactNode }) {
   return <ul className="flex flex-col gap-2">{children}</ul>;
 }
 
+// One consequence, as a clay chip on the quiet fill: what moved, and where to.
 function OutcomeRow({ title, detail }: { title: string; detail: string }) {
   return (
-    <li className="border-border bg-muted/40 flex flex-col gap-0.5 rounded-lg border p-3">
+    <li className="bg-muted flex flex-col gap-0.5 rounded-xl p-3 shadow-xs">
       <span className="font-medium">{title}</span>
       <span className="text-muted-foreground">{detail}</span>
     </li>
@@ -105,7 +106,8 @@ export function RemoveMemberDialog({
                         key={`${shift.rota_id}-${shift.due_on}`}
                         title={shift.rota_name}
                         detail={`${formatDay(shift.due_on)} · now ${
-                          shift.now_assigned_member_name ?? "no one — the rota has no members left"
+                          shift.now_assigned_member_name ??
+                          "no one, because the rota has no members left"
                         }`}
                       />
                     ))}
@@ -132,7 +134,7 @@ export function RemoveMemberDialog({
 
               {outcome.reassigned_shifts.length === 0 && outcome.dropped_covers.length === 0 && (
                 <p className="text-muted-foreground">
-                  No future turns or covers were affected — nothing else changed.
+                  No future turns or covers were affected. Nothing else changed.
                 </p>
               )}
             </div>
@@ -158,7 +160,7 @@ export function RemoveMemberDialog({
                       <span className="text-foreground font-medium">{member.rotaNames.join(", ")}</span>.
                     </p>
                   )}
-                  <p>This can&apos;t be undone — there is no reactivating a member.</p>
+                  <p>This can&apos;t be undone. There is no reactivating a member.</p>
                 </div>
               </DialogDescription>
             </DialogHeader>

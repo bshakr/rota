@@ -9,8 +9,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * The admin's account footer: who is signed in, and the way out. An identity
- * row — the same chart-choir-tinted avatar members get, with the name and
- * email truncating beside it — over a quiet ghost sign-out. The sign-out is a
+ * row, with the same pastel-tinted avatar members get and the name and email
+ * truncating beside it, over a quiet ghost sign-out pill. The sign-out is a
  * plain form `action` (not an onClick handler) so it works without client JS
  * and the server action owns the redirect.
  */
@@ -19,10 +19,10 @@ export function SignOutButton({ email, name }: { email?: string; name?: string }
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2.5 px-2 py-1">
+      <div className="flex items-center gap-2.5 px-1.5 py-1">
         <Avatar>
           <AvatarFallback
-            className={cn(avatarTint(seed), "text-xs font-semibold text-foreground")}
+            className={cn(avatarTint(seed), "text-foreground text-xs font-semibold")}
           >
             {initials(seed)}
           </AvatarFallback>
@@ -32,7 +32,7 @@ export function SignOutButton({ email, name }: { email?: string; name?: string }
           {email ? (
             <p
               className={cn(
-                "truncate text-muted-foreground",
+                "text-muted-foreground truncate",
                 name ? "text-xs leading-tight" : "text-sm leading-tight font-medium",
               )}
               title={email}
@@ -47,7 +47,7 @@ export function SignOutButton({ email, name }: { email?: string; name?: string }
           type="submit"
           variant="ghost"
           size="sm"
-          className="w-full justify-start gap-2 px-2 text-muted-foreground"
+          className="text-muted-foreground w-full justify-start gap-2"
         >
           <LogOut aria-hidden />
           Sign out

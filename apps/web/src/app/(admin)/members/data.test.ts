@@ -55,7 +55,7 @@ describe("rotaNamesByMemberId", () => {
     expect(map.get(30)).toBeUndefined();
   });
 
-  it("excludes retired (inactive) rotas — 'appears in' means the live rosters", () => {
+  it("excludes retired (inactive) rotas: 'appears in' means the live rosters", () => {
     const rotas = [
       rota({ id: 1, name: "Kitchen", positions: [{ member_id: 10, name: "Alice", position: 0 }] }),
       rota({

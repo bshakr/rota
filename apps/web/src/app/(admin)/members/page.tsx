@@ -15,7 +15,7 @@ function appBaseUrl(): string {
   const url = process.env.APP_URL;
   if (!url) {
     throw new Error(
-      "APP_URL is not set — the members screen can't build magic links. Set it in the repo-root .env (see .env.example).",
+      "APP_URL is not set, so the members screen can't build magic links. Set it in the repo-root .env (see .env.example).",
     );
   }
   return url;

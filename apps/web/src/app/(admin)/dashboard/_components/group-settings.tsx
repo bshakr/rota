@@ -122,7 +122,7 @@ export function GroupSettings({ group }: { group: Group }) {
               <FieldDescription>
                 {group.timezone_confirmed
                   ? "Confirmed."
-                  : "Never confirmed — a guess until you save it."}
+                  : "Never confirmed. It is a guess until you save it."}
               </FieldDescription>
               <FieldError errors={[errors.timezone]} />
             </Field>

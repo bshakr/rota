@@ -18,21 +18,23 @@ import { cn } from "@/lib/utils";
 /** A this-week shift carrying the rota it belongs to, so the glance names the job. */
 export type WeekShift = Shift & { rotaName: string };
 
-// The day's date coin — the member page's page-a-day calendar leaf, reused as
-// the day heading here so both surfaces speak the same language. Its colour
-// carries urgency: today is the full sunrise, tomorrow wears a whisper of
-// sunshine (NOW's hue), the rest of the week stays calm cream.
+// The day's DATE COIN: the member page's page-a-day calendar leaf, reused as the
+// day heading here so both surfaces speak the same language. 18px round, plum
+// numerals, soft clay, and the pastel carries the urgency. Today wears peach
+// (warm, the thing in front of you), tomorrow lemon (NOW, one sleep away), the
+// rest of the week lilac (quiet). The coins are stickers, so they are
+// theme-independent and their ink is always plum.
 const COIN_STYLE = {
-  today: "bg-[image:var(--gradient-sunrise)] text-foreground shadow-sm",
-  tomorrow: "bg-warning/10 text-warning dark:bg-warning/20",
-  later: "bg-muted text-muted-foreground",
+  today: "bg-peach text-plum",
+  tomorrow: "bg-lemon text-plum",
+  later: "bg-lilac text-plum",
 } as const;
 
 /**
  * "Who's up this week", the one-second read. Shifts arrive already filtered to the
  * group's week and sorted by day, then grouped under a date-coin day heading.
  * Each row leads with the job and the person responsible; a covered turn is set
- * apart at a glance by an info badge and a sky tint, not by making the reader
+ * apart at a glance by a sky badge and a sky wash, not by making the reader
  * parse the text. Day groups rise in one by one, the same staggered entrance
  * as the member page's shift list.
  */
@@ -62,7 +64,7 @@ export function WeekGlance({ shifts, today }: { shifts: WeekShift[]; today: stri
             <h2 className="mb-3 flex items-center gap-3">
               <span
                 className={cn(
-                  "flex size-11 shrink-0 flex-col items-center justify-center rounded-lg",
+                  "flex size-12 shrink-0 flex-col items-center justify-center rounded-xl shadow-xs",
                   coin,
                 )}
                 aria-hidden
@@ -77,32 +79,33 @@ export function WeekGlance({ shifts, today }: { shifts: WeekShift[]; today: stri
               <span className="flex flex-col gap-1">
                 <span
                   className={cn(
-                    "text-sm leading-none font-semibold",
-                    soon ? "text-warning" : "text-foreground",
+                    "font-heading text-sm leading-none font-semibold",
+                    soon ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
                   {capitalise(when)}
                 </span>
-                <span className="text-xs leading-none text-muted-foreground tabular-nums">
+                <span className="text-muted-foreground text-xs leading-none tabular-nums">
                   {formatShiftDate(date)}
                 </span>
               </span>
             </h2>
 
-            <Card className={cn("gap-0 py-0", when === "today" && "border-warning/40")}>
-              <ul className="divide-y divide-border">
+            <Card className="gap-0 py-0">
+              <ul className="divide-border divide-y">
                 {shifts.map((shift) => (
                   <li
                     key={shift.id}
                     className={cn(
-                      "flex items-center justify-between gap-3 px-4 py-3.5",
-                      shift.covered && "bg-info/5",
+                      "flex items-center justify-between gap-3 px-4 py-3.5 first:rounded-t-2xl last:rounded-b-2xl",
+                      // The same quarter-strength sky wash the shifts board uses.
+                      shift.covered && "bg-sky/25",
                     )}
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{shift.rotaName}</p>
                       {shift.covered ? (
-                        <p className="truncate text-sm text-muted-foreground">
+                        <p className="text-muted-foreground truncate text-sm">
                           covering {shift.assigned_member.name}
                         </p>
                       ) : null}
@@ -119,7 +122,7 @@ export function WeekGlance({ shifts, today }: { shifts: WeekShift[]; today: stri
                         <AvatarFallback
                           className={cn(
                             avatarTint(shift.responsible_member.name),
-                            "text-xs font-semibold text-foreground",
+                            "text-foreground text-xs font-semibold",
                           )}
                         >
                           {initials(shift.responsible_member.name)}

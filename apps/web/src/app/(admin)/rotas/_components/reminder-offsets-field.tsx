@@ -59,21 +59,21 @@ export function ReminderOffsetsField({
   return (
     <div id={id} className="flex flex-wrap items-center gap-2" aria-invalid={ariaInvalid}>
       {chips.length === 0 ? (
-        <span className="text-sm text-muted-foreground">
-          No reminders yet — add at least one so people get a text.
+        <span className="text-muted-foreground text-sm">
+          No reminders yet. Add at least one so people get a text.
         </span>
       ) : (
         chips.map((days) => (
           <span
             key={days}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary py-1 pr-1 pl-2.5 text-sm text-secondary-foreground"
+            className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-full py-1 pr-1 pl-3 text-sm shadow-xs"
           >
             {reminderOffsetLabel(days)}
             <button
               type="button"
               onClick={() => remove(days)}
               aria-label={`Remove reminder ${reminderOffsetLabel(days)}`}
-              className="grid size-5 place-items-center rounded-sm text-muted-foreground transition-colors outline-hidden hover:bg-background hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+              className="text-secondary-foreground/70 hover:bg-card hover:text-foreground focus-visible:outline-ring grid size-5 place-items-center rounded-full transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-offset-1"
             >
               <X className="size-3.5" aria-hidden />
             </button>

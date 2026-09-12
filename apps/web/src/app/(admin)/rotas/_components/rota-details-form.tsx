@@ -92,9 +92,11 @@ function defaultsFrom(rota: Rota | undefined, defaultStartsOn: string): RotaForm
     send_hour: rota?.send_hour ?? 9,
     active: rota?.active ?? true,
     reminder_offsets: rota?.reminder_offsets ?? [3, 0],
+    // The house voice, out of the box: a greeting, the job, the day, and the way
+    // out. One emoji, which is the only place in the product allowed one.
     message_template:
       rota?.message_template ??
-      "Hi {{name}}! It's your turn for {{rota}} on {{date}} ({{days_until}}). Thanks 💛",
+      "Hi {{name}} 🌷 you're up for {{rota}} on {{date}} ({{days_until}}). Can't make it? Tap to hand it on.",
   };
 }
 
@@ -319,7 +321,9 @@ export function RotaDetailsForm({
               {PLACEHOLDERS.map((p, i) => (
                 <React.Fragment key={p}>
                   {i > 0 ? " " : null}
-                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{p}</code>
+                  <code className="bg-muted rounded-full px-2 py-0.5 font-mono text-xs">
+                    {p}
+                  </code>
                 </React.Fragment>
               ))}
               . The member&apos;s magic link is added automatically.
@@ -355,9 +359,9 @@ export function RotaDetailsForm({
           {rota && members ? (
             <MessagePreview rotaId={rota.id} members={members} control={form.control} />
           ) : (
-            <p className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+            <p className="border-border text-muted-foreground rounded-2xl border border-dashed px-4 py-3 text-sm">
               Save the rota to see a live preview of the exact text, rendered against a real
-              member.
+              person.
             </p>
           )}
 
@@ -388,14 +392,19 @@ export function RotaDetailsForm({
 }
 
 // Names exactly what confirming will cost: the future shifts regenerate, and any
-// cover on them is lost. A roster change never reaches here — that path preserves
-// covers — so the asymmetry the ticket asks for is visible in the copy itself.
+// cover on them is lost. A roster change never reaches here, because that path
+// preserves covers, so the asymmetry the ticket asks for is visible in the copy.
+//
+// Dressed as a LEMON ALERT: the "now, pay attention" sticker, tint fill with its
+// own paired ink, 20px round. Spans rather than block elements throughout,
+// because this renders inside the confirm dialog's <p> description. Emphasis is
+// weight only, never a colour, so nothing fights the tint's foreground at night.
 function ScheduleWarningBody({ warning }: { warning: ScheduleChangeWarning }) {
   return (
-    <span className="block space-y-3">
+    <span className="bg-warning text-warning-foreground block space-y-3 rounded-[1.25rem] p-4">
       <span className="block">
         Moving the start date or interval regenerates{" "}
-        <span className="font-medium text-foreground">
+        <span className="font-semibold">
           {warning.future_shifts} future shift{warning.future_shifts === 1 ? "" : "s"}
         </span>{" "}
         onto new dates.
@@ -407,7 +416,7 @@ function ScheduleWarningBody({ warning }: { warning: ScheduleChangeWarning }) {
           </span>
           <span className="block">
             {warning.dropped_covers.map((cover) => (
-              <span key={cover.shift_id} className="block text-foreground">
+              <span key={cover.shift_id} className="block font-medium">
                 • {cover.covering_member_name} covering {cover.assigned_member_name} on{" "}
                 {formatLongDate(dayStringToDisplayDate(cover.due_on))}
               </span>
