@@ -83,7 +83,7 @@ export function GroupSettings({ group }: { group: Group }) {
       </CardHeader>
       <CardContent>
         <p className="mb-6 text-sm">
-          Share your household entry page: <a href={`/h/${group.slug}`} className="text-primary underline">/h/{group.slug}</a>
+          Share your household entry page: <a href={`/h/${group.slug}`} className="text-link break-all underline">/h/{group.slug}</a>
           <span className="text-muted-foreground block">Add members and their phone numbers before sharing this page. This address stays the same if you rename your house.</span>
         </p>
         <form onSubmit={onSubmit} className="max-w-sm">

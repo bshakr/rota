@@ -17,7 +17,7 @@ export function EntryForm({ slug }: { slug: string }) {
           Use the number your household admin added, including the country code.
         </p>
       </div>
-      <Button type="submit" loading={pending} className="w-full">Text me my link</Button>
+      <Button type="submit" size="lg" loading={pending} className="w-full">Text me my link</Button>
       <p role={state.error ? "alert" : "status"} className="text-sm">{state.message}</p>
       <p className="text-muted-foreground text-sm">
         No text? Check the number with your household admin. You can also use a link from an earlier reminder.

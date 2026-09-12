@@ -49,7 +49,7 @@ class SendSmsJob < ApplicationJob
     return skip_uncontactable(message) unless message.member.contactable?
 
     body = if message.member_login?
-      "Your RotaMonster personal link: #{Rails.configuration.x.sms.app_url}/s/#{message.member.access_token}\nKeep this link private. If you didn't request it, ignore this text."
+      "Your Rota Monster personal link: #{Rails.configuration.x.sms.app_url}/s/#{message.member.access_token}\nKeep this link private. If you didn't request it, ignore this text."
     else
       Sms::Renderer.for_shift(message.shift, member: message.member)
     end
