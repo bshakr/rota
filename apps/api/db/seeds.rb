@@ -22,17 +22,18 @@ group = Group.find_or_create_by!(workos_organization_id: "org_demo_flat_4") do |
   g.timezone = "Europe/London"
 end
 
-alice, bob, cara = [
-  [ "Alice", "+447400123001" ],
-  [ "Bob",   "+447400123002" ],
-  [ "Cara",  "+447400123003" ]
+ciara, bass, eliza, raph = [
+  [ "Ciara", "+447400123001" ],
+  [ "Bass",  "+447400123002" ],
+  [ "Eliza", "+447400123003" ],
+  [ "Raph",  "+447400123004" ]
 ].map do |name, phone|
   group.members.find_or_create_by!(name: name) { |member| member.phone_e164 = phone }
 end
 
 kitchen = group.rotas.find_or_create_by!(name: "Kitchen deep clean") do |rota|
   rota.message_template =
-    "Hi {{name}}! It's your turn for {{rota}} on {{date}} ({{days_until}}). Thanks 💛"
+    "Hi {{name}} 🌷 you're up for {{rota}} on {{date}} ({{days_until}}). Can't make it? Tap to hand it on."
   rota.starts_on = Date.current.next_occurring(:saturday)
   rota.interval_count = 1
   rota.interval_unit = "week"
@@ -42,7 +43,7 @@ kitchen = group.rotas.find_or_create_by!(name: "Kitchen deep clean") do |rota|
 end
 
 bins = group.rotas.find_or_create_by!(name: "Bins out") do |rota|
-  rota.message_template = "{{name}} — {{rota}} tomorrow ({{date}}). Black bin + recycling."
+  rota.message_template = "{{name}}, it's your turn for {{rota}} tomorrow ({{date}}). Black bin and recycling."
   rota.starts_on = Date.current.next_occurring(:tuesday)
   rota.interval_count = 2
   rota.interval_unit = "week"
@@ -51,16 +52,21 @@ bins = group.rotas.find_or_create_by!(name: "Bins out") do |rota|
   rota.reminder_offsets = [ 1 ]
 end
 
-# Everyone takes a turn at the kitchen...
-[ alice, bob, cara ].each_with_index do |member, position|
-  kitchen.rota_positions.find_or_create_by!(member: member) { |p| p.position = position }
+# A new position goes after whatever the rota already holds. On a fresh database that is running
+# order from zero; on a database seeded with an earlier cast it appends instead of colliding on the
+# (rota, position) unique index, so re-seeding never aborts halfway.
+append_position = ->(rota, member) do
+  rota.rota_positions.find_or_create_by!(member: member) do |p|
+    p.position = (rota.rota_positions.maximum(:position) || -1) + 1
+  end
 end
 
-# ...but the bins are only Bob and Cara's, because a rota's roster is its own ordered subset of
+# Everyone takes a turn at the kitchen...
+[ ciara, bass, eliza, raph ].each { |member| append_position.call(kitchen, member) }
+
+# ...but the bins are only Bass and Eliza's, because a rota's roster is its own ordered subset of
 # the group, not the whole house.
-[ bob, cara ].each_with_index do |member, position|
-  bins.rota_positions.find_or_create_by!(member: member) { |p| p.position = position }
-end
+[ bass, eliza ].each { |member| append_position.call(bins, member) }
 
 puts "Seeded #{group.name}: #{group.members.count} members, #{group.rotas.count} rotas."
 group.members.each { |m| puts "  #{m.name.ljust(6)} #{m.phone_e164}  /s/#{m.access_token}" }

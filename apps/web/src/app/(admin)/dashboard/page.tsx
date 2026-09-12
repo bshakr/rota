@@ -96,13 +96,13 @@ export default async function DashboardPage() {
 
       {/* The week is the main column; group settings sit in a right rail on
           desktop so even a quiet week reads as a composed page rather than
-          two lonely cards stacked on cream. */}
+          two lonely cards stacked on lavender. */}
       <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)] lg:gap-8">
         {rotas.length === 0 ? (
           <EmptyState
             icon={Repeat}
             title="No rotas yet"
-            description="A rota is a job that comes round — bins, cleaning, cooking. Create your first and HouseRota texts whoever's up."
+            description="A rota is a job that comes round: Bins, Kitchen deep clean, Bathroom. Create your first and Rota Monster texts whoever's up."
             action={
               <Button asChild>
                 <Link href="/rotas">Create your first rota</Link>

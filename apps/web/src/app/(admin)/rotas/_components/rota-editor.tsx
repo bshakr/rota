@@ -47,7 +47,7 @@ export function RotaEditor({
           <AlertTitle>This rota is a draft</AlertTitle>
           <AlertDescription>
             No one is on the roster yet, so it generates no shifts and sends no texts. Add
-            members in the roster below to bring it to life.
+            people to the roster below to bring it to life.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -76,7 +76,7 @@ export function RotaEditor({
         <CardHeader>
           <CardTitle>Roster</CardTitle>
           <CardDescription>
-            Drag to set the order — that order is the rotation. Changing it keeps any covers
+            Drag to set the order. That order is the rotation, and changing it keeps any covers
             people have already agreed.
           </CardDescription>
         </CardHeader>

@@ -163,8 +163,8 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
         />
       ) : (
         <>
-          {/* md+ : the table */}
-          <div className="border-border bg-card hidden overflow-hidden rounded-xl border md:block">
+          {/* md+ : the table, in a card-radius clay panel */}
+          <div className="border-border bg-card hidden overflow-hidden rounded-2xl border shadow-sm md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -192,7 +192,7 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
                       {row.phone_e164}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {row.rotaNames.length ? nameList(row.rotaNames) : "—"}
+                      {row.rotaNames.length ? nameList(row.rotaNames) : "None yet"}
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={memberStatus(row)} />
@@ -251,9 +251,9 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
           title={`Rotate ${rotateTarget.name}'s magic link?`}
           description={
             <>
-              This immediately kills {rotateTarget.name}&apos;s current link — including the one in
-              any text already sent to them. Only do this if their phone was lost. Afterwards, copy
-              the new link to share it again.
+              This kills {rotateTarget.name}&apos;s current link straight away, including the one
+              in any text already sent to them. Only do this if their phone was lost. Afterwards,
+              copy the new link to share it again.
             </>
           }
           confirmLabel="Rotate link"

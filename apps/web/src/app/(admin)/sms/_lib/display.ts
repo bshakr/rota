@@ -5,9 +5,11 @@
 import type { SmsKind, SmsStatus } from "@/lib/api/types";
 
 /**
- * Which Badge variant carries a status. These are the status tones the design
- * system defines (see /styleguide) — no new colour is invented here. `sending` is
- * the in-flight waypoint, `pending` the claimed-but-unsent row; both read as
+ * Which Badge variant carries a status. These are the status stickers the design
+ * system already defines (see /styleguide); no new colour is invented here.
+ * Delivered is MINT (done), queued and sent are SKY (on its way), sending is
+ * LEMON (happening now), failed is BLUSH (went wrong). `sending` is the
+ * in-flight waypoint and `pending` the claimed-but-unsent row, so both read as
  * "not done yet" rather than success or failure.
  */
 export type StatusTone = "success" | "warning" | "info" | "destructive" | "secondary";
@@ -62,7 +64,7 @@ const SENTINELS: Record<string, string> = {
   invalid_template:
     "The rota's message template had an unknown placeholder or a stray brace, so the text could not be built.",
   internal_error:
-    "Something failed unexpectedly on our side while sending — not the carrier. It is worth retrying.",
+    "Something failed unexpectedly on our side while sending. That is us, not the carrier, so it is worth retrying.",
 };
 
 // The Twilio SMS error codes worth translating. Anything not here falls back to a
@@ -71,10 +73,10 @@ const SENTINELS: Record<string, string> = {
 const CARRIER: Record<string, string> = {
   "21610":
     "The recipient has unsubscribed by replying STOP. They must text START before we can message them again.",
-  "21211": "The phone number is not a valid destination — check the number on the member.",
-  "21614": "That number cannot receive SMS — it is not a valid mobile number.",
+  "21211": "The phone number is not a valid destination. Check the number on the member.",
+  "21614": "That number cannot receive SMS. It is not a valid mobile number.",
   "21408": "Texting this number's region is not enabled on the Twilio account.",
-  "30003": "The handset was unreachable — switched off, or out of coverage.",
+  "30003": "The handset was unreachable, either switched off or out of coverage.",
   "30004": "The message was blocked, usually because the recipient blocked the sender.",
   "30005": "The number is unknown or no longer active.",
   "30006": "That number is a landline, or its carrier cannot receive texts.",

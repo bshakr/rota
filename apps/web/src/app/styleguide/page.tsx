@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
 
 import { Gallery } from "@/app/styleguide/_components/gallery";
 import {
   Demo,
+  PaintFamily,
+  Registers,
   Section,
   Swatch,
   SwatchGrid,
+  type Pigment,
 } from "@/app/styleguide/_components/spec";
 import { Container } from "@/components/container";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -18,42 +20,272 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = { title: "Styleguide" };
 
+/* -------------------------------------------------------------------------- */
+/* PAINT. Values are transcribed from globals.css, which is the source of truth. */
+/*                                                                             */
+/* The "never a raw colour" lint rule is switched off for this block alone, and */
+/* nowhere else in the app. Rule one forbids a raw colour used AS a colour; a   */
+/* styleguide that documents the pigment set has to print the pigments, and a   */
+/* swatch page with the values redacted would be useless. The chips themselves  */
+/* still paint from var(--token), so nothing here hard-codes a colour into the  */
+/* rendered UI.                                                                 */
+/* -------------------------------------------------------------------------- */
+/* eslint-disable no-restricted-syntax */
+
+const LAVENDER: readonly Pigment[] = [
+  {
+    token: "--lavender-50",
+    value: "oklch(1 0 0)",
+    hex: "#FFFFFF",
+    role: "Cards, popovers, the admin sidebar panel.",
+  },
+  {
+    token: "--lavender-100",
+    value: "oklch(0.965 0.019 299)",
+    hex: "#F5F1FF",
+    role: "The page. Paper with a violet cast, never white.",
+  },
+  {
+    token: "--lavender-200",
+    value: "oklch(0.942 0.031 296)",
+    hex: "#EDE8FF",
+    role: "The quiet fill: recessed panels, table headers, skeletons.",
+  },
+  {
+    token: "--lavender-300",
+    value: "oklch(0.929 0.038 296)",
+    hex: "#E9E3FF",
+    role: "The hero pane, behind the landing and dashboard blobs.",
+  },
+];
+
+const PLUM: readonly Pigment[] = [
+  {
+    token: "--plum-50",
+    value: "oklch(0.96 0.015 300)",
+    role: "Night text.",
+  },
+  {
+    token: "--plum-200",
+    value: "oklch(0.8 0.03 300)",
+    role: "Night muted text.",
+  },
+  {
+    token: "--plum-400",
+    value: "oklch(0.52 0.066 301)",
+    hex: "#6F6089",
+    role: "Day muted text. 5.1:1 on the page.",
+  },
+  {
+    token: "--plum-500",
+    value: "oklch(0.62 0.05 300)",
+    role: "Night control boundary.",
+  },
+  {
+    token: "--plum-600",
+    value: "oklch(0.38 0.05 300)",
+    role: "Night hairline.",
+  },
+  {
+    token: "--plum-700",
+    value: "oklch(0.34 0.05 300)",
+    role: "Night quiet fill.",
+  },
+  {
+    token: "--plum-800",
+    value: "oklch(0.3 0.074 300)",
+    hex: "#34244D",
+    role: "The ink. 12.6:1 on the page, and the text on every sticker.",
+  },
+  {
+    token: "--plum-850",
+    value: "oklch(0.29 0.055 300)",
+    role: "Night card and sidebar panel.",
+  },
+  {
+    token: "--plum-900",
+    value: "oklch(0.235 0.055 300)",
+    role: "Night page.",
+  },
+];
+
+const GRAPE: readonly Pigment[] = [
+  {
+    token: "--grape-300",
+    value: "oklch(0.8 0.12 290)",
+    role: "The lifted cut. Links, icons and the focus ring at night.",
+  },
+  {
+    token: "--grape-500",
+    value: "oklch(0.48 0.216 290)",
+    hex: "#6334CB",
+    role: "The primary fill, identical in both registers. White on it is 7.3:1.",
+  },
+  {
+    token: "--grape-600",
+    value: "oklch(0.42 0.2 290)",
+    hex: "#5325AF",
+    role: "Pressed, and the focus ring by day.",
+  },
+];
+
+const LILAC: readonly Pigment[] = [
+  {
+    token: "--lilac-100",
+    value: "oklch(0.945 0.03 296)",
+    role: "The hover blush. A hovered row glows faintly grape.",
+  },
+  {
+    token: "--lilac-200",
+    value: "oklch(0.9 0.055 296)",
+    hex: "#E0D7FF",
+    role: "The secondary button fill, and the quiet day coin.",
+  },
+  {
+    token: "--lilac-300",
+    value: "oklch(0.86 0.08 296)",
+    role: "The deeper chip, for a roster item that needs an edge.",
+  },
+  {
+    token: "--lilac-night",
+    value: "oklch(0.36 0.07 295)",
+    role: "The secondary fill after dark.",
+  },
+  {
+    token: "--lilac-night-hover",
+    value: "oklch(0.32 0.06 295)",
+    role: "The hover blush after dark.",
+  },
+];
+
+const MINT: readonly Pigment[] = [
+  {
+    token: "--mint-300",
+    value: "oklch(0.9 0.075 160)",
+    hex: "#B3EECD",
+    role: "Done. A delivered text, a turn taken.",
+  },
+  {
+    token: "--mint-500",
+    value: "oklch(0.72 0.13 160)",
+    role: "The deeper cut, for chart series two.",
+  },
+];
+
+const PEACH: readonly Pigment[] = [
+  {
+    token: "--peach-300",
+    value: "oklch(0.9 0.07 60)",
+    hex: "#FFD2AF",
+    role: "Warmth, and the date coin on today's shift.",
+  },
+  {
+    token: "--peach-400",
+    value: "oklch(0.855 0.095 58)",
+    hex: "#FFC091",
+    role: "Deep peach, for the empty state coin.",
+  },
+  {
+    token: "--peach-500",
+    value: "oklch(0.74 0.13 58)",
+    role: "The deeper cut, for chart series three.",
+  },
+];
+
+const LEMON: readonly Pigment[] = [
+  {
+    token: "--lemon-300",
+    value: "oklch(0.9 0.085 95)",
+    hex: "#F9E8A7",
+    role: "Now. Warnings, and tomorrow's day coin.",
+  },
+  {
+    token: "--lemon-500",
+    value: "oklch(0.76 0.13 95)",
+    role: "The deeper cut.",
+  },
+];
+
+const SKY: readonly Pigment[] = [
+  {
+    token: "--sky-300",
+    value: "oklch(0.9 0.06 234)",
+    hex: "#B8E5FF",
+    role: "On its way. A queued text, a shift someone is covering.",
+  },
+  {
+    token: "--sky-500",
+    value: "oklch(0.7 0.12 234)",
+    role: "The deeper cut, for chart series four.",
+  },
+];
+
+const BLUSH: readonly Pigment[] = [
+  {
+    token: "--blush-300",
+    value: "oklch(0.9 0.06 354)",
+    hex: "#FFCEE0",
+    role: "Went wrong. The sticker on a failed text.",
+  },
+  {
+    token: "--blush-400",
+    value: "oklch(0.78 0.2 15)",
+    role: "The real destructive button after dark. Pulled to red, hue 15.",
+  },
+  {
+    token: "--blush-500",
+    value: "oklch(0.7 0.15 354)",
+    role: "The deeper cut, for chart series five.",
+  },
+  {
+    token: "--blush-600",
+    value: "oklch(0.55 0.2 15)",
+    role: "The real destructive button by day.",
+  },
+];
+
+/* eslint-enable no-restricted-syntax */
+
+/* -------------------------------------------------------------------------- */
+/* SEMANTIC.                                                                   */
+/* -------------------------------------------------------------------------- */
+
 const SURFACES = [
   {
     swatchClass: "bg-background",
     token: "--background",
     util: "bg-background",
-    role: "The page itself. Sunlit paper — never white, never grey.",
+    role: "The page. Lavender paper by day, deep plum at night.",
   },
   {
     swatchClass: "bg-card",
     token: "--card",
     util: "bg-card",
-    role: "Anything that lifts off the page. Lighter than the page in BOTH themes.",
+    role: "Anything that lifts off the page. Lighter than the page in both registers.",
   },
   {
     swatchClass: "bg-popover",
     token: "--popover",
     util: "bg-popover",
-    role: "Floating surfaces: dialog, dropdown, popover.",
+    role: "Floating surfaces: dialog, sheet, dropdown, popover.",
   },
   {
     swatchClass: "bg-muted",
     token: "--muted",
     util: "bg-muted",
-    role: "A recessed panel or a table header. Warm cream, stays in the sunbeam family.",
+    role: "The quiet fill. A recessed panel, a table header, a skeleton.",
   },
   {
     swatchClass: "bg-sidebar",
     token: "--sidebar",
     util: "bg-sidebar",
-    role: "The admin sidebar — frosted glass: translucent warm paper blurred over sunrise blobs, floating in the page. The brand hue survives as its lilac hover blush.",
+    role: "The admin sidebar. A white clay panel, so the chrome stays in the paper family.",
   },
   {
     swatchClass: "bg-accent",
     token: "--accent",
     util: "bg-accent",
-    role: "NOT the brand colour — the hover tint, and it blushes lilac instead of going grey.",
+    role: "Not the brand colour. This is the hover tint, and it blushes lilac instead of going grey.",
   },
 ];
 
@@ -62,7 +294,7 @@ const CONTENT = [
     swatchClass: "bg-foreground",
     token: "--foreground",
     util: "text-foreground",
-    role: "Body text. Deep violet ink — never black, never slate.",
+    role: "Body text. Plum ink, never black and never slate.",
   },
   {
     swatchClass: "bg-muted-foreground",
@@ -72,57 +304,75 @@ const CONTENT = [
   },
 ];
 
-const ACCENT = [
+const ACTION = [
   {
     swatchClass: "bg-primary",
     token: "--primary",
     util: "bg-primary",
-    role: "Iris — the action colour. CTAs, links, focus fill, the active nav item.",
+    role: "Grape. The one action colour, as a FILL. Identical in both registers.",
   },
   {
     swatchClass: "bg-primary-foreground",
     token: "--primary-foreground",
     util: "text-primary-foreground",
-    role: "Text on top of iris.",
+    role: "The label on grape. White, at 7.3:1.",
+  },
+  {
+    swatchClass: "bg-link",
+    token: "--link",
+    util: "text-link",
+    role: "The same colour doing a TEXT job, so it lifts at night. Reach for this on links and icons, never text-primary.",
   },
   {
     swatchClass: "bg-secondary",
     token: "--secondary",
     util: "bg-secondary",
-    role: "A secondary button's lilac fill — friendly, not administrative.",
+    role: "The lilac fill under a secondary button, so Cancel reads friendly rather than administrative.",
   },
   {
     swatchClass: "bg-secondary-foreground",
     token: "--secondary-foreground",
     util: "text-secondary-foreground",
-    role: "Deep iris text on the lilac fill.",
+    role: "Plum ink on the lilac fill.",
+  },
+  {
+    swatchClass: "bg-ring",
+    token: "--ring",
+    util: "outline-ring",
+    role: "Focus, with its own colour. A deeper grape by day, the lifted cut at night, always drawn as an offset outline.",
   },
 ];
 
-const STATUS = [
+const STICKERS = [
   {
     swatchClass: "bg-success",
     token: "--success",
-    util: "text-success",
-    role: "Meadow. SMS delivered; a turn completed. Badge: variant=\"success\".",
+    util: "bg-success text-success-foreground",
+    role: "Mint. Done: a text delivered, a turn taken.",
   },
   {
     swatchClass: "bg-warning",
     token: "--warning",
-    util: "text-warning",
-    role: "Sunshine. Sending, a stale reminder — and the today/tomorrow badge. Badge: variant=\"warning\".",
+    util: "bg-warning text-warning-foreground",
+    role: "Lemon. Now: attention, a shift due tomorrow, a schedule that needs confirming.",
   },
   {
     swatchClass: "bg-info",
     token: "--info",
-    util: "text-info",
-    role: "Sky. Queued, or covering someone's turn. Badge: variant=\"info\".",
+    util: "bg-info text-info-foreground",
+    role: "Sky. On its way: queued, sending, covering someone else's turn.",
+  },
+  {
+    swatchClass: "bg-danger",
+    token: "--danger",
+    util: "bg-danger text-danger-foreground",
+    role: "Blush. Went wrong: a carrier failure. It whispers, and it is not a button.",
   },
   {
     swatchClass: "bg-destructive",
     token: "--destructive",
-    util: "text-destructive",
-    role: "Cherry. Carrier failure, or a destructive action. Badge: variant=\"destructive\".",
+    util: "bg-destructive text-destructive-foreground",
+    role: "The real destructive BUTTON, which is a different job from the blush sticker. Saturated, because it has to shout.",
   },
 ];
 
@@ -131,69 +381,137 @@ const LINES = [
     swatchClass: "bg-border",
     token: "--border",
     util: "border-border",
-    role: "Decorative hairline: card edges, separators. Butter — low contrast on purpose.",
+    role: "A decorative hairline: card edges, separators, table rules. Plum at 12%, so it tints rather than draws.",
   },
   {
     swatchClass: "bg-input",
     token: "--input",
     util: "border-input",
-    role: "A real control boundary — form fields. Darker, because WCAG wants 3:1 here.",
-  },
-  {
-    swatchClass: "bg-ring",
-    token: "--ring",
-    util: "outline-ring",
-    role: "Focus. A deeper iris, distinct from --primary, always drawn as an offset outline.",
+    role: "A real control boundary on a form field, carried at plum 55% because WCAG wants 3:1 here.",
   },
   {
     swatchClass: "bg-overlay",
     token: "--overlay",
     util: "bg-overlay",
-    role: "The wash behind a modal. Violet ink in light, deep night in dark — never invisible.",
+    role: "The wash behind a modal. Plum ink at 55% by day, a heavier night wash after dark.",
   },
 ];
 
-const GRADIENTS = [
-  {
-    varName: "--gradient-sunrise",
-    role: "The brand wash: the wordmark tile, empty-state coins, a shift card's date coin, the greeting swash. Pastel gold → pink → lilac by day; jewel tones after dark.",
-  },
-  {
-    varName: "--gradient-page",
-    role: "The barely-there peach-and-sky corners behind every screen (aurora in dark). Applied once, on <body> — never on a component.",
-  },
-];
+/* -------------------------------------------------------------------------- */
 
-// Each with the ONE thing it is for, so engineer #3 doesn't guess.
 const RADII = [
-  { cls: "rounded-md", label: "md", use: "badges, chips, menu items" },
-  { cls: "rounded-lg", label: "lg · --radius (8px)", use: "buttons, inputs, nav items — the tappable default" },
-  { cls: "rounded-xl", label: "xl", use: "cards, tiles, popovers" },
-  { cls: "rounded-2xl", label: "2xl", use: "dialogs, empty states, date coins, hero bands" },
-  { cls: "rounded-full", label: "full", use: "avatars and status dots — only the truly circular" },
+  { cls: "rounded-sm", label: "sm · 6px", use: "the smallest garnish" },
+  { cls: "rounded-md", label: "md · 9px", use: "a chip nested inside a control" },
+  { cls: "rounded-lg", label: "lg · 12px, --radius", use: "the base step" },
+  { cls: "rounded-xl", label: "xl · 18px", use: "date coins, empty state coins" },
+  { cls: "rounded-2xl", label: "2xl · 24px", use: "cards" },
+  {
+    cls: "rounded-3xl",
+    label: "3xl · 28px",
+    use: "dialogs, sheets, popovers, dropdowns, panes",
+  },
+  {
+    cls: "rounded-4xl",
+    label: "4xl · 32px",
+    use: "the admin sidebar panel and the hero band",
+  },
+  {
+    cls: "rounded-full",
+    label: "full",
+    use: "every control, plus avatars and dots",
+  },
 ];
 
-const SHADOWS = [
-  { cls: "shadow-xs", label: "xs", use: "a card resting on the page" },
-  { cls: "shadow-sm", label: "sm", use: "a hovered/raised card, the date coin" },
-  { cls: "shadow-md", label: "md", use: "popover, dropdown" },
-  { cls: "shadow-lg", label: "lg", use: "dialog, sheet — floating over a scrim" },
-  { cls: "shadow-primary", label: "primary", use: "the iris glow — held in reserve; the quiet-outline primary rests on shadow-xs" },
+/* The clay recipes, transcribed verbatim from the light register so the page can
+   show the actual shadow rather than a paraphrase of it. Same lint exception,
+   same reason: these are documentation, not a style being applied. */
+/* eslint-disable no-restricted-syntax */
+const CLAY = [
+  {
+    cls: "shadow-xs",
+    label: "xs · soft",
+    use: "chips, coins, the things that barely lift",
+    recipe:
+      "inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 -3px 0 rgb(52 36 77 / 0.08)",
+  },
+  {
+    cls: "shadow-sm",
+    label: "sm · card",
+    use: "cards, list rows, toasts",
+    recipe:
+      "inset 0 2px 0 rgb(255 255 255 / 0.95), inset 0 -5px 0 rgb(52 36 77 / 0.07), 0 22px 34px -22px rgb(52 36 77 / 0.38), 0 2px 6px -3px rgb(52 36 77 / 0.08)",
+  },
+  {
+    cls: "shadow-md",
+    label: "md · lift",
+    use: "dialogs, popovers, a card under the cursor",
+    recipe:
+      "inset 0 2px 0 rgb(255 255 255 / 0.95), inset 0 -6px 0 rgb(52 36 77 / 0.06), 0 30px 48px -26px rgb(52 36 77 / 0.4), 0 4px 10px -4px rgb(52 36 77 / 0.08)",
+  },
+];
+/* eslint-enable no-restricted-syntax */
+
+const CLAY_EXTRAS = [
+  {
+    cls: "shadow-lg",
+    label: "lg",
+    use: "the biggest panels. Lift, with the drop carried to half alpha.",
+  },
+  {
+    cls: "shadow-grape",
+    label: "grape",
+    use: "the primary button, and nothing else. The highlight and squash are drawn inside the grape fill and the drop is grape too, so the button looks pressed out of the material it sits on.",
+  },
 ];
 
-const ICON_SIZES = [
-  { px: "size-4 (16px)", use: "inside buttons and inputs — inline with text" },
-  { px: "size-[18px]", use: "nav items and the wordmark tile" },
-  { px: "size-5 (20px)", use: "a standalone icon button (hamburger)" },
-  { px: "size-6 (24px)", use: "an empty-state / section glyph" },
+const TYPE_SCALE = [
+  {
+    cls: "text-display",
+    label: "text-display · 2.75rem / 1.05 / -0.02em",
+    use: "the member greeting and the landing headline, in Fredoka",
+  },
+  { cls: "text-2xl", label: "text-2xl", use: "a page title" },
+  { cls: "text-lg", label: "text-lg", use: "a card title" },
+  { cls: "text-base", label: "text-base", use: "body copy on a phone" },
+  { cls: "text-sm", label: "text-sm", use: "the admin workhorse size" },
+  { cls: "text-xs", label: "text-xs", use: "table meta, hints, timestamps" },
 ];
 
 const SPACING = [
-  { name: "Page gutter", value: "px-5 md:px-8", use: "every screen's left/right edge — use <Container>, never hand-rolled" },
-  { name: "Section rhythm", value: "space-y-10 / gap-14", use: "between major blocks on a page" },
-  { name: "Card padding", value: "--card-spacing (20px, 14px sm)", use: "inside a Card — owned by the component" },
-  { name: "Control gap", value: "gap-2 / gap-3", use: "between a label and its input, buttons in a row" },
+  {
+    name: "Page gutter",
+    value: "px-5 md:px-8",
+    use: "every screen's left and right edge. Use <Container>, never a hand-rolled padding.",
+  },
+  {
+    name: "Measure",
+    value: "max-w-5xl / max-w-2xl / max-w-lg",
+    use: "<Container width=\"admin\" | \"prose\" | \"member\">. The member page is the narrow one.",
+  },
+  {
+    name: "Section rhythm",
+    value: "space-y-10 / gap-14",
+    use: "between major blocks on a page",
+  },
+  {
+    name: "Card padding",
+    value: "--card-spacing, 20px, or 14px on size=\"sm\"",
+    use: "inside a Card. The component owns it, so do not add your own.",
+  },
+  {
+    name: "Control gap",
+    value: "gap-2 / gap-3",
+    use: "between a label and its input, or buttons in a row",
+  },
 ];
+
+const BLOBS = [
+  { cls: "bg-peach", size: "size-24", pos: "top-2 left-6", delay: "0s" },
+  { cls: "bg-mint", size: "size-20", pos: "top-10 left-28", delay: "1.2s" },
+  { cls: "bg-lilac", size: "size-16", pos: "top-4 left-48", delay: "2.4s" },
+];
+
+const BLOB_SHAPE = "58% 42% 45% 55% / 55% 48% 52% 45%";
 
 export default function StyleguidePage() {
   return (
@@ -205,7 +523,7 @@ export default function StyleguidePage() {
           </Link>
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground hidden text-xs sm:inline">
-              Toggle the theme — every token below is defined in both.
+              Toggle the register. Every token below is defined in both.
             </span>
             <ThemeToggle />
           </div>
@@ -214,25 +532,26 @@ export default function StyleguidePage() {
 
       <Container asChild>
         <main className="flex-1 py-10 md:py-14">
-          {/* The hero IS the pitch: sunrise band, Fraunces at full size, the
-              whole personality in one card. */}
-          <div className="animate-pop relative mb-14 overflow-hidden rounded-3xl bg-[image:var(--gradient-sunrise)] p-8 shadow-md md:p-12">
-            <Badge variant="outline" className="border-foreground/20 bg-card/60 mb-5">
-              <Sparkles aria-hidden />
-              Solstice — the design language
+          {/* The hero is the pitch. A lavender pane, Fredoka at full size, and
+              the whole personality in one band. No blobs here: those belong to
+              the landing and dashboard heroes, and are demonstrated below. */}
+          <div className="bg-lavender-pane animate-pop text-plum relative mb-14 overflow-hidden rounded-4xl p-8 shadow-md md:p-12">
+            <Badge variant="secondary" className="mb-5">
+              Soft Clay
             </Badge>
-            <p className="font-heading font-wonky max-w-[16ch] text-[2.75rem] leading-[1.05] font-semibold text-balance md:text-6xl">
-              Whose turn is it?
+            <p className="font-heading text-display max-w-[16ch] font-semibold text-balance">
+              Whose turn? Sorted.
             </p>
             <p className="mt-5 max-w-prose text-sm text-pretty md:text-base">
-              A chore rota that feels like the brightest day of the year: sunlit
-              paper, violet ink, candy accents that mean something, softly
-              rounded corners, and motion with a spring in its step. Friendly first —
-              because the person reading it is standing in a kitchen, not
-              sitting in a meeting.
+              A chore rota should feel like a fridge magnet, not enterprise
+              software. Lavender paper, plum ink, one grape action colour, and a
+              sheet of pastel stickers that each carry a meaning. Surfaces are
+              pillowy: lit from above, squashed below, dropped onto the page with
+              a soft plum shadow. Nothing here is grey, and nothing is a
+              gradient.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
-              <Button size="lg">Take your turn</Button>
+              <Button size="lg">Set up your house</Button>
               <Button size="lg" variant="secondary">
                 Maybe later
               </Button>
@@ -244,29 +563,35 @@ export default function StyleguidePage() {
           <div className="flex flex-col gap-14">
             <Section
               id="rules"
-              title="The three rules"
+              title="The four rules"
               intro="Everything else on this page follows from these."
             >
-              <ol className="text-muted-foreground grid gap-3 text-sm sm:grid-cols-3">
+              <ol className="text-muted-foreground grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                 {[
                   {
                     n: "Never a raw colour.",
-                    body: "No hex, no oklch(), no Tailwind palette utility. globals.css tears the default palette out of the compiler, so those utilities generate nothing, and lint fails the build on any that slip in. Reach for a semantic token instead.",
+                    body: "No hex, no oklch(), no utility from Tailwind's own palette. globals.css tears that palette out of the compiler, so those utilities generate nothing at all, and lint fails the build on any that slip in. Reach for a semantic token, or a named pastel when the colour is pure decoration.",
                   },
                   {
-                    n: "Every hue has a job.",
-                    body: "Iris acts, sunshine is now, meadow is done, sky is on its way, cherry went wrong, flamingo decorates. A colour doing another colour's job is a bug — and a screen needs at most one hue that isn't earning a meaning.",
+                    n: "Every sticker has a job.",
+                    body: "Mint is done, lemon is now, sky is on its way, blush went wrong, peach is warmth, lilac is quiet. A sticker doing another sticker's job is a bug, and one screen wants at most one hue that is not earning a meaning.",
+                  },
+                  {
+                    n: "Nothing grey, nothing gradient.",
+                    body: "Every shadow carries plum, every surface is lit from above and squashed below, and no fill is a gradient. No frosted glass, and no left-border accent cards.",
                   },
                   {
                     n: "Mobile first.",
-                    body: "The member page is a phone page that happens to work on desktop. Design at 375px, then let it breathe. Everything tappable is at least 44px, on softly rounded corners.",
+                    body: "The member page is a phone page that happens to work on a desktop. Design at 390px, then let it breathe. Everything tappable is at least 44px, and it is a pill.",
                   },
                 ].map((r) => (
                   <li
                     key={r.n}
-                    className="border-border bg-card rounded-xl border p-4 shadow-xs"
+                    className="border-border bg-card rounded-2xl border p-4 shadow-xs"
                   >
-                    <p className="text-foreground font-heading mb-1 font-semibold">{r.n}</p>
+                    <p className="text-foreground font-heading mb-1 font-semibold">
+                      {r.n}
+                    </p>
                     <p className="text-xs text-pretty">{r.body}</p>
                   </li>
                 ))}
@@ -274,9 +599,63 @@ export default function StyleguidePage() {
             </Section>
 
             <Section
-              id="colour"
-              title="Colour"
-              intro="Sunlit paper, violet ink, and a small choir of confident hues that each carry a meaning. Every pairing below is verified to meet WCAG AA in both themes — 4.5:1 for text, 3:1 for control borders and focus rings — and `npm run check:tokens` fails CI if that regresses."
+              id="paint"
+              title="Paint"
+              intro="Layer one: raw pigment, defined outside @theme so no utility is generated from the ramp. There is no bg-grape-500. Components reach for the semantic tokens below, or for the short list of pastels published by name. The six pastels are ONE OKLCH family, at L 0.90 and C 0.06 to 0.085, with only the hue moving. Because they share a lightness, plum ink reads on every one of them at about 10:1, and a sticker looks the same at night as it does by day."
+            >
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <PaintFamily
+                  name="Lavender"
+                  role="The paper family. White cards floating on a lavender page, with a deeper pane behind heroes."
+                  pigments={LAVENDER}
+                />
+                <PaintFamily
+                  name="Plum"
+                  role="The ink family by day, and the whole sky at night. The violet cast is what keeps dark mode cosy."
+                  pigments={PLUM}
+                />
+                <PaintFamily
+                  name="Grape"
+                  role="The one action colour: buttons, focus, the active nav item."
+                  pigments={GRAPE}
+                />
+                <PaintFamily
+                  name="Lilac"
+                  role="Grape gone quiet. Secondary buttons, the hover blush, the later day coin."
+                  pigments={LILAC}
+                />
+                <PaintFamily
+                  name="Mint"
+                  role="Done, at hue 160."
+                  pigments={MINT}
+                />
+                <PaintFamily
+                  name="Peach"
+                  role="Warmth and date coins, at hue 60. The friendliest pigment in the set."
+                  pigments={PEACH}
+                />
+                <PaintFamily
+                  name="Lemon"
+                  role="Now, at hue 95."
+                  pigments={LEMON}
+                />
+                <PaintFamily
+                  name="Sky"
+                  role="On its way, at hue 234."
+                  pigments={SKY}
+                />
+                <PaintFamily
+                  name="Blush"
+                  role="Went wrong, at hue 354. The family carries a second job too: the two saturated cuts at hue 15 are the real destructive button, pulled towards red so nobody mistakes delete this for a message failed."
+                  pigments={BLUSH}
+                />
+              </div>
+            </Section>
+
+            <Section
+              id="semantic"
+              title="Semantic tokens"
+              intro="Layer two: what a colour MEANS. This is the only layer a component may reach for when the colour carries a meaning. Every pairing is verified to meet WCAG AA in both registers, 4.5:1 for text and 3:1 for control borders and focus rings, with translucent fills composited over their real backdrop. npm run check:tokens re-checks it and fails CI on a regression."
             >
               <div className="flex flex-col gap-8">
                 <div>
@@ -296,17 +675,26 @@ export default function StyleguidePage() {
                   </SwatchGrid>
                 </div>
                 <div>
-                  <h3 className="mb-4 text-sm font-medium">Action &amp; lilac</h3>
+                  <h3 className="mb-4 text-sm font-medium">
+                    Action, and the fill versus text split
+                  </h3>
                   <SwatchGrid>
-                    {ACCENT.map((s) => (
+                    {ACTION.map((s) => (
                       <Swatch key={s.token} {...s} />
                     ))}
                   </SwatchGrid>
                 </div>
                 <div>
-                  <h3 className="mb-4 text-sm font-medium">The status choir</h3>
+                  <h3 className="mb-4 text-sm font-medium">The sticker sheet</h3>
+                  <p className="text-muted-foreground mb-4 max-w-prose text-sm text-pretty">
+                    Status is a sticker: the pastel is the fill and the paired
+                    foreground is the text on it. By day that text is plum ink.
+                    At night the fill drops to a 16% wash of itself and the
+                    pastel becomes the text, so one pair of class names is
+                    correct in both registers.
+                  </p>
                   <SwatchGrid>
-                    {STATUS.map((s) => (
+                    {STICKERS.map((s) => (
                       <Swatch key={s.token} {...s} />
                     ))}
                   </SwatchGrid>
@@ -323,77 +711,137 @@ export default function StyleguidePage() {
             </Section>
 
             <Section
-              id="gradients"
-              title="Gradients"
-              intro="Two, each a token with a light and a dark voice — components reference the token, never the stops. Gradients are decoration only — the primary button is deliberately a solid: body text never sits on a gradient without a solid card between them."
+              id="registers"
+              title="The two registers"
+              intro="The right column is forced into the night register by a nested dark wrapper, so both can be read at once with the page in light mode. The day values live on :root, so the forcing only works in one direction: use the toggle in the header to check the left column at night."
             >
-              <div className="grid gap-4 md:grid-cols-3">
-                {GRADIENTS.map((g) => (
-                  <div key={g.varName} className="flex flex-col gap-3">
-                    <div
-                      className="ring-border h-20 rounded-xl ring-1 ring-inset"
-                      style={{ backgroundImage: `var(${g.varName})` }}
-                      aria-hidden
-                    />
-                    <div>
-                      <code className="block font-mono text-xs font-medium">
-                        {g.varName}
-                      </code>
-                      <p className="text-muted-foreground mt-1 text-xs text-pretty">
-                        {g.role}
-                      </p>
-                    </div>
+              <Registers>
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="success">Delivered</Badge>
+                    <Badge variant="info">Queued</Badge>
+                    <Badge variant="warning">Sending</Badge>
+                    <Badge variant="destructive">Failed</Badge>
+                    <Badge variant="secondary">Fortnightly</Badge>
+                    <Badge variant="outline">Draft</Badge>
                   </div>
-                ))}
-              </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button size="sm">Add member</Button>
+                    <Button size="sm" variant="secondary">
+                      Cancel
+                    </Button>
+                    <Button size="sm" variant="outline">
+                      Export
+                    </Button>
+                    <Button size="sm" variant="ghost">
+                      Dismiss
+                    </Button>
+                    <Button size="sm" variant="destructive">
+                      Deactivate
+                    </Button>
+                  </div>
+                  <Card size="sm">
+                    <CardHeader>
+                      <CardTitle>Kitchen deep clean</CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-muted-foreground">
+                      Raph is up on Saturday.
+                    </CardContent>
+                  </Card>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="bg-peach text-plum font-heading flex size-14 shrink-0 flex-col items-center justify-center rounded-xl leading-none font-semibold shadow-xs">
+                      <span className="text-lg">4</span>
+                      <span className="text-[10px] tracking-wide uppercase">
+                        Jul
+                      </span>
+                    </span>
+                    <span className="text-muted-foreground text-xs text-pretty">
+                      The peach date coin is a sticker, so it is deliberately
+                      theme independent. Pair a pastel fill with text-plum, never
+                      with text-foreground, or the numerals go white at night.
+                    </span>
+                  </div>
+                </div>
+              </Registers>
             </Section>
 
             <Section
               id="type"
               title="Typography"
-              intro="An expressive pairing. Fraunces — a warm, optical display serif set SOFT, with the wonky cut reserved for greetings — is the voice; Plus Jakarta Sans carries body copy with open, friendly counters; Space Mono handles machine strings (tokens, Twilio SIDs) with charm. Headings are semibold, never black-weight."
+              intro="A rounded pairing. Fredoka is a soft, wide-shouldered display face with a width axis, set at weight 600 and wdth 108 so it looks pressed out of clay. Outfit is a clean geometric sans whose round bowls sit under Fredoka without competing. Space Mono handles machine strings, and even those get a little charm."
             >
               <div className="flex flex-col gap-4">
-                <Demo label="Scale" className="block">
-                  <div className="space-y-4">
-                    <p className="text-display font-heading font-wonky font-semibold">
-                      Hi Alice
-                    </p>
-                    <p className="font-heading text-2xl font-semibold">
-                      Kitchen deep clean
+                <Demo label="The three voices" hint="font-heading · font-sans · font-mono" className="block">
+                  <div className="w-full space-y-5">
+                    <div>
+                      <p className="font-heading text-2xl font-semibold">
+                        Fredoka greets, names and celebrates
+                      </p>
+                      <p className="text-muted-foreground mt-1 text-xs">
+                        font-heading · greetings, headings, card titles, dialog
+                        titles, buttons, date numerals, the wordmark
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-base">
+                        Outfit explains. It carries body copy, tables, forms and
+                        labels, at 400 to 700.
+                      </p>
+                      <p className="text-muted-foreground mt-1 text-xs">
+                        font-sans · if a sentence does work it is Outfit, and if
+                        it smiles it is Fredoka
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-mono text-sm">SM1a2b3c4d5e6f · x7Kd2p</p>
+                      <p className="text-muted-foreground mt-1 text-xs">
+                        font-mono · machine strings only: magic-link tokens and
+                        Twilio SIDs
+                      </p>
+                    </div>
+                  </div>
+                </Demo>
+
+                <Demo label="Scale" hint="the utilities the system uses" className="block">
+                  <ul className="w-full space-y-4">
+                    {TYPE_SCALE.map((t) => (
+                      <li key={t.cls}>
+                        <p
+                          className={`font-heading font-semibold ${t.cls} ${
+                            t.cls === "text-display" ? "leading-none" : ""
+                          }`}
+                        >
+                          Hi Ciara
+                        </p>
+                        <p className="text-muted-foreground mt-1 text-xs">
+                          <code className="font-mono">{t.label}</code> ·{" "}
+                          {t.use}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </Demo>
+
+                <Demo label="In place" className="block">
+                  <div className="w-full space-y-4">
+                    <p className="text-display font-heading leading-none font-semibold">
+                      Hi Ciara
                     </p>
                     <p className="text-base">
-                      It&apos;s your turn on Saturday 5 July — and it&apos;s a lovely day for it.
+                      Here&apos;s what&apos;s coming up for you, across every
+                      rota.
                     </p>
                     <p className="text-muted-foreground text-sm">
-                      Every 2 weeks · 4 members · next reminder in 3 days
-                    </p>
-                    <p className="text-muted-foreground font-mono text-xs">
-                      SM1a2b3c4d5e6f · x7Kd2p
+                      Every 2 weeks · 4 people · next text in 3 days
                     </p>
                   </div>
                 </Demo>
-                <Demo
-                  label="The two voices"
-                  hint="font-heading vs font-sans"
-                  className="block"
-                >
-                  <p className="text-sm text-pretty">
-                    <span className="font-heading text-base font-semibold">
-                      Fraunces greets, names and celebrates
-                    </span>{" "}
-                    — greetings, card titles, dialog titles, the wordmark.{" "}
-                    <span className="font-medium">Jakarta explains</span> —
-                    everything else. If a sentence does work, it&apos;s Jakarta;
-                    if it smiles, it&apos;s Fraunces. `font-wonky` (the
-                    hand-drawn cut) is for the display greeting only.
-                  </p>
-                </Demo>
+
                 <Demo label="Tabular numerals" hint="automatic in tables and <time>">
                   <div className="text-sm">
                     <p>
-                      <time>Sat 5 Jul</time> · <time>Thu 10 Jul</time> ·{" "}
-                      <time>Sat 19 Jul</time>
+                      <time>Sat 4 Jul</time> · <time>Tue 7 Jul</time> ·{" "}
+                      <time>Thu 9 Jul</time>
                     </p>
                     <p className="text-muted-foreground mt-1 text-xs">
                       Dates and counts never jitter as they change.
@@ -405,62 +853,105 @@ export default function StyleguidePage() {
 
             <Section
               id="shape"
-              title="Shape & elevation"
-              intro="--radius is 0.5rem — soft rounded rectangles, not pills: buttons, inputs and nav share the 8px default, cards sit a step rounder, and only avatars and status dots are circles. Shadows are soft and VIOLET, never black or grey: a coloured shadow is what makes a light UI feel lit rather than printed. In dark they deepen to night. Each swatch names the ONE place it belongs."
+              title="Shape"
+              intro="--radius is 0.75rem, and the ramp reaches the four sizes the system actually uses. Anything tappable is a PILL rather than a step on the ramp: buttons, inputs, selects, badges, chips, tabs triggers and menu items are all rounded-full."
             >
               <div className="grid gap-4 md:grid-cols-2">
-                <Demo label="Radius — assignment" className="block">
+                <Demo label="Radius ramp" hint="--radius: 0.75rem" className="block">
                   <ul className="w-full space-y-2.5">
                     {RADII.map((r) => (
                       <li key={r.cls} className="flex items-center gap-3">
                         <span
-                          className={`bg-primary/15 ring-primary/30 size-9 shrink-0 ring-1 ${r.cls}`}
+                          className={`bg-lilac ring-border size-9 shrink-0 ring-1 ring-inset ${r.cls}`}
+                          aria-hidden
                         />
                         <span className="min-w-0 text-sm">
                           <code className="font-mono text-xs font-medium">
                             {r.label}
                           </code>
-                          <span className="text-muted-foreground"> — {r.use}</span>
+                          <span className="text-muted-foreground">
+                            {" "}
+                            · {r.use}
+                          </span>
                         </span>
                       </li>
                     ))}
                   </ul>
                 </Demo>
-                <Demo label="Elevation — assignment" className="block">
-                  <ul className="w-full space-y-2.5">
-                    {SHADOWS.map((s) => (
-                      <li key={s.cls} className="flex items-center gap-3">
-                        <span className={`bg-card size-9 shrink-0 rounded-lg ${s.cls}`} />
+
+                <Demo
+                  label="Blobs"
+                  hint="landing and dashboard heroes only"
+                  className="block"
+                >
+                  <div className="w-full">
+                    <div className="bg-lavender-pane relative h-44 overflow-hidden rounded-4xl">
+                      {BLOBS.map((b) => (
+                        <span
+                          key={b.cls}
+                          className={`animate-bob absolute ${b.pos} ${b.size} ${b.cls} shadow-xs`}
+                          style={{
+                            borderRadius: BLOB_SHAPE,
+                            animationDelay: b.delay,
+                          }}
+                          aria-hidden
+                        />
+                      ))}
+                    </div>
+                    <p className="text-muted-foreground mt-3 text-xs text-pretty">
+                      Organic pastel shapes on an asymmetric border-radius,
+                      wearing the soft clay. They bob on a 6s ease-in-out loop
+                      that translates only, so nothing wobbles, and
+                      prefers-reduced-motion stills them outright rather than
+                      speeding them up.
+                    </p>
+                  </div>
+                </Demo>
+              </div>
+            </Section>
+
+            <Section
+              id="clay"
+              title="The clay recipe"
+              intro="Three strengths, wired to --elevation-* so shadow-xs, shadow-sm and shadow-md pick them up. Every surface is lit from above by a white inset highlight and squashed below by a plum inset shadow, then dropped on a long, soft plum shadow. Nothing here is grey and nothing is black. At night the highlight falls to 8% white, the squash goes black, and the drop becomes true night."
+            >
+              <div className="flex flex-col gap-4">
+                {CLAY.map((c) => (
+                  <Demo key={c.cls} label={c.label} hint={c.cls} className="block">
+                    <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+                      <span
+                        className={`bg-card size-16 shrink-0 rounded-2xl ${c.cls}`}
+                        aria-hidden
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm">{c.use}</p>
+                        <code className="text-muted-foreground mt-1 block font-mono text-[11px] break-words">
+                          {c.recipe}
+                        </code>
+                      </div>
+                    </div>
+                  </Demo>
+                ))}
+                <Demo label="The other two" className="block">
+                  <ul className="w-full space-y-4">
+                    {CLAY_EXTRAS.map((c) => (
+                      <li key={c.cls} className="flex items-start gap-3">
+                        <span
+                          className={`bg-card size-12 shrink-0 rounded-2xl ${c.cls}`}
+                          aria-hidden
+                        />
                         <span className="min-w-0 text-sm">
                           <code className="font-mono text-xs font-medium">
-                            {s.label}
+                            {c.cls}
                           </code>
-                          <span className="text-muted-foreground"> — {s.use}</span>
+                          <span className="text-muted-foreground">
+                            {" "}
+                            · {c.use}
+                          </span>
                         </span>
                       </li>
                     ))}
                   </ul>
-                </Demo>
-                <Demo label="Icon sizes — assignment" className="block">
-                  <ul className="w-full space-y-2 text-sm">
-                    {ICON_SIZES.map((i) => (
-                      <li key={i.px}>
-                        <code className="font-mono text-xs font-medium">{i.px}</code>
-                        <span className="text-muted-foreground"> — {i.use}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </Demo>
-                <Demo label="Touch targets" className="block">
-                  <p className="text-sm text-pretty">
-                    Anything tapped on a phone is at least{" "}
-                    <span className="font-medium">44px</span>: buttons at{" "}
-                    <code className="font-mono text-xs">size=&quot;lg&quot;</code>,
-                    icon buttons at{" "}
-                    <code className="font-mono text-xs">size=&quot;icon-lg&quot;</code>{" "}
-                    (the hamburger, the modal close). Table-row actions may be
-                    smaller — they are mouse targets.
-                  </p>
                 </Demo>
               </div>
             </Section>
@@ -468,7 +959,7 @@ export default function StyleguidePage() {
             <Section
               id="spacing"
               title="Spacing"
-              intro="“Generous” needs a definition to copy, or five screens drift to five different paddings. Here it is, named. The page gutter lives in <Container>; the card padding lives in <Card>; the rest are conventions to reach for."
+              intro="Generous needs a definition to copy, or five screens drift to five different paddings. Here it is, named. The page gutter lives in Container, the card padding lives in Card, and the rest are conventions to reach for."
             >
               <Demo label="The spacing system" className="block">
                 <ul className="w-full space-y-3">
@@ -496,7 +987,7 @@ export default function StyleguidePage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>
-                      Admin —{" "}
+                      Admin ·{" "}
                       <code className="font-mono text-xs font-normal">
                         app/(admin)/
                       </code>
@@ -504,13 +995,19 @@ export default function StyleguidePage() {
                   </CardHeader>
                   <CardContent className="text-muted-foreground space-y-4">
                     <p className="text-pretty">
-                      Floating frosted-glass sidebar on desktop, drawer on mobile, theme toggle,
-                      five nav entries. Signed in via AuthKit. Start every screen
-                      with <code className="font-mono text-xs">&lt;PageHeader&gt;</code>,
-                      wrap it in <code className="font-mono text-xs">&lt;Container&gt;</code>,
-                      and add your route to{" "}
-                      <code className="font-mono text-xs">ADMIN_NAV</code> rather
-                      than building your own nav.
+                      A white clay sidebar panel on desktop, a drawer on mobile,
+                      pill nav items with a lilac fill and a grape icon on the
+                      active one, the wordmark top left. Start every screen with{" "}
+                      <code className="font-mono text-xs">
+                        &lt;PageHeader&gt;
+                      </code>
+                      , wrap it in{" "}
+                      <code className="font-mono text-xs">
+                        &lt;Container&gt;
+                      </code>
+                      , and add your route to{" "}
+                      <code className="font-mono text-xs">ADMIN_NAV</code>{" "}
+                      rather than building a nav of your own.
                     </p>
                     <Button asChild size="sm" variant="outline">
                       <Link href="/dashboard">Open</Link>
@@ -520,7 +1017,7 @@ export default function StyleguidePage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>
-                      Member —{" "}
+                      Member ·{" "}
                       <code className="font-mono text-xs font-normal">
                         app/(member)/s/[token]
                       </code>
@@ -528,11 +1025,11 @@ export default function StyleguidePage() {
                   </CardHeader>
                   <CardContent className="text-muted-foreground space-y-4">
                     <p className="text-pretty">
-                      No nav, no theme toggle, no account menu. A single column,
-                      a comfortable measure, and one thing to do — greeted by
-                      name, in Fraunces. The person holding this link did not
-                      ask to be here and is not logged in. The theme follows
-                      their phone.
+                      No nav, no theme toggle, no account menu. One column, a
+                      comfortable measure, and one thing to do, greeted by name
+                      in Fredoka. The person holding this link opened it from a
+                      text, is not signed in, and did not ask to be here. Their
+                      phone picks the register.
                     </p>
                     <Button asChild size="sm" variant="outline">
                       <Link href="/s/demo-token">Open</Link>

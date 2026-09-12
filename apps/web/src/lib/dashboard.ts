@@ -55,7 +55,7 @@ export function collectDashboardWarnings({
       title: "Confirm the group's timezone",
       description:
         `Reminders go out on ${group.timezone} time, but no one has confirmed that's right. ` +
-        `Until someone does, every text may be sent an hour off — silently.`,
+        `Until someone does, every text may go out an hour off, silently.`,
       href: settingsHref,
       action: "Set the timezone",
     });
@@ -72,7 +72,7 @@ export function collectDashboardWarnings({
       title: `${n} ${plural(n, "person", "people")} didn't get a text`,
       description:
         `${nameList(failedNames)} had a reminder fail to send. ` +
-        `A silently failed text is worse than no rota — check the carrier error.`,
+        `A text that fails quietly is worse than no rota, so check the carrier error.`,
       href: "/sms",
       action: "Open the SMS log",
     });

@@ -28,7 +28,12 @@ export function DashboardWarnings({ warnings }: { warnings: DashboardWarning[] }
             <AlertTitle>{warning.title}</AlertTitle>
             <AlertDescription>
               {warning.description}{" "}
-              <Link href={warning.href}>{warning.action}</Link>
+              {/* The fix, one click away. It inherits the alert's tint
+                  foreground rather than reaching for --link, so the link stays
+                  legible on a mint, lemon or blush wash in both themes. */}
+              <Link href={warning.href} className="font-semibold underline underline-offset-4">
+                {warning.action}
+              </Link>
             </AlertDescription>
           </Alert>
         );

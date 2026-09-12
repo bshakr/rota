@@ -1,14 +1,18 @@
-import { House } from "lucide-react";
-
 import { cn } from "@/lib/utils";
 
 /**
- * The mark. A house on a sunrise-gradient tile, wordmark set in Fraunces —
- * the display voice — so the brand smiles the way the greetings do.
+ * The wordmark. Plain type, deliberately: Rota Monster has no mark yet, and a
+ * placeholder glyph would be worse than none. `rota` is ink, `.monster` is the
+ * action colour, both set in Fredoka at 700 and pressed a little wider
+ * (`wdth` 110) than the heading default, with the letters pulled tight.
  *
- * `muted` drops the gradient and quiets the text: used on the member page,
- * where the brand is a reassurance that the link is legitimate, not a logo to
- * admire.
+ * The two colours are SEMANTIC rather than the plum/grape pastels, so the mark
+ * survives dark mode: `rota` goes from plum ink to near-white, and `.monster`
+ * lifts from grape to the night cut of grape. Lowercase always, matching the
+ * URL: rota.monster.
+ *
+ * `muted` drops both colours to muted text. Used on the member page, where the
+ * brand is a reassurance that the link is legitimate, not a logo to admire.
  */
 export function Wordmark({
   className,
@@ -18,25 +22,15 @@ export function Wordmark({
   muted?: boolean;
 }) {
   return (
-    <span className={cn("flex items-center gap-2.5", className)}>
-      <span
-        className={cn(
-          "grid size-8 shrink-0 place-items-center rounded-xl",
-          muted
-            ? "bg-muted text-muted-foreground"
-            : "bg-[image:var(--gradient-sunrise)] text-foreground shadow-xs",
-        )}
-      >
-        <House className="size-[18px]" strokeWidth={2.25} aria-hidden />
-      </span>
-      <span
-        className={cn(
-          "font-heading text-lg font-semibold tracking-tight",
-          muted && "text-muted-foreground",
-        )}
-      >
-        HouseRota
-      </span>
+    <span
+      className={cn(
+        "font-heading text-lg leading-none font-bold tracking-[-0.03em] [font-variation-settings:'wdth'_110]",
+        muted && "text-muted-foreground",
+        className,
+      )}
+    >
+      <span className={cn(!muted && "text-foreground")}>rota</span>
+      <span className={cn(!muted && "text-link")}>.monster</span>
     </span>
   );
 }

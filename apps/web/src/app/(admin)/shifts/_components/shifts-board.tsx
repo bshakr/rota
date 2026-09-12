@@ -45,14 +45,23 @@ const NONE = "none";
 // its own message. The guards fire on a shift that ticked into the past while the
 // page was open, or a member deactivated in another tab.
 const GUARD_MESSAGES: Record<string, string> = {
-  shift_in_the_past: "That shift is in the past now — its cover can't be changed.",
+  shift_in_the_past: "That shift is in the past now, so its cover can't be changed.",
   member_inactive: "That person has been deactivated, so they can't cover a shift.",
   member_not_found: "That person is no longer in the group.",
 };
 
+// A covered turn wears the SKY wash: the "on its way to someone else" sticker at
+// quarter strength, the same 25% the avatar tints use and for the same reason.
+// The pastels all sit at lightness 0.90, so a quarter-strength wash lands
+// near-white over a white card and near-plum over a night panel, which means one
+// class is right in both themes and --foreground still clears 4.5:1 on top of it.
+// The raw pastel rather than --info because a row tint is decoration, not status
+// text, and --info on dark is already a wash that would wash twice.
+const COVERED_ROW = "bg-sky/25";
+
 /**
  * The upcoming-shifts board with the admin override. A covered turn is set apart
- * at a glance — a tinted row and an info badge — before any text is read. Setting
+ * at a glance, by a sky wash and a sky badge, before any text is read. Setting
  * or clearing a cover goes through the `setShiftCover` server action and updates
  * the row in place, so the change is visible immediately without a reload.
  */
@@ -113,10 +122,10 @@ export function ShiftsBoard({
     <div className="space-y-10">
       {rotas.map((rota) => (
         <section key={rota.id}>
-          <h2 className="mb-3 font-heading text-lg font-medium">{rota.name}</h2>
+          <h2 className="font-heading mb-3 text-lg font-semibold">{rota.name}</h2>
 
-          {/* md+ : a table */}
-          <div className="hidden overflow-hidden rounded-xl border border-border bg-card md:block">
+          {/* md+ : a table, in a card-radius clay panel */}
+          <div className="border-border bg-card hidden overflow-hidden rounded-2xl border shadow-sm md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -129,7 +138,7 @@ export function ShiftsBoard({
                 {rota.shifts.map(({ id }) => {
                   const shift = byId[id];
                   return (
-                    <TableRow key={id} className={cn(shift.covered && "bg-info/5")}>
+                    <TableRow key={id} className={cn(shift.covered && COVERED_ROW)}>
                       <TableCell className="align-top font-medium tabular-nums">
                         <div>{formatShiftDate(civilDate(shift.due_on))}</div>
                         <div className="text-xs font-normal text-muted-foreground">
@@ -162,7 +171,7 @@ export function ShiftsBoard({
             {rota.shifts.map(({ id }) => {
               const shift = byId[id];
               return (
-                <Card key={id} size="sm" className={cn(shift.covered && "bg-info/5")}>
+                <Card key={id} size="sm" className={cn(shift.covered && COVERED_ROW)}>
                   <CardHeader>
                     <CardTitle className="text-sm tabular-nums">
                       {formatShiftDate(civilDate(shift.due_on))}

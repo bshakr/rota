@@ -4,18 +4,18 @@ import { cn } from "@/lib/utils";
 
 /**
  * The "there is nothing here yet" panel. Members with no shifts, a group with
- * no rotas, an SMS log on day one — every list screen has an empty state, and
+ * no rotas, an SMS log on day one: every list screen has an empty state, and
  * without a shared one each of the five would invent a different layout, tone
  * and button placement. This is the single answer.
  *
- * SOLSTICE makes it a small celebration rather than an apology: the icon sits
- * on a floating sunrise-gradient coin (gently bobbing — stilled under
- * reduced-motion), the title speaks in Fraunces, and the panel itself is a
- * soft card, not a dashed void.
+ * Soft Clay makes it a small welcome rather than an apology. The icon sits on a
+ * PEACH COIN, 56px at an 18px radius, the same object the member page uses for
+ * a date, and it bobs gently (stilled under reduced-motion). The title speaks in
+ * Fredoka; the panel is a proper card, never a dashed void.
  *
- * `action` is the way out of empty — "Add your first member". Keep it optional:
- * the member page's empty state is a reassurance ("You're all caught up"), not
- * a call to action.
+ * `action` is the way out of empty, as in "Add your first member". Keep it
+ * optional: the member page's empty state is a reassurance, not a call to
+ * action.
  */
 export function EmptyState({
   icon: Icon,
@@ -33,17 +33,21 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center gap-4 rounded-2xl border border-border bg-card px-6 py-14 text-center shadow-xs",
+        "flex flex-col items-center gap-4 rounded-2xl border border-border bg-card px-6 py-14 text-center shadow-sm",
         className,
       )}
     >
       {Icon ? (
-        <span className="grid size-14 shrink-0 animate-float place-items-center rounded-2xl bg-[image:var(--gradient-sunrise)] text-foreground shadow-sm">
+        // text-plum, not text-foreground: the coin is a sticker and does not
+        // invert, so its ink must not follow the theme either.
+        <span className="grid size-14 shrink-0 animate-bob place-items-center rounded-xl bg-peach text-plum shadow-xs">
           <Icon className="size-6" strokeWidth={2.25} aria-hidden />
         </span>
       ) : null}
       <div className="space-y-1.5">
-        <p className="font-heading text-lg font-semibold text-balance">{title}</p>
+        <p className="font-heading text-lg font-semibold text-balance">
+          {title}
+        </p>
         {description ? (
           <p className="mx-auto max-w-sm text-sm text-muted-foreground text-pretty">
             {description}

@@ -108,7 +108,7 @@ export default async function SmsLogPage({
     <>
       <PageHeader
         title="SMS log"
-        description="Every message the house has sent, newest first, with the carrier’s delivery status. The screen that answers “why didn’t Alice get her text”."
+        description="Every message the house has sent, newest first, with the carrier’s delivery status. The screen that answers “why didn’t Ciara get her text”."
       />
 
       <Suspense fallback={<div className="mb-6 h-8" />}>
@@ -120,7 +120,7 @@ export default async function SmsLogPage({
           <EmptyState
             icon={Inbox}
             title="No messages match these filters"
-            description="Nothing here for this combination. Widen the status, member or rota — or clear the filters to see the whole log."
+            description="Nothing here for this combination. Widen the status, member or rota, or clear the filters to see the whole log."
             action={
               <Button asChild variant="outline" size="sm">
                 <Link href="/sms">Clear filters</Link>
@@ -136,8 +136,8 @@ export default async function SmsLogPage({
         )
       ) : (
         <>
-          {/* md and up: the table. */}
-          <div className="border-border bg-card hidden overflow-hidden rounded-xl border md:block">
+          {/* md and up: the table, in a card-radius clay panel. */}
+          <div className="border-border bg-card hidden overflow-hidden rounded-2xl border shadow-sm md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -197,19 +197,21 @@ function viewFor(m: SmsMessage) {
 
 // A message renders as two rows: the scannable summary, and a detail row that
 // always shows the exact body that was sent (magic link included) plus the send
-// metadata. A failed message is loud — the whole group is tinted, carries a left
-// accent, and its detail row leads with a bordered Alert explaining the failure
-// in plain words, not a bare code.
+// metadata. A failed message wears the BLUSH wash, the "went wrong" sticker at
+// low strength, across both of its rows, and its detail row leads with an Alert
+// explaining the failure in plain words rather than a bare code. No left rail:
+// Soft Clay has no accent-bordered surfaces, so the tint carries it alone.
+const FAILED_ROW = "bg-blush/25 hover:bg-blush/40";
+
 function MessageRows({ message: m }: { message: SmsMessage }) {
   const { status: s, failed, timing, error } = viewFor(m);
 
-  const tint = failed ? "bg-destructive/5 hover:bg-destructive/10" : undefined;
-  const accent = failed ? "border-l-2 border-l-destructive" : undefined;
+  const tint = failed ? FAILED_ROW : undefined;
 
   return (
     <>
       <TableRow className={cn("border-b-0", tint)}>
-        <TableCell className={cn("font-medium", accent)}>
+        <TableCell className="font-medium">
           {formatTimestamp(new Date(m.created_at))}
         </TableCell>
         <TableCell>{m.member.name}</TableCell>
@@ -232,7 +234,7 @@ function MessageRows({ message: m }: { message: SmsMessage }) {
         </TableCell>
       </TableRow>
       <TableRow className={cn("border-b", tint)}>
-        <TableCell colSpan={5} className={cn("whitespace-normal pt-0", accent)}>
+        <TableCell colSpan={5} className="pt-0 whitespace-normal">
           <div className="space-y-2">
             {error ? (
               <Alert variant="destructive">
@@ -254,7 +256,7 @@ function MessageCard({ message: m }: { message: SmsMessage }) {
   const { status: s, failed, timing, error } = viewFor(m);
 
   return (
-    <Card size="sm" className={failed ? "border-destructive/40 bg-destructive/5" : undefined}>
+    <Card size="sm" className={failed ? FAILED_ROW : undefined}>
       <CardHeader>
         <CardTitle className="text-sm">{m.shift.rota_name}</CardTitle>
         <CardDescription>{shiftDay(m.shift.due_on)}</CardDescription>
@@ -285,11 +287,13 @@ function MessageCard({ message: m }: { message: SmsMessage }) {
   );
 }
 
+// The exact bytes that went out, in the machine face, shaped like the bubble it
+// landed in on the member's phone.
 function MessageBody({ body }: { body: string }) {
   return (
     <div>
-      <p className="text-muted-foreground mb-1 text-xs font-medium">Message</p>
-      <p className="bg-muted/40 text-foreground rounded-md px-3 py-2 font-mono text-xs break-words whitespace-pre-wrap">
+      <p className="text-muted-foreground mb-1.5 text-xs font-medium">Message</p>
+      <p className="bg-muted text-foreground rounded-2xl rounded-bl-sm px-3.5 py-2.5 font-mono text-xs break-words whitespace-pre-wrap">
         {body}
       </p>
     </div>

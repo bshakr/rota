@@ -7,16 +7,17 @@ import { useTheme } from "next-themes";
 // runtime, from the theme the user actually resolved to.
 //
 // The static media-query tags Next can emit track the OS preference, not the
-// app's choice, so a user who picks Light on a dark phone gets a cocoa bar above
-// a sand page. next-themes knows the resolved theme; this keeps the meta in sync
-// with it. Renders no DOM — it owns the tag imperatively so there is exactly one.
+// app's choice, so a user who picks Light on a dark phone gets a deep plum bar
+// above a lavender page. next-themes knows the resolved theme; this keeps the
+// meta in sync with it. Renders no DOM — it owns the tag imperatively so there
+// is exactly one.
 //
-// These two values MUST track --background in globals.css (sunbeam-100 /
-// twilight-950); a <meta> is read before any CSS exists, so it cannot reference
-// the token — the one sanctioned place for a raw colour, so the lint rule is
-// disabled for it.
+// These two values MUST track --background in globals.css (lavender-100
+// #F5F1FF / plum-900 oklch(0.235 0.055 300)); a <meta> is read before any CSS
+// exists, so it cannot reference the token — the one sanctioned place for a raw
+// colour, so the lint rule is disabled for it.
 // eslint-disable-next-line no-restricted-syntax
-const COLORS = { light: "#fbf7eb", dark: "#181428" } as const;
+const COLORS = { light: "#f5f1ff", dark: "#221734" } as const;
 
 export function ThemeColorMeta() {
   const { resolvedTheme } = useTheme();

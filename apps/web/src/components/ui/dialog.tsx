@@ -39,10 +39,10 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        // bg-overlay, not bg-black/10: a token scrim that is a warm-ink wash in
-        // light and a strong black wash in dark, so the modal actually separates
-        // from the page in both themes. See --overlay in globals.css.
-        "fixed inset-0 isolate z-50 bg-overlay duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        // bg-overlay, a plum-ink wash by day and a deep night wash after dark,
+        // so the modal actually separates from the page in both themes. Flat,
+        // not frosted: Soft Clay has no glass in it. See --overlay in globals.css.
+        "fixed inset-0 isolate z-50 bg-overlay duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}
@@ -64,11 +64,9 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          // Real elevation: a hairline border AND shadow-lg. A 2% lightness step
-          // alone does not read as "floating" on a phone in daylight.
-          // Entrance is `animate-pop` — the springy Solstice arrival — and exit
-          // is a quick tw-animate fade/zoom.
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl border border-border bg-popover p-6 text-sm text-popover-foreground shadow-lg outline-hidden sm:max-w-sm data-open:animate-pop data-closed:animate-out data-closed:duration-100 data-closed:fade-out-0 data-closed:zoom-out-95",
+          // 28px, the lift clay and a plum hairline. Entrance is `animate-pop`,
+          // the springy Soft Clay arrival; exit is a quick tw-animate fade.
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-3xl border border-border bg-popover p-6 text-sm text-popover-foreground shadow-lg outline-hidden sm:max-w-sm data-open:animate-pop data-closed:animate-out data-closed:duration-100 data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}
@@ -80,7 +78,7 @@ function DialogContent({
                 modal opened on a phone must be a full thumb target. */}
             <Button
               variant="ghost"
-              className="absolute top-2 right-2"
+              className="absolute top-2.5 right-2.5"
               size="icon-lg"
             >
               <XIcon />
@@ -116,8 +114,8 @@ function DialogFooter({
       data-slot="dialog-footer"
       className={cn(
         // Negative margins match the content's p-6 so the footer bleeds to the
-        // dialog edge.
-        "-mx-6 -mb-6 flex flex-col-reverse gap-2 rounded-b-2xl border-t bg-muted/50 p-5 sm:flex-row sm:justify-end",
+        // dialog edge and picks up its 28px corners.
+        "-mx-6 -mb-6 flex flex-col-reverse gap-2 rounded-b-3xl border-t border-border bg-muted/60 p-5 sm:flex-row sm:justify-end",
         className
       )}
       {...props}

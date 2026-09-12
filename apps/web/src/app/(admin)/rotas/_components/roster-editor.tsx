@@ -175,15 +175,18 @@ export function RosterEditor({
               onDragEnd={() => {
                 dragFrom.current = null;
               }}
-              className="flex items-center gap-3 rounded-lg border border-border bg-card p-2.5"
+              /* A CLAY CHIP per person: a full pill on the quiet fill, lifted by
+                 the soft clay recipe, so the roster reads as a row of tiles you
+                 can pick up and move rather than a bordered list. */
+              className="bg-muted flex items-center gap-3 rounded-full p-2 pl-3.5 shadow-xs transition-shadow hover:shadow-sm"
             >
               <span
-                className="cursor-grab text-muted-foreground active:cursor-grabbing"
+                className="text-muted-foreground cursor-grab active:cursor-grabbing"
                 aria-hidden
               >
                 <GripVertical className="size-4" />
               </span>
-              <span className="w-5 shrink-0 text-center text-sm tabular-nums text-muted-foreground">
+              <span className="text-muted-foreground w-5 shrink-0 text-center text-sm tabular-nums">
                 {index + 1}
               </span>
               <Avatar className="size-7">

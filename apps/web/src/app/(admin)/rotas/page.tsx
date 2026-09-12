@@ -52,7 +52,7 @@ export default async function RotasPage() {
         <EmptyState
           icon={Repeat}
           title="No rotas yet"
-          description="Create your first rota — a job, a schedule, and the people who take turns."
+          description="Add the first chore and who takes turns. We'll handle the reminders."
           action={
             <Button asChild size="sm">
               <Link href="/rotas/new">

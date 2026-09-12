@@ -1,11 +1,13 @@
-# HouseRota
+# Rota Monster
 
 A rota is an ordered list of people taking turns at a named job on a recurring schedule.
-HouseRota keeps the list, works out whose turn it is, and texts them before their shift.
-People who can't make it hand the shift to someone else without an admin getting involved.
+Rota Monster keeps the list, works out whose turn it is, and texts them before their shift.
+People who can't make it hand the turn on to someone else without an admin getting involved.
 
-Design and rationale: [`docs/superpowers/specs/2026-07-13-houserota-design.md`](docs/superpowers/specs/2026-07-13-houserota-design.md).
-Read it before changing anything structural — the decisions in it were made on purpose.
+Design and rationale: [`docs/superpowers/specs/2026-09-12-rota-monster-soft-clay-design.md`](docs/superpowers/specs/2026-09-12-rota-monster-soft-clay-design.md)
+is the Soft Clay visual direction, and [`docs/superpowers/specs/2026-07-13-houserota-design.md`](docs/superpowers/specs/2026-07-13-houserota-design.md)
+is the product and scheduling design. Read them before changing anything structural. The
+decisions in them were made on purpose.
 
 ## Layout
 

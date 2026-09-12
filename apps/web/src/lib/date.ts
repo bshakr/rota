@@ -1,7 +1,7 @@
 import { enGB } from "date-fns/locale";
 
 /**
- * The single source of truth for how HouseRota renders a date.
+ * The single source of truth for how Rota Monster renders a date.
  *
  * This exists because of a real bug, not as ceremony. `date.toLocaleDateString()`
  * with no locale resolves to the HOST's default: Node picks en-US and renders

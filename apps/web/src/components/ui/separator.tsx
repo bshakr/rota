@@ -5,6 +5,8 @@ import { Separator as SeparatorPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
+// One hairline, in --border (plum at 12%), which tints rather than draws. There
+// is no grey rule anywhere in Soft Clay.
 function Separator({
   className,
   orientation = "horizontal",

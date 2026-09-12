@@ -88,7 +88,7 @@ describe("civil date helpers", () => {
 describe("projectShifts", () => {
   const roster = [member(1, "Alice", 0), member(2, "Bob", 1), member(3, "Cara", 2)];
 
-  it("wraps the roster by occurrence index — the order IS the rotation", () => {
+  it("wraps the roster by occurrence index: the order IS the rotation", () => {
     const shifts = projectShifts({
       startsOn: "2026-07-04",
       intervalCount: 1,
