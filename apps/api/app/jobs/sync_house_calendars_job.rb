@@ -10,7 +10,18 @@
 class SyncHouseCalendarsJob < ApplicationJob
   queue_as :default
 
+  # Wrapped in a JobRun so the operator dashboard can answer "when did the calendar sync last
+  # finish?". Solid Queue's own record of the run is deleted hourly by
+  # `clear_solid_queue_finished_jobs`, and this job is a no-op until a house connects a calendar —
+  # which means "it has not run in days" and "nobody has connected one" look the same on the
+  # dashboard unless the run itself is written down. See JobRun.
   def perform
+    JobRun.record(JobRun::SYNC_HOUSE_CALENDARS) { sync_every_enabled_connection }
+  end
+
+  private
+
+  def sync_every_enabled_connection
     CalendarConnection.enabled.includes(:group).find_each do |connection|
       CalendarSync.new(connection).call
     rescue StandardError => e

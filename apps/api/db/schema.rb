@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_14_100200) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_14_100400) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -102,6 +102,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_100200) do
     t.string "workos_organization_id", null: false
     t.index ["slug"], name: "index_groups_on_slug", unique: true
     t.index ["workos_organization_id"], name: "index_groups_on_workos_organization_id", unique: true
+  end
+
+  create_table "job_runs", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.jsonb "details"
+    t.string "error_class"
+    t.datetime "finished_at", null: false
+    t.string "name", null: false
+    t.datetime "started_at", null: false
+    t.boolean "succeeded", null: false
+    t.index ["name", "finished_at"], name: "index_job_runs_on_name_and_finished_at"
   end
 
   create_table "members", force: :cascade do |t|

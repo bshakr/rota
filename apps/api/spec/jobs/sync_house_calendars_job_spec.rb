@@ -46,4 +46,29 @@ RSpec.describe SyncHouseCalendarsJob do
 
     expect(config.dig("production", "sync_house_calendars")).to include("class" => "SyncHouseCalendarsJob", "schedule" => "every hour at minute 27")
   end
+
+  # The heartbeat the operator dashboard reads (BLO-1677). This job is a no-op until a house
+  # connects a calendar, so without the row "it has not run in days" and "nobody has connected one"
+  # look identical on the dashboard.
+  describe "the run it writes down" do
+    it "records a finished run even with no connections to sync" do
+      described_class.perform_now
+
+      expect(JobRun.sole).to have_attributes(
+        name: "sync_house_calendars", succeeded: true, error_class: nil
+      )
+    end
+
+    # A per-connection failure is rescued inside the loop and never reaches here. This is the sync
+    # itself falling over, which must be written down AND still fail the job.
+    it "records the failure and still raises when the sync itself falls over" do
+      allow(CalendarConnection).to receive(:enabled).and_raise(ActiveRecord::StatementInvalid, "connection lost")
+
+      expect { described_class.perform_now }.to raise_error(ActiveRecord::StatementInvalid)
+
+      expect(JobRun.sole).to have_attributes(
+        name: "sync_house_calendars", succeeded: false, error_class: "ActiveRecord::StatementInvalid"
+      )
+    end
+  end
 end

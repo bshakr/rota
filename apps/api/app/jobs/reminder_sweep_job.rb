@@ -10,7 +10,17 @@
 class ReminderSweepJob < ApplicationJob
   queue_as :default
 
+  # Wrapped in a JobRun so the operator dashboard can answer "when did the sweep last finish?".
+  # Solid Queue's own record of the run is deleted hourly by `clear_solid_queue_finished_jobs`, and
+  # this is the job whose silence costs the most: a sweep that stopped running is a house that
+  # stopped being texted, with nothing anywhere else that says so. See JobRun.
   def perform
+    JobRun.record(JobRun::REMINDER_SWEEP) { sweep_every_active_rota }
+  end
+
+  private
+
+  def sweep_every_active_rota
     Rota.active.includes(:group).find_each do |rota|
       ReminderSweep.new(rota).call
     rescue StandardError => e

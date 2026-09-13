@@ -102,4 +102,29 @@ RSpec.describe TopUpShiftWindowsJob do
       expect(Rails.logger).to have_received(:error).with(/rota #{broken.id}.*RuntimeError.*no/)
     end
   end
+
+  # The heartbeat the operator dashboard reads (BLO-1677). Solid Queue's own record of this run is
+  # deleted hourly by `clear_solid_queue_finished_jobs`, and this job runs only once a day, so
+  # without this row "it last ran at 3am" is unanswerable by the time anyone asks.
+  describe "the run it writes down" do
+    it "records a finished run" do
+      described_class.perform_now
+
+      expect(JobRun.sole).to have_attributes(
+        name: "top_up_shift_windows", succeeded: true, error_class: nil
+      )
+    end
+
+    # A per-rota failure is rescued inside the loop and never reaches here. This is the top-up
+    # itself falling over, which must be written down AND still fail the job.
+    it "records the failure and still raises when the top-up itself falls over" do
+      allow(Rota).to receive(:active).and_raise(ActiveRecord::StatementInvalid, "connection lost")
+
+      expect { described_class.perform_now }.to raise_error(ActiveRecord::StatementInvalid)
+
+      expect(JobRun.sole).to have_attributes(
+        name: "top_up_shift_windows", succeeded: false, error_class: "ActiveRecord::StatementInvalid"
+      )
+    end
+  end
 end
