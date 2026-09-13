@@ -22,6 +22,15 @@ export const metadata: Metadata = {
 // statically prerendered or cached across members.
 export const dynamic = "force-dynamic";
 
+// A plain <a>, and the href hoisted into a constant, for the two reasons every link
+// home in this app shares. A full page load rather than a <Link>: somebody leaving
+// their rota for the marketing site should land on a fresh document, not a client-side
+// transition that carries the member layout's router state with it, and `/` redirects a
+// signed-in admin onward anyway. The constant is what keeps
+// @next/next/no-html-link-for-pages quiet about a deliberate choice, exactly as
+// landing.tsx does with SIGN_IN_HREF.
+const HOME_HREF = "/?ref=member";
+
 /**
  * The page every SMS points at. `[token]` is the member's permanent magic link.
  *
@@ -100,6 +109,21 @@ export default async function MemberSchedulePage({
         assignAction={assignCoverAction.bind(null, token)}
         cancelAction={cancelCoverAction.bind(null, token)}
       />
+
+      {/* This page is the only Rota Monster most housemates have ever seen: they were
+          added by somebody else and never visited the site. The line is addressed to
+          somebody who already HAS a rota, so it asks them to pass the name on rather
+          than to set one up for themselves. The domain is the link because the domain
+          is the thing worth remembering. `?ref=member` tells the homepage where they
+          came from. Deliberately not a button: nobody opened their rota in order to
+          leave it. */}
+      <p className="text-muted-foreground mt-10 text-center text-sm text-pretty">
+        Got a friend who needs a rota? Share{" "}
+        <a href={HOME_HREF} className="underline underline-offset-4">
+          rota.monster
+        </a>{" "}
+        with them.
+      </p>
     </>
   );
 }
