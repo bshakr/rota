@@ -678,12 +678,10 @@ function CandidateRow({
         {initials(name)}
       </span>
       <span className={cn("min-w-0 flex-1", dimmed && "opacity-60")}>
-        <span
-          className={cn(
-            "font-heading block truncate text-sm leading-snug font-semibold",
-            dimmed && "text-muted-foreground",
-          )}
-        >
+        {/* The name keeps `text-foreground` even when dimmed: opacity is the
+            whole step-back, as in the hand-off sheet. Muting the colour as well
+            would double-dim it below 3:1 on paper. */}
+        <span className="font-heading block truncate text-sm leading-snug font-semibold">
           {name}
         </span>
         <span className="mt-0.5 block text-xs text-pretty text-muted-foreground">{detail}</span>
