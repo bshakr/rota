@@ -8,7 +8,9 @@ import { Wordmark } from "@/components/wordmark";
  * There is no navigation, no theme toggle and no account menu — not because
  * they were forgotten, but because a member has exactly one thing to do and
  * every extra control is one more thing to ignore. The theme follows the
- * phone's own setting. Single column, comfortable measure, thumb-reachable.
+ * phone's own setting. One column on a phone. From 1024px the same page
+ * becomes a feed with a sidebar, so the gutter widens with it; below that
+ * nothing changes.
  *
  * In SOFT CLAY the chrome is deliberately almost nothing: lavender paper, the
  * wordmark in muted type, and then white clay cards. The page's one piece of
@@ -20,13 +22,13 @@ export default function MemberLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <Container width="member" asChild>
+      <Container width="feed" asChild>
         <header className="pt-7 pb-1">
           {/* Muted: a signal that the link is genuine, not a logo to admire. */}
           <Wordmark muted />
         </header>
       </Container>
-      <Container width="member" asChild>
+      <Container width="feed" asChild>
         {/* Deep bottom padding: the last card's CTA must clear the phone's own
             home indicator and browser chrome, not sit under them. */}
         <main className="flex-1 pt-4 pb-20">{children}</main>

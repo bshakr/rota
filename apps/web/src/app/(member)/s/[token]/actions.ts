@@ -6,14 +6,14 @@ import { assignCover, cancelCover } from "@/lib/api/member";
 import type { CoverActionResult } from "./action-result";
 
 // The member page's two writes, as Server Actions — the bridge between the
-// interactive (client) list and the `server-only` member API client.
+// interactive (client) feed and the `server-only` member API client.
 //
 // The magic-link `token` is the FIRST argument on purpose: the page reads it from
 // the route params server-side and binds it (`assignCoverAction.bind(null, token)`)
 // before handing the action to the client. The client therefore holds an opaque
 // action reference, never the token — Next encrypts the bound argument and strips
 // the action body from client bundles, so the credential stays on this side of the
-// wire exactly as the shift-list needs it to. The client only ever supplies the
+// wire exactly as the feed needs it to. The client only ever supplies the
 // non-secret ids (which shift, which member).
 //
 // An `ApiError` is returned as its plain body so the client can toast the API's own
