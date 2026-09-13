@@ -50,7 +50,12 @@ export function pageTitle(title: string): string {
   return TITLE_TEMPLATE.replace("%s", title);
 }
 
-/** The search-facing title. With the brand suffix it is 56 characters. */
+/**
+ * The phrase the whole site leads with: the page's h1, the search result, and
+ * the Open Graph and Twitter card titles. With the brand suffix it is 56
+ * characters. Decided by Bass on 2026-09-13: the headline has to be the thing
+ * people search for, not the brand line.
+ */
 export const SITE_TITLE = "The chore rota that texts your housemates";
 
 /** The meta and Open Graph description. 157 characters, inside Google's ~160 cut. */
@@ -58,5 +63,9 @@ export const SITE_DESCRIPTION =
   "Rota Monster is a chore rota app for shared houses. Set the chores up once and it texts " +
   "whoever is up next. Paste one calendar link and it knows who is away.";
 
-/** The h1 the page leads with, reused as the Open Graph and Twitter card title. */
-export const SITE_TAGLINE = "Whose turn? Who's home? Sorted.";
+/**
+ * The brand line. It leads the hero paragraph under the h1, closes the footer,
+ * and sits under the headline on the Open Graph card. A curly apostrophe, so
+ * that every surface renders the same string the page's own typography uses.
+ */
+export const SITE_TAGLINE = "Whose turn? Who’s home? Sorted.";

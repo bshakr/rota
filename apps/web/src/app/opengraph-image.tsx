@@ -16,7 +16,7 @@ import { SITE_TAGLINE, SITE_TITLE } from "@/lib/site";
 // proxy-matcher.test.ts asserts that entry stays there.
 
 export const alt =
-  "Rota Monster. Whose turn? Who's home? Sorted. The chore rota that texts your housemates.";
+  "Rota Monster. The chore rota that texts your housemates. Whose turn? Who’s home? Sorted.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -121,17 +121,21 @@ export default async function OpengraphImage() {
             <span style={{ color: GRAPE }}>.monster</span>
           </div>
 
+          {/* The headline is the phrase, the strapline is the brand line, in
+              the same order as the page itself. Forty-one characters set two
+              lines in this pane, so the step is 72 rather than the 88 the
+              shorter brand line carried. */}
           <div
             style={{
               display: "flex",
               fontFamily: heading,
-              fontSize: 88,
+              fontSize: 72,
               lineHeight: 1.08,
               letterSpacing: "-0.02em",
               color: INK,
             }}
           >
-            {SITE_TAGLINE}
+            {SITE_TITLE}
           </div>
 
           <div
@@ -144,7 +148,7 @@ export default async function OpengraphImage() {
               marginTop: 28,
             }}
           >
-            {SITE_TITLE}
+            {SITE_TAGLINE}
           </div>
         </div>
       </div>

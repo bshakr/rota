@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   ArrowDown,
   ArrowRight,
@@ -18,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { avatarTint } from "@/lib/avatar-tint";
 import { initials } from "@/lib/format";
+import { SITE_TAGLINE, SITE_TITLE } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
 /**
@@ -44,14 +46,14 @@ const ROTA_LINES = [
   {
     icon: MessageSquareText,
     coin: "bg-lemon",
-    title: "Texts, not nags",
-    body: "Whoever is up gets a text with their own link. Nothing to install, nothing to sign up for.",
+    title: "Nobody has to nag",
+    body: "Whoever’s up gets a text with their own link. No app, no account, no group chat.",
   },
   {
     icon: ArrowRightLeft,
     coin: "bg-sky",
-    title: "Swaps sort themselves",
-    body: "Busy this week? Hand your turn on in one tap. Everybody can see where it landed.",
+    title: "Can’t do it? Hand it on",
+    body: "Busy that Saturday? Hand your turn on from the text, in one tap. Everybody can see where it landed.",
   },
 ] as const;
 
@@ -60,13 +62,13 @@ const CALENDAR_LINES = [
     icon: Link2,
     coin: "bg-peach",
     title: "Paste one link",
-    body: "Drop in the house Google Calendar link, once. No Google sign-in, nothing else to connect.",
+    body: "Drop in the house Google Calendar link, once. No Google sign-in, nothing else to connect. No shared calendar? Skip it. The rota works on its own.",
   },
   {
     icon: Calendar,
     coin: "bg-lilac",
-    title: "Events in everyone’s feed",
-    body: "House dinner, house meeting, birthdays. They show up next to the chores, for everybody.",
+    title: "Everybody sees what’s on",
+    body: "House dinner, house meeting, birthdays. They sit next to the chores, on everyone’s page.",
   },
   {
     icon: Plane,
@@ -83,15 +85,15 @@ const CALENDAR_LINES = [
 const REASSURANCES = [
   {
     icon: Smartphone,
-    body: "Housemates get a text with their own link. Nothing to install, nothing to join.",
+    body: "Free, and nothing to install. Housemates need a mobile number, not an app or a password.",
   },
   {
     icon: Link2,
-    body: "You paste one calendar link, once. No Google sign-in, no apps to connect.",
+    body: "Your calendar link is kept like a password and never shown in full again. Rota Monster reads event titles and dates, nothing else.",
   },
   {
     icon: RefreshCw,
-    body: "The calendar refreshes itself every hour. Nothing else for you to do.",
+    body: "Add a trip in Google Calendar and Rota Monster picks it up within a couple of hours. Nothing to press.",
   },
 ] as const;
 
@@ -127,7 +129,13 @@ export function Landing() {
   return (
     <div className="flex min-h-svh flex-col">
       <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-5 py-5 md:px-8">
-        <Wordmark />
+        <Link
+          href="/"
+          aria-label="Rota Monster home"
+          className="rounded-md outline-hidden focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-solid focus-visible:outline-ring"
+        >
+          <Wordmark />
+        </Link>
         <div className="flex items-center gap-1.5">
           <ThemeToggle />
           <Button asChild variant="ghost">
@@ -156,25 +164,37 @@ export function Landing() {
           </div>
 
           <div className="relative grid grid-cols-1 items-center gap-12 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-14">
-            <div className="animate-pop">
+            {/* No entrance animation on this column on purpose: `animate-pop`
+                starts at opacity 0 for 0.45s, and the h1 inside it is the
+                largest contentful paint. The vignette beside it still pops. */}
+            <div>
               <Badge
                 variant="outline"
                 className="mb-5 h-7 rounded-full border-border bg-card px-3.5 text-[0.8125rem] shadow-xs dark:bg-background"
               >
                 Gently nags. Never bites.
               </Badge>
-              {/* Three lines on purpose: two questions and the answer. The
-                  breaks are real blocks rather than <br/>, so each line still
-                  wraps on its own at 390px instead of overflowing. */}
-              <h1 className="font-heading text-display font-semibold lg:text-6xl">
-                <span className="block">Whose turn?</span>
-                <span className="block">Who&rsquo;s home?</span>
-                <span className="block">Sorted.</span>
+              {/* The searched phrase, straight from `site.ts`, so the h1, the
+                  <title>, the card title and the card image cannot drift apart.
+                  It wraps on its own rather than in fixed blocks: `text-balance`
+                  keeps the two lines close in length at every width. */}
+              {/* Three size steps rather than the usual two, because the column
+                  under the h1 does not grow monotonically: it is the full pane
+                  below lg (608px at 768), then narrows to 456px at lg when the
+                  vignette moves alongside it. 2.75rem sets four lines at 390 and
+                  three at 456, so the ends come down and the middle keeps the
+                  display step. Two lines from md up, measured, not guessed. */}
+              <h1 className="font-heading text-display font-semibold text-balance max-md:text-[2.25rem] lg:text-[2.5rem]">
+                {SITE_TITLE}
               </h1>
               <p className="mt-5 max-w-md text-base text-pretty text-muted-foreground md:text-lg">
+                {/* The explicit space survives JSX's whitespace trimming; a
+                    literal one between the expression and the next line does
+                    not, and the paragraph ships as "Sorted.Set the chores". */}
+                {SITE_TAGLINE}{" "}
                 Set the chores up once and Rota Monster texts whoever&rsquo;s up
-                next. Paste the house calendar link and it knows who&rsquo;s
-                away, so a turn never lands on somebody who&rsquo;s in France.
+                next. Keep a house calendar? It reads that too, so a turn never
+                lands on someone who&rsquo;s in France.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-3">
                 <Button asChild size="lg">
@@ -184,7 +204,7 @@ export function Landing() {
                   </a>
                 </Button>
                 <span className="text-sm text-muted-foreground">
-                  Two minutes, promise.
+                  Free. Sign in with email, two minutes, promise.
                 </span>
               </div>
             </div>
@@ -290,11 +310,11 @@ export function Landing() {
         <section className="pt-12 md:pt-16">
           <div className="flex flex-col items-center gap-3 text-center">
             <h2 className="font-heading text-2xl font-semibold text-balance md:text-4xl">
-              Two things every house argues about.
+              Two things every shared house argues about.
             </h2>
             <p className="max-w-lg text-base text-pretty text-muted-foreground">
-              Whose turn it is, and who is even here. Rota Monster keeps both, in
-              one feed.
+              Whose turn it is, and who&rsquo;s even here. Rota Monster keeps
+              both on one page every housemate gets a link to.
             </p>
           </div>
 
@@ -311,9 +331,8 @@ export function Landing() {
 
               {/* Vignette: the rota entry, and the text it sends. */}
               <div className="mt-auto space-y-3 rounded-2xl bg-muted p-4 shadow-xs" aria-hidden>
-                <div className="flex items-center justify-between px-1">
+                <div className="flex items-center px-1">
                   <Eyebrow>In the rota</Eyebrow>
-                  <span className="text-xs text-muted-foreground">Set up once</span>
                 </div>
 
                 <FeedRow
@@ -330,8 +349,8 @@ export function Landing() {
                 <Handover>the text that goes out when it&rsquo;s your turn</Handover>
 
                 <p className="rounded-3xl rounded-bl-md bg-secondary px-4 py-3 text-sm text-pretty text-secondary-foreground">
-                  Hi Ciara 🌷 you&rsquo;re up for Kitchen deep clean this
-                  Saturday. Can&rsquo;t make it? Tap to hand it on.
+                  Hi Ciara 🌷 you&rsquo;re up for Kitchen deep clean on Sat 27
+                  Sep, a week today. Can&rsquo;t make it? Tap to hand it on.
                 </p>
               </div>
             </div>
@@ -378,7 +397,9 @@ export function Landing() {
                   </div>
                 </div>
 
-                <Handover>in everyone&rsquo;s feed, an hour later at most</Handover>
+                <Handover>
+                  on everyone&rsquo;s page within a couple of hours
+                </Handover>
 
                 <FeedRow
                   coin={
@@ -401,12 +422,11 @@ export function Landing() {
             <div className="flex flex-col gap-3.5">
               <Eyebrow>They work together</Eyebrow>
               <h2 className="font-heading max-w-[18ch] text-2xl font-semibold text-balance md:text-3xl">
-                Handing a turn on goes to someone who&rsquo;s actually home.
+                A turn you hand on lands with someone who&rsquo;s actually home.
               </h2>
               <p className="max-w-md text-base text-pretty text-muted-foreground">
-                When Raph hands Saturday&rsquo;s kitchen clean on, Ciara is shown
-                as away and moved down the list. Eliza is first, because Eliza is
-                in.
+                When Raph hands Saturday&rsquo;s kitchen clean on, Ciara is away
+                and drops down the list. Eliza comes first, because Eliza is in.
               </p>
             </div>
 
@@ -474,7 +494,8 @@ export function Landing() {
         {/* Nothing to install. Three quiet lines with hairline rules, no cards:
             these are objections being closed, not features being sold. */}
         <section className="pt-10 md:pt-12">
-          <div className="grid grid-cols-1 sm:grid-cols-3">
+          <Eyebrow as="h2">Nothing to install</Eyebrow>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3">
             {REASSURANCES.map(({ icon: Icon, body }, index) => (
               <p
                 key={body}
@@ -501,38 +522,59 @@ export function Landing() {
           <div className="rounded-4xl bg-lavender-pane px-6 py-12 text-center shadow-sm md:py-16 dark:bg-card">
             <div className="mx-auto flex max-w-md flex-col items-center gap-5">
               <h2 className="font-heading text-2xl font-semibold text-balance md:text-3xl">
-                Sort the rota tonight.
+                Set it up tonight. Argue about something else.
               </h2>
               <p className="text-sm text-pretty text-muted-foreground">
-                One person sets it up and pastes the house calendar link.
-                Everybody else just gets a friendly text when their turn comes
-                round.
+                One housemate adds the chores and the numbers, and the calendar
+                link if the house keeps one. Nobody else installs or joins
+                anything.
               </p>
-              <Button asChild size="lg">
-                <a href={SIGN_IN_HREF}>
-                  Set up your house
-                  <ArrowRight data-icon="inline-end" aria-hidden />
-                </a>
-              </Button>
+              <div className="flex flex-col items-center gap-3">
+                <Button asChild size="lg">
+                  <a href={SIGN_IN_HREF}>
+                    Set up your house
+                    <ArrowRight data-icon="inline-end" aria-hidden />
+                  </a>
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  Free. Two minutes, promise.
+                </span>
+              </div>
             </div>
           </div>
         </section>
       </main>
 
       <footer className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-5 py-8 md:px-8">
-        <Wordmark muted />
-        <p className="text-xs text-muted-foreground">Whose turn? Sorted.</p>
+        <Link
+          href="/"
+          aria-label="Rota Monster home"
+          className="rounded-md outline-hidden focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-solid focus-visible:outline-ring"
+        >
+          <Wordmark muted />
+        </Link>
+        <p className="text-xs text-muted-foreground">{SITE_TAGLINE}</p>
       </footer>
     </div>
   );
 }
 
-/** The small caps label above a heading or on a vignette's header line. */
-function Eyebrow({ children }: { children: React.ReactNode }) {
+/**
+ * The small caps label above a heading or on a vignette's header line. `as`
+ * exists for the one place the label IS the section's heading (the reassurance
+ * strip): the same quiet type, but an h2, so the outline has no hole in it.
+ */
+function Eyebrow({
+  as: Tag = "span",
+  children,
+}: {
+  as?: "span" | "h2";
+  children: React.ReactNode;
+}) {
   return (
-    <span className="text-[0.6875rem] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+    <Tag className="text-[0.6875rem] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
       {children}
-    </span>
+    </Tag>
   );
 }
 
