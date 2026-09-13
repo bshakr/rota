@@ -62,6 +62,21 @@ export function isThisWeek(dueOn: string, today: string): boolean {
   return compareCivil(dueOn, today) >= 0 && compareCivil(dueOn, addCivilDays(today, 6)) <= 0;
 }
 
+/**
+ * The seven days AFTER this week: today + 7 through today + 13, inclusive.
+ *
+ * Rolling, like `isThisWeek`, rather than Monday-based, so the dashboard's "Next week"
+ * picks up exactly where the glance stops and the two windows tile without a gap or an
+ * overlap. A Monday-based next week would either repeat days the glance already shows
+ * or, on a Sunday, be almost entirely behind it.
+ */
+export function isNextWeek(dueOn: string, today: string): boolean {
+  return (
+    compareCivil(dueOn, addCivilDays(today, 7)) >= 0 &&
+    compareCivil(dueOn, addCivilDays(today, 13)) <= 0
+  );
+}
+
 /** Today or later — an upcoming shift, the only kind the admin can still override. */
 export function isFutureOrToday(dueOn: string, today: string): boolean {
   return compareCivil(dueOn, today) >= 0;

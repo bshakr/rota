@@ -1,9 +1,11 @@
 import { ArrowRightLeft } from "lucide-react";
 
+import { EventRow } from "@/components/member/event-row";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import type { Shift } from "@/lib/api/types";
+import type { DayRow } from "@/lib/day-rows";
 import {
   formatDayNumber,
   formatMonthShort,
@@ -15,8 +17,15 @@ import { civilDate } from "@/lib/group-dates";
 import { capitalise, initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-/** A this-week shift carrying the rota it belongs to, so the glance names the job. */
+/** A shift carrying the rota it belongs to, so the glance names the job. */
 export type WeekShift = Shift & { rotaName: string };
+
+/**
+ * One day of the glance: the turns due, and the house calendar entries around them.
+ * Built by the page through `lib/day-rows.ts`, the same function the member feed uses,
+ * so the two surfaces cannot disagree about which day a trip lands on.
+ */
+export type GlanceDay = DayRow<WeekShift>;
 
 // The day's DATE COIN: the member page's page-a-day calendar leaf, reused as the
 // day heading here so both surfaces speak the same language. 18px round, plum
@@ -31,20 +40,26 @@ const COIN_STYLE = {
 } as const;
 
 /**
- * "Who's up this week", the one-second read. Shifts arrive already filtered to the
- * group's week and sorted by day, then grouped under a date-coin day heading.
+ * "Who's up this week", the one-second read. Days arrive already built and in date
+ * order, under a date-coin day heading.
+ *
  * Each row leads with the job and the person responsible; a covered turn is set
  * apart at a glance by a sky badge and a sky wash, not by making the reader
- * parse the text. Day groups rise in one by one, the same staggered entrance
- * as the member page's shift list.
+ * parse the text. Underneath the turns sit the house calendar's rows — a trip, a
+ * dinner — in the same list and deliberately quieter, because nobody is on the hook
+ * for them: they are context for the turns rather than competition for them, which is
+ * exactly how the member feed stacks them. The glance stays chores-first. Day groups
+ * rise in one by one, the same staggered entrance as the member page's shift list.
+ *
+ * The same component renders next week's days inside the collapsed section below, so
+ * the two weeks are one language and not two.
  */
-export function WeekGlance({ shifts, today }: { shifts: WeekShift[]; today: string }) {
+export function WeekGlance({ days, today }: { days: GlanceDay[]; today: string }) {
   const todayDate = civilDate(today);
-  const days = groupByDay(shifts);
 
   return (
     <div className="space-y-7">
-      {days.map(({ due_on, shifts }, index) => {
+      {days.map(({ due_on, shifts, events }, index) => {
         const date = civilDate(due_on);
         const when = relativeDay(date, todayDate);
         const soon = when === "today" || when === "tomorrow";
@@ -91,13 +106,17 @@ export function WeekGlance({ shifts, today }: { shifts: WeekShift[]; today: stri
               </span>
             </h2>
 
-            <Card className="gap-0 py-0">
+            {/* `overflow-hidden` rather than corner classes on every kind of row: the
+                list now mixes shift rows with the member feed's event row, and the
+                card clipping its own corners is what keeps the bottom one round
+                whichever of the two happens to be last. */}
+            <Card className="gap-0 overflow-hidden py-0">
               <ul className="divide-border divide-y">
                 {shifts.map((shift) => (
                   <li
                     key={shift.id}
                     className={cn(
-                      "flex items-center justify-between gap-3 px-4 py-3.5 first:rounded-t-2xl last:rounded-b-2xl",
+                      "flex items-center justify-between gap-3 px-4 py-3",
                       // The same quarter-strength sky wash the shifts board uses.
                       shift.covered && "bg-sky/25",
                     )}
@@ -134,6 +153,13 @@ export function WeekGlance({ shifts, today }: { shifts: WeekShift[]; today: stri
                     </div>
                   </li>
                 ))}
+
+                {/* House calendar entries come AFTER the day's turns, in the same list,
+                    for the reason the member feed gives: they are context for those
+                    turns rather than competition for them. A day can carry only these. */}
+                {events.map((event) => (
+                  <EventRow key={`event-${event.id}`} event={event} />
+                ))}
               </ul>
             </Card>
           </section>
@@ -141,15 +167,4 @@ export function WeekGlance({ shifts, today }: { shifts: WeekShift[]; today: stri
       })}
     </div>
   );
-}
-
-/** Collapse the pre-sorted list into consecutive day buckets, order preserved. */
-function groupByDay(shifts: WeekShift[]): { due_on: string; shifts: WeekShift[] }[] {
-  const days: { due_on: string; shifts: WeekShift[] }[] = [];
-  for (const shift of shifts) {
-    const last = days.at(-1);
-    if (last && last.due_on === shift.due_on) last.shifts.push(shift);
-    else days.push({ due_on: shift.due_on, shifts: [shift] });
-  }
-  return days;
 }

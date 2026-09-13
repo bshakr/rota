@@ -15,10 +15,10 @@ import { WeekSection } from "@/components/member/week-section";
 import { Button } from "@/components/ui/button";
 import { toastApiError } from "@/lib/api/toast";
 import type { MemberScheduleResponse, MemberShift } from "@/lib/api/types";
+import { awayMemberIdsOn } from "@/lib/calendar-view";
 import { formatShiftDate, relativeDay } from "@/lib/date";
 import { civilDate } from "@/lib/group-dates";
 
-import { awayMemberIdsOn } from "./calendar-view";
 import type { RotaFilter } from "./schedule-view";
 import {
   ALL_SHIFTS,

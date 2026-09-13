@@ -4,8 +4,8 @@ import type {
   MemberShift,
   ScheduleMember,
 } from "@/lib/api/types";
+import { awayMemberIdsOn, eventRangeLabel } from "@/lib/calendar-view";
 
-import { awayMemberIdsOn, eventRangeLabel } from "./calendar-view";
 import { weekStart } from "./schedule-view";
 
 // Who is a reasonable ask. The old cover dialog was a flat list of names, which made

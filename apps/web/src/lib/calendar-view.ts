@@ -1,11 +1,17 @@
-import type { CalendarEventItem, CalendarEventKind, ScheduleMember } from "@/lib/api/types";
+import type { CalendarEventItem, CalendarEventKind, MemberRef } from "@/lib/api/types";
 import { formatShiftDate } from "@/lib/date";
 import { civilDate, compareCivil } from "@/lib/group-dates";
 
-// The house calendar, reduced to what the member feed renders. Pure functions, for
-// the same reason schedule-view.ts is: this is the only real logic on a screen that
-// is otherwise presentation, and "who is away on a Tuesday" is the kind of inclusive
+// The house calendar, reduced to what a feed row renders. Pure functions, for the
+// same reason schedule-view.ts is: this is the only real logic on screens that are
+// otherwise presentation, and "who is away on a Tuesday" is the kind of inclusive
 // range arithmetic that is wrong far more often than it looks.
+//
+// It lives in lib/ rather than under the member route because the ADMIN dashboard's
+// week glance renders the same rows off the same shapes (BLO-1686). Nothing here
+// knows which of the two is asking, which is why the members it is handed are a
+// plain `MemberRef[]`: the member page's richer `ScheduleMember` extends it, and the
+// admin's `Member` carries a magic-link token that must never reach a row.
 //
 // Every date here is a CIVIL date (YYYY-MM-DD) in the group's calendar and every
 // comparison goes through group-dates.ts. `lib/date.ts` formats INSTANTS, so a civil
@@ -74,12 +80,12 @@ export function eventRangeLabel(event: CalendarEventItem): string | null {
  * would then name nobody, so the row falls back to the words the calendar itself
  * used, which is the only information left that is true.
  */
-export function awayLabel(event: CalendarEventItem, members: ScheduleMember[]): string {
+export function awayLabel(event: CalendarEventItem, members: MemberRef[]): string {
   return awayText(memberNames(event, members), event.title);
 }
 
 /** One calendar entry as the feed needs it: labels resolved, ids already looked up. */
-export function toFeedEvent(event: CalendarEventItem, members: ScheduleMember[]): FeedEvent {
+export function toFeedEvent(event: CalendarEventItem, members: MemberRef[]): FeedEvent {
   return {
     id: event.id,
     title: event.title,
@@ -117,7 +123,7 @@ function awayText(names: string[], fallback: string): string {
   return names.length === 0 ? fallback : `${joinNames(names)} away`;
 }
 
-function memberNames(event: CalendarEventItem, members: ScheduleMember[]): string[] {
+function memberNames(event: CalendarEventItem, members: MemberRef[]): string[] {
   return event.member_ids
     .map((id) => members.find((member) => member.id === id)?.name)
     .filter((name): name is string => Boolean(name));
