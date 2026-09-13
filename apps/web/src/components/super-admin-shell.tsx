@@ -39,9 +39,14 @@ export const SUPER_ADMIN_NAV: readonly NavItem[] = [
   { href: "/super-admin/spend", label: "Spend", icon: Wallet, ready: false },
 ] as const;
 
-/** The shared pill geometry. A nav row is tapped on a phone, so it is 44px tall. */
+/**
+ * The shared pill geometry. A nav row is tapped on a phone, so it is 44px tall —
+ * the system's comfortable touch target, and the height `size-lg`/`icon-lg` use.
+ * `min-h-11` states that outright: padding plus a 20px line box came to 40, which
+ * looked like the intent but was not it.
+ */
 const NAV_ITEM =
-  "flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2.5 text-sm font-medium transition-colors";
+  "flex min-h-11 shrink-0 items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-colors";
 
 function NavLinks() {
   const pathname = usePathname();
@@ -66,15 +71,19 @@ function NavLinks() {
 
         if (!ready) {
           // No `aria-disabled`: it is not allowed on a generic span, and there
-          // is nothing here to disable. The visible "Soon" chip is the meaning,
-          // and it is read out as part of the text.
+          // is nothing here to disable. The word "Soon" is the meaning, and it
+          // is read out as part of the text.
+          //
+          // TEXT, not a chip. A quiet fill here sits pastel-on-pastel — the
+          // `--muted` pill measured 1.07:1 against the page — so the fill was
+          // decoration that could not be seen doing its job. Micro-type in the
+          // same muted ink carries the same meaning and is legible by
+          // construction, because it is type rather than a surface.
           return (
             <span key={href} className={cn(NAV_ITEM, "text-muted-foreground cursor-default")}>
               <Icon className="size-[18px] shrink-0" aria-hidden />
               {label}
-              <span className="bg-muted text-muted-foreground rounded-full px-1.5 py-px text-[10px] font-semibold tracking-wide uppercase">
-                Soon
-              </span>
+              <span className="text-[10px] font-semibold tracking-[0.12em] uppercase">Soon</span>
             </span>
           );
         }
@@ -139,8 +148,13 @@ export function SuperAdminShell({
       {/* bg-plum is theme-independent on purpose (a sticker does not invert), so
           the ink on it is pinned to light pigments rather than semantic cuts —
           including the focus outline, because the grape --ring is all but
-          invisible on plum ink. */}
-      <header className="bg-plum border-border text-lavender border-b shadow-sm">
+          invisible on plum ink.
+          The hairline follows the same rule. `--border` is plum at 12%: plum on
+          plum, which is nothing at all by day. A lavender hairline reads on the
+          band in both registers, and it is the edge that separates the band from
+          the page at night, where the two plums are only a lightness step apart.
+          check-theme-parity.mjs measures all of these against the band. */}
+      <header className="bg-plum text-lavender border-lavender/20 border-b shadow-sm">
         <Container className="flex h-14 items-center justify-between gap-3">
           <Link
             href="/super-admin"
@@ -156,7 +170,9 @@ export function SuperAdminShell({
             {hasHouse ? (
               <Link
                 href="/dashboard"
-                className="hover:bg-lavender/15 flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-colors outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lavender"
+                /* Same 44px target as a nav item and as the toggle beside it:
+                   three controls in one row should not be three heights. */
+                className="hover:bg-lavender/15 flex min-h-11 items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-colors outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lavender"
               >
                 <House className="size-4 shrink-0" aria-hidden />
                 Your house
@@ -166,7 +182,7 @@ export function SuperAdminShell({
                 ring are measured against the PAGE. On plum they are illegible,
                 so the band hands the control its own — the same lavender the
                 links beside it use. */}
-            <ThemeToggle className="hover:bg-lavender/15 hover:text-lavender aria-expanded:bg-lavender/15 aria-expanded:text-lavender focus-visible:outline-lavender" />
+            <ThemeToggle className="hover:bg-lavender/15 hover:text-lavender aria-expanded:bg-lavender/15 aria-expanded:text-lavender size-11 focus-visible:outline-lavender" />
           </div>
         </Container>
       </header>

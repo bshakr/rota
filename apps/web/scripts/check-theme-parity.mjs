@@ -250,11 +250,39 @@ const PAIRS = [
   { fg: "--muted-foreground", bg: "--sidebar", min: TEXT, note: "sidebar meta" },
   { fg: "--sidebar-primary-foreground", bg: "--sidebar-primary", min: TEXT, note: "active nav item" },
 
+  // The super admin HQ band — the one piece of chrome that is PLUM IN BOTH
+  // THEMES. Like a sticker it does not invert, so everything on it is pinned to
+  // paint rather than to a semantic cut, and each pairing has to hold once
+  // rather than twice.
+  //
+  // They are declared because the band opts OUT of the page colours, and a
+  // control that does not know that quietly brings the page's own along: the
+  // theme toggle is a ghost Button, whose focus ring is --ring (1.50:1 on plum)
+  // and whose hover fill is --accent (1.08:1 on plum). Both shipped that way
+  // until a reviewer caught them by eye. With the band's real colours named
+  // here, the next one is caught by `npm run check:tokens` instead.
+  { fg: "--lavender-100", bg: "--plum-800", min: TEXT, note: "HQ band label / icon" },
+  { fg: "--lilac-200", bg: "--plum-800", min: TEXT, note: "HQ band wordmark, .monster" },
+  { fg: "--lavender-100", bg: "--plum-800", min: UI, note: "HQ band focus outline" },
+  // Hover and aria-expanded paint lavender at 15% behind a label that stays
+  // lavender, so the question is the label over the composited fill.
+  {
+    fg: "--lavender-100",
+    bg: ["--lavender-100 0.15", "--plum-800"],
+    min: TEXT,
+    note: "HQ band label, hovered",
+  },
+
   // Surface separation — informational only.
   { fg: "--card", bg: "--background", kind: "sep" },
   { fg: "--popover", bg: "--background", kind: "sep" },
   { fg: "--muted", bg: "--card", kind: "sep" },
   { fg: "--sidebar", bg: "--background", kind: "sep" },
+  // The band's hairline. Decorative separation like --border elsewhere, so
+  // reported rather than gated — but reported because it is the edge that
+  // separates band from page at night, where the two plums are one step apart.
+  { fg: "--lavender-100 0.20", bg: "--plum-800", kind: "sep", note: "HQ band hairline on the band" },
+  { fg: "--plum-800", bg: "--background", kind: "sep", note: "HQ band against the page" },
 ];
 
 /* --- run ------------------------------------------------------------------- */

@@ -46,8 +46,15 @@ function isClientModule(source: string): boolean {
   // The "use client" directive may sit after leading comments (e.g. a license
   // header), so strip those before checking — otherwise a commented file would be
   // mistaken for a server module and skip the guard.
+  //
+  // Comments AND the blank lines between them, together. The first version of
+  // this consumed a `//` comment only up to its own newline and then demanded
+  // another comment immediately, so `// header`, a blank line, then
+  // `"use client"` — the ordinary shape of a real file — left the directive
+  // unreachable and the module silently exempt from the guard below. The
+  // whitespace run has to be inside the repeated group as well as after it.
   const withoutLeadingComments = source.replace(
-    /^\s*(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/\s*)*/,
+    /^(?:\s*(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/))*\s*/,
     "",
   );
   return /^["']use client["']/.test(withoutLeadingComments);
@@ -67,6 +74,25 @@ describe("bundle safety: the member token never reaches the client", () => {
 
   it("finds source files to scan (guards against a broken glob)", () => {
     expect(files.length).toBeGreaterThan(10);
+  });
+
+  // The scan below is only as good as its idea of what a Client Component is.
+  // A file this misreads as a server module skips the import check entirely, so
+  // the detector gets its own test — including the shape that defeated the first
+  // version of it: a comment, a BLANK LINE, then the directive.
+  it("recognises a Client Component however its directive is introduced", () => {
+    expect(isClientModule('"use client";\n')).toBe(true);
+    expect(isClientModule("'use client';\n")).toBe(true);
+    expect(isClientModule('// a header\n"use client";\n')).toBe(true);
+    expect(isClientModule('// a header\n\n"use client";\n')).toBe(true);
+    expect(isClientModule('/* a header */\n\n"use client";\n')).toBe(true);
+    expect(isClientModule('\n// one\n\n// two\n\n/* three */\n\n"use client";\n')).toBe(true);
+  });
+
+  it("does not mistake a server module for a Client Component", () => {
+    expect(isClientModule('import "server-only";\n')).toBe(false);
+    expect(isClientModule('// "use client" in a comment\nimport "server-only";\n')).toBe(false);
+    expect(isClientModule('const x = "use client";\n')).toBe(false);
   });
 
   it("no Client Component imports a server-only token-handling module", () => {

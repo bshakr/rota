@@ -8,9 +8,11 @@ import { requireSuperAdmin } from "@/lib/auth/super-admin";
  *
  * The AuthKit proxy has already bounced a logged-out visitor to WorkOS (every
  * path that is not explicitly excluded is matched; see proxy-matcher.ts). What
- * this guard adds is the allowlist: anyone else gets `notFound()`, so the whole
- * area looks like a URL that does not exist. Rails repeats the check on every
- * request it answers — this one only decides what renders.
+ * this guard adds is the allowlist: anyone else gets `notFound()` and no part of
+ * the area renders for them. The URL is not itself a secret — the house shell
+ * ships the href in a client chunk for the operators who are shown the link, and
+ * the paths are in the plan besides — and it does not need to be. Rails repeats
+ * the check on every request it answers; this one only decides what renders.
  *
  * `organizationId` is read for one reason: the shell's "Your house" link points
  * at /dashboard, which requires a household. An operator whose token names no

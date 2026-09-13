@@ -200,7 +200,8 @@ const valueCheck =
     : "name only (the variable is unset here, so there is no value to look for)";
 
 console.log(
-  `✓ token bundle safety: scanned ${files.length} client chunks — no member API client or Bearer-token code, ` +
-    `no super admin API paths, no allowlist variable.\n` +
-    `✓ allowlist: scanned ${prerendered.length} prerendered .html/.rsc files for the allowlist ${valueCheck}; none present.`,
+  `✓ bundle safety, pass A: scanned ${files.length} client chunks in .next/static — no member API client ` +
+    `request paths, no Bearer-header builder, no super admin API paths, no allowlist variable name.\n` +
+    `✓ bundle safety, pass B: scanned ${prerendered.length} prerendered .html/.rsc files in ` +
+    `.next/server/app for the super admin allowlist ${valueCheck} — none present.`,
 );

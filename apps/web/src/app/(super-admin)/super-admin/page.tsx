@@ -16,8 +16,9 @@ export const metadata: Metadata = { title: "HQ" };
  * KPI tiles, the attention list and the recent-houses list arrive with the query
  * object in https://linear.app/bloombase/issue/BLO-1678.
  *
- * What this page IS for today: proving the door opens for an allowlisted
- * operator and 404s for everyone else.
+ * So this page renders the shell and an empty state, and asserts nothing about
+ * the API path — that the guard admits the right people is what
+ * super-admin.test.ts covers, and what Rails covers for real.
  */
 export default function SuperAdminOverviewPage() {
   return (

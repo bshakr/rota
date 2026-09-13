@@ -11,10 +11,15 @@ import { cache } from "react";
 // is therefore a DEPLOY, not a click: there is no column, no role and no API
 // that can add someone.
 //
-// Rails owns the actual enforcement (`SuperAdmin::BaseController` verifies the
-// JWT and re-checks this same list before answering anything). The check in this
-// module is cosmetic: it hides the nav link and 404s the route group. A
-// divergence between the two lists is a cosmetic bug, never an escalation.
+// Rails owns the actual enforcement: `SuperAdmin::BaseController` verifies the
+// JWT and re-checks this same list before answering anything. It is not merged
+// yet — it lands with https://github.com/bshakr/rota/pull/35 (BLO-1669), running
+// in parallel with this one — so until then there is no super admin API to reach
+// at all.
+//
+// The check in this module is cosmetic either way: it hides the nav link and
+// 404s the route group. A divergence between the two lists is a cosmetic bug,
+// never an escalation.
 //
 // UNSET MEANS NOBODY, including in development — so a typo in the variable name
 // closes the door rather than opening it, and a deploy that has not had the
@@ -62,8 +67,13 @@ export function isSuperAdmin(userId: string | null | undefined): boolean {
  *
  * A caller who is not allowlisted — and a request with no session at all, which
  * the proxy should already have bounced to WorkOS — gets `notFound()`. 404, not
- * 403: a surface you cannot use should look like one that does not exist, which
- * is the same rule the tenancy seam follows.
+ * 403, the same rule the tenancy seam follows: a refusal that names itself tells
+ * the caller there is something here to get into.
+ *
+ * It does not make the area SECRET. The nav link ships its href in a client
+ * chunk for anyone who is allowlisted, and the path is in the plan besides. What
+ * the 404 buys is that the response to a stranger carries no signal, and Rails
+ * answers the same way for the data that actually matters.
  *
  * `cache()` for the same reason `requireHousehold` has it: Next may render the
  * layout and the page concurrently, and both call this.
