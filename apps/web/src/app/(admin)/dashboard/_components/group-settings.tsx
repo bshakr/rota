@@ -24,9 +24,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toastApiError } from "@/lib/api/toast";
-import type { Group } from "@/lib/api/types";
+import type { CalendarEventPreviewItem, Group } from "@/lib/api/types";
 
 import { saveGroupSettings } from "../actions";
+import { HouseCalendarSettings } from "./house-calendar-settings";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Give the group a name."),
@@ -50,7 +51,20 @@ function timezoneOptions(current: string): string[] {
  * and the fix are the same screen. Saving a timezone confirms it and clears the
  * warning (Rails stamps `timezone_confirmed_at` whenever `timezone` is sent).
  */
-export function GroupSettings({ group }: { group: Group }) {
+export function GroupSettings({
+  group,
+  calendarEvents,
+  memberNames,
+  today,
+}: {
+  group: Group;
+  /** The next 30 days of house-calendar events, for the "What we found" disclosure. */
+  calendarEvents: CalendarEventPreviewItem[];
+  /** Member id → name, so an away event can name the housemates it matched. */
+  memberNames: Record<number, string>;
+  /** The group's own "today" as a civil date, for the calendar's "last checked" line. */
+  today: string;
+}) {
   const zones = React.useMemo(() => timezoneOptions(group.timezone), [group.timezone]);
   const form = useForm<Values>({
     resolver: zodResolver(schema),
@@ -136,6 +150,13 @@ export function GroupSettings({ group }: { group: Group }) {
             </Button>
           </FieldGroup>
         </form>
+
+        <HouseCalendarSettings
+          calendar={group.calendar}
+          initialEvents={calendarEvents}
+          memberNames={memberNames}
+          today={today}
+        />
       </CardContent>
     </Card>
   );
