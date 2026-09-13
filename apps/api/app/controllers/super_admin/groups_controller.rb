@@ -51,7 +51,11 @@ module SuperAdmin
         admins: AdminSerializer.many(group.group_admins.includes(:user).order(:id)),
         members: MemberSerializer.many(group.members.includes(:rotas).order(:name)),
         rotas: RotaSerializer.many(group.rotas.includes(:rota_positions).order(:name)),
-        recent_sms_messages: SmsMessageSerializer.many(recent_sms_messages(group))
+        recent_sms_messages: SmsMessageSerializer.many(recent_sms_messages(group)),
+        # The operator's view of this one house (BLO-1679): the warnings its own admins are looking
+        # at, the next fortnight of turns, twelve weeks of usage, and who is in it. A key on this
+        # payload rather than a route of its own, so the whole group page arrives in one request.
+        report: GroupReport.call(group, now: now)
       }
     end
 
