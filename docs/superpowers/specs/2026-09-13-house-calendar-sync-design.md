@@ -189,6 +189,8 @@ Exactly the hooks BLO-1666 section 9 reserved:
 
 Not in this ticket. The week glance stays chores-only; the admin's calendar view is Google Calendar itself. The settings disclosure is enough to verify the sync. Revisit when an admin asks for "who is away this week" next to the rota.
 
+Revisited 2026-09-13 in BLO-1686 and BLO-1687: the week glance now interleaves the same rows the member feed shows, built by the shared `apps/web/src/lib/day-rows.ts`, and a collapsed "Next week" section sits under it. The trigger named above arrived the same day the feed shipped.
+
 ## 11. Gems and libraries
 
 - `icalendar` ~> 2.12 (parsing), `icalendar-recurrence` ~> 1.2 (expansion; brings `ice_cube`). Both pass bundler-audit today; the recurrence gem is lightly maintained, so the parser wraps it behind `CalendarParser` and the fixture suite is what protects against a future swap.
