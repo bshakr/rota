@@ -34,7 +34,7 @@ Reference artboards: "Option A · Feed · mobile" and "Option A · Feed · deskt
 6. Four weeks are rendered initially; "Show more weeks" reveals the rest of the payload (up to the 90-day generation window) without a request.
 
 ### 3.2 Desktop (≥ 1024px)
-Two columns: the feed on the left (filter chips above it), and a 360px sidebar with a "You" card (next three own shifts, hand-off on the first) and a "People" card listing every housemate with their next responsible shift. The people strip is not shown on desktop; the People card's rows are the person filter instead. Below 1024px the layout is the phone layout.
+Two columns: the feed on the left (filter chips above it), and a 360px sidebar with a "You" card (next three own shifts, hand-off on the first) and a "People" card listing every housemate with their next responsible shift. The people strip is not shown on desktop; the People card's rows are the person filter instead. Below 1024px the layout is the phone layout. The member layout's container is currently capped at `max-w-lg`; it gains a wider variant on `lg` so the sidebar fits, and the phone layout is unchanged.
 
 ### 3.3 Hand-off sheet
 Opens from any "Hand off" control. A bottom sheet on phone and a centred dialog on desktop (shadcn `Sheet` and `Dialog`), same content:
@@ -73,8 +73,8 @@ Authenticated exactly like the existing member endpoints (Bearer member token, `
 ```
 - `today` is `group.today` (group calendar, never UTC); `timezone` is the group's.
 - `members`: every active member of the group including the viewer, ordered by name; `contactable` mirrors `Member#contactable?`.
-- `rotas`: the group's active, non-draft rotas ordered by name.
-- `shifts`: every shift of those rotas with `due_on >= today`, ordered by `due_on` then rota name, serialised with the existing `ShiftSerializer` so each carries `rota_id`, `rota_name`, `due_on`, `covered`, `assigned_member`, `covering_member`, `responsible_member`, `can_assign_cover`, `can_cancel_cover`. The `can_*` flags are computed relative to the calling member, as today. No window parameter: the generator already bounds shifts to 90 days.
+- `rotas`: the group's active, non-draft rotas ordered by name. `Rota#draft?` is derived from the roster, so the controller loads active rotas with their positions and rejects drafts in Ruby, then scopes shifts to the surviving rotas.
+- `shifts`: every shift of those rotas with `due_on >= today`, ordered by `due_on` then rota name, serialised with the member controllers' existing `serialize_shift` (in `Api::MemberBaseController`; the new controller inherits it) so each carries `rota_id`, `rota_name`, `due_on`, `covered`, `assigned_member`, `covering_member`, `responsible_member`, `can_assign_cover`, `can_cancel_cover`. The `can_*` flags are computed relative to the calling member, as today. No window parameter: the generator already bounds shifts to 90 days.
 - `GET /api/member/shifts` stays as it is. The page stops calling it; removing it is a later cleanup once nothing depends on it.
 - `POST` and `DELETE /api/member/shifts/:id/cover` are unchanged and remain the only writes.
 
