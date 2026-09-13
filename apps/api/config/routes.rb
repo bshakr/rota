@@ -21,7 +21,15 @@ Rails.application.routes.draw do
 
     # The admin surface (BLO-1047). Every member action is scoped to the token's group, so these
     # ids are always the caller's own house's; a cross-tenant id resolves to 404, never a leak.
-    resource :group, only: %i[show update], controller: "group"
+    resource :group, only: %i[show update], controller: "group" do
+      # The house calendar link (BLO-1667). Singular, like the group: there is one per house and the
+      # token names it, so no id ever appears in these paths — and the link itself is a credential
+      # that must never become one.
+      resource :calendar, only: %i[update destroy], controller: "group_calendar" do
+        post :sync
+        get :events
+      end
+    end
     resources :members, only: %i[index create update destroy] do
       post :rotate_link, on: :member
     end

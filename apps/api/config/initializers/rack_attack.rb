@@ -17,6 +17,12 @@
 class Rack::Attack
   MEMBER_PATH_PREFIX = "/api/member/"
 
+  # The two admin routes that make the server fetch a third-party URL on the caller's behalf
+  # (BLO-1667). PATCH is here because the router generates it alongside PUT for a singular resource,
+  # and a limit a second verb walks around is not a limit.
+  CALENDAR_CONNECT_PATH = "/api/group/calendar"
+  CALENDAR_SYNC_PATH = "/api/group/calendar/sync"
+
   # Authenticated members: keyed per member, generously. Bounds a single runaway or compromised token
   # without ever punishing a housemate for who else is on their Wi-Fi.
   throttle("member_api/member", limit: 60, period: 60.seconds) do |request|
@@ -31,6 +37,21 @@ class Rack::Attack
     request.ip if Rack::Attack.member_id_for(request).nil?
   end
 
+  # Connecting a house calendar or pressing "Sync now" makes the server download someone else's URL,
+  # which is the one thing on the admin API worth putting in a loop. Five a minute is generous for a
+  # human and a hard stop for a script, and the first four of those five are already more calendar
+  # than Google will have re-cached.
+  #
+  # Keyed on the bearer token rather than the IP, for the same reason the member throttle is keyed
+  # per member: two houses behind one office or café NAT share an IP, and one of them syncing must
+  # never lock the other out. The token is hashed because the key is written to the cache store and
+  # a WorkOS access token is a credential — the digest tells two callers apart without keeping one.
+  # A token refresh therefore starts a fresh bucket; a WorkOS access token lives minutes, which is
+  # long enough for this window to mean something.
+  throttle("group_api/calendar_fetch", limit: 5, period: 60.seconds) do |request|
+    Rack::Attack.calendar_caller_for(request) if Rack::Attack.calendar_fetch?(request)
+  end
+
   # A throttled caller gets JSON, like every other error on this API, rather than Rack::Attack's
   # default text body.
   self.throttled_responder = lambda do |_request|
@@ -41,6 +62,20 @@ class Rack::Attack
   # throttles above share ONE indexed lookup. Only ACTIVE members resolve — a deactivated token
   # authenticates as nobody (see MemberAuthenticatable), so it falls to the IP throttle like any other
   # bad token. A token-less request never touches the database.
+  def self.calendar_fetch?(request)
+    (request.post? && request.path == CALENDAR_SYNC_PATH) ||
+      ((request.put? || request.patch?) && request.path == CALENDAR_CONNECT_PATH)
+  end
+
+  # Who is asking, as far as a throttle needs to know. A request with no Authorization header has
+  # nothing to tell it apart by but its IP, and is about to be refused by JWT verification anyway.
+  def self.calendar_caller_for(request)
+    authorization = request.env["HTTP_AUTHORIZATION"].to_s
+    return "ip:#{request.ip}" if authorization.blank?
+
+    "token:#{OpenSSL::Digest::SHA256.hexdigest(authorization)}"
+  end
+
   def self.member_id_for(request)
     request.env.fetch("member_api.member_id") do
       token = request.env["HTTP_AUTHORIZATION"].to_s[/\ABearer\s+(.+)\z/i, 1]

@@ -4,6 +4,19 @@ RSpec.describe CalendarConnection do
   let(:group) { create(:group) }
   let(:url) { "https://calendar.google.com/calendar/ical/park%40gmail.com/private-0123456789abcdef3f9a/basic.ics" }
 
+  # Brakeman's ValidationRegex check, and it is right: a `\A`-only anchor stops at the first newline,
+  # so a link with a second line spliced onto it would be stored.
+  it "refuses a link that carries a second line" do
+    connection = build(:calendar_connection, group: group, ical_url: "https://calendar.google.com/house.ics\nhttp://evil.example")
+
+    expect(connection).not_to be_valid
+    expect(connection.errors[:ical_url]).to include("must be an https link")
+  end
+
+  it "refuses a link that is not https" do
+    expect(build(:calendar_connection, group: group, ical_url: "http://calendar.google.com/house.ics")).not_to be_valid
+  end
+
   it "masks the link to host plus the tail of the path" do
     connection = create(:calendar_connection, group: group, ical_url: url)
 
