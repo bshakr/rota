@@ -158,13 +158,38 @@ RSpec.describe SuperAdmin::Spend do
       expect(result[:totals][:sms_cost_estimated]).to eq(segment_rate.to_f)
     end
 
-    it "charges nothing for a text Twilio rejected" do
-      text(group, status: "failed", error_code: "21610", num_segments: 1)
+    # The distinction the SID draws, and the one this file most has to get right. Twilio refusing
+    # to accept a message costs nothing; a carrier rejecting one Twilio already took is billed in
+    # full, and arrives here as `failed` because the status webhook maps `undelivered` to it.
+    it "charges nothing for a text Twilio never accepted" do
+      text(group, status: "failed", error_code: "21610", sid: false, num_segments: 1)
 
       totals = result[:totals]
       expect(totals[:sms_cost_estimated]).to eq(0.0)
       expect(totals[:texts_estimated]).to eq(0)
       expect(totals[:texts_sent]).to eq(0)
+    end
+
+    it "estimates a text Twilio accepted and the carrier then rejected" do
+      text(group, status: "failed", error_code: "30006", num_segments: 2)
+
+      totals = result[:totals]
+      expect(totals[:sms_cost_estimated]).to eq((segment_rate * 2).to_f)
+      expect(totals[:texts_estimated]).to eq(1)
+      expect(totals[:texts_sent]).to eq(1)
+    end
+
+    # The bug this rule replaced: the same row cost zero while it was an estimate and a real charge
+    # once the backfill settled it, so a house's spend jumped on a night nothing was sent.
+    it "prices a carrier-rejected text the same before and after Twilio settles it" do
+      before = result[:totals][:sms_cost]
+
+      text(group, status: "failed", error_code: "30006", num_segments: 1)
+      estimated = result[:totals][:sms_cost]
+      SmsMessage.last.update!(price: segment_rate, price_unit: "USD", price_fetched_at: now)
+
+      expect(estimated).to be > before
+      expect(result[:totals][:sms_cost]).to eq(estimated)
     end
 
     it "charges nothing for a text that has not gone out yet" do
@@ -181,12 +206,95 @@ RSpec.describe SuperAdmin::Spend do
       expect(result[:totals][:sms_cost_settled]).to eq(0.0079)
     end
 
-    it "counts segments only for texts that actually went out" do
+    it "counts segments only for texts Twilio accepted" do
       text(group, num_segments: 3)
-      text(group, status: "failed", num_segments: 5)
+      text(group, status: "failed", sid: false, num_segments: 5)
 
       expect(result[:totals][:segments]).to eq(3)
       expect(result[:totals][:texts_sent]).to eq(1)
+    end
+
+    it "splits every accepted text into settled, estimated or unpriceable and nothing else" do
+      settled_text(group, amount: "0.0079")
+      text(group, num_segments: 1)
+      text(group, price_fetched_at: now, num_segments: 1)
+      text(group, status: "failed", sid: false, num_segments: 1)
+
+      totals = result[:totals]
+      expect(totals[:texts_sent]).to eq(3)
+      expect(totals[:texts_settled] + totals[:texts_estimated] + totals[:texts_unpriceable])
+        .to eq(totals[:texts_sent])
+    end
+  end
+
+  # Sms::PriceBackfill stamps price_fetched_at with the price left null when Twilio has forgotten
+  # the message — past its roughly thirteen-month retention. No price is ever coming for those, so
+  # the estimate on them is permanent, and an operator reading "estimated" must be able to tell the
+  # rows that will resolve from the rows that never will.
+  describe "a text Twilio can no longer price" do
+    let(:group) { create(:group) }
+
+    it "keeps the estimate but is counted apart from the rows still waiting" do
+      text(group, price_fetched_at: now, num_segments: 2)
+
+      totals = result[:totals]
+      expect(totals[:texts_unpriceable]).to eq(1)
+      expect(totals[:texts_estimated]).to eq(0)
+      expect(totals[:sms_cost_estimated]).to eq((segment_rate * 2).to_f)
+    end
+
+    it "sits beside a row that has merely not been asked about yet" do
+      text(group, price_fetched_at: now, num_segments: 1)
+      text(group, num_segments: 1)
+
+      totals = result[:totals]
+      expect(totals[:texts_unpriceable]).to eq(1)
+      expect(totals[:texts_estimated]).to eq(1)
+      expect(totals[:sms_cost_estimated]).to eq((segment_rate * 2).to_f)
+    end
+
+    it "appears on the house's own row too" do
+      text(group, price_fetched_at: now, num_segments: 1)
+
+      expect(result[:houses].first[:texts_unpriceable]).to eq(1)
+    end
+
+    it "is counted per month, not only in the range total" do
+      text(group, price_fetched_at: now, at: Time.utc(2026, 8, 20), num_segments: 1)
+
+      months = result[:months].index_by { |month| month[:month] }
+      expect(months["2026-08"][:texts_unpriceable]).to eq(1)
+      expect(months["2026-09"][:texts_unpriceable]).to eq(0)
+    end
+  end
+
+  # Bass's standing rule: never render a figure coarser than the column it came from. ai_calls.cost_usd
+  # is decimal(12,6), so six decimals is the floor here, and one rule covers totals and per-unit
+  # prices alike so the two can never round to different truths.
+  describe "money at source precision" do
+    let(:group) { create(:group) }
+
+    it "keeps the sixth decimal of a Claude cost rather than rounding it away" do
+      claude_call(group, cost_usd: "0.000125".to_d, items_count: 1)
+
+      totals = result[:totals]
+      expect(totals[:claude_cost]).to eq(0.000125)
+      expect(totals[:total]).to eq(0.000125)
+      expect(result[:houses].first[:claude_cost]).to eq(0.000125)
+    end
+
+    it "keeps it in the unit economics, which divide it further still" do
+      claude_call(group, cost_usd: "0.000125".to_d, items_count: 1)
+
+      economics = result[:unit_economics]
+      expect(economics[:cost_per_title_classified]).to eq(0.000125)
+      expect(economics[:cost_per_house_per_month][:median]).to eq(0.000125)
+    end
+
+    it "renders a settled Twilio price at the five decimals its column holds" do
+      settled_text(group, amount: "0.00795")
+
+      expect(result[:totals][:sms_cost_settled]).to eq(0.00795)
     end
   end
 
@@ -543,7 +651,7 @@ RSpec.describe SuperAdmin::Spend do
     # page for a minute if the key were not versioned. Asserted rather than trusted, because the
     # suffix reads as clutter to anyone who does not know what it is for.
     it "versions the key, so a deploy that changes the payload cannot serve the old shape" do
-      expect(described_class.cache_key("30d")).to eq("super_admin/spend/v1/30d")
+      expect(described_class.cache_key("30d")).to eq("super_admin/spend/v2/30d")
     end
   end
 

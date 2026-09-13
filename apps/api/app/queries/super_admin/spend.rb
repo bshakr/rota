@@ -24,11 +24,13 @@ module SuperAdmin
   #   * Touch a Float on the way to a total. Money is BigDecimal from the column to the last step,
   #     and becomes a JSON number only when the payload is built.
   #
-  # Precision, since a number that renders coarser than it was computed is a decision, not a
-  # default: aggregate money serialises at 4 decimals, and every per-unit price — the segment
-  # estimate rate, cost per text, cost per title, and the whole unit_economics block — at 6, because
-  # a per-unit price here is routinely smaller than the 4th decimal place and rounding it would
-  # report a real cost as zero.
+  # Precision, since a number that renders coarser than it was computed is a decision and not a
+  # default: every money figure here serialises at 6 decimals, which is the precision of the columns
+  # it is summed from (`ai_calls.cost_usd` is decimal(12,6), `sms_messages.price` decimal(10,5)).
+  # One rule for totals and per-unit prices alike, so a per-house total and the cost per text it
+  # implies can never be rounded to two different truths. Six is not decoration at this scale: a
+  # single SMS segment costs under a hundredth of a cent, and four decimals reported a real cost as
+  # zero.
   class Spend
     # A range the caller made up. Raised from the constructor so the controller can answer 400
     # before anything is computed or cached.
@@ -46,7 +48,8 @@ module SuperAdmin
     # without the suffix the first minute after shipping a change to this payload would serve the
     # OLD shape to the NEW page, which is a confusing way to break a dashboard. Bump it whenever the
     # shape changes. The range is appended to it, so each window is its own entry.
-    CACHE_KEY = "super_admin/spend/v1".freeze
+    # v2: texts_unpriceable joined the payload, and money went from 4 decimals to 6.
+    CACHE_KEY = "super_admin/spend/v2".freeze
 
     # The same 60 seconds the rest of the operator console caches at. Tens of houses, live SQL, and
     # a page nobody reloads twice a second — see the plan's "Aggregation" decision.
@@ -55,12 +58,15 @@ module SuperAdmin
     # Both vendors bill in dollars and nothing here converts. See the "Currency" decision.
     CURRENCY = "USD"
 
-    MONEY_PRECISION = 4
-    UNIT_PRICE_PRECISION = 6
+    # One rule for every money figure, totals and per-unit prices alike. See the note on the class.
+    MONEY_PRECISION = 6
 
     # What one segment costs when Twilio has not said yet. Twilio's US list price for an outbound
     # SMS segment; override with SMS_ESTIMATED_SEGMENT_COST_USD when the mix is mostly elsewhere.
-    # It only ever prices rows the backfill has not settled, so it stops mattering as they settle.
+    #
+    # It matters less as the backfill settles rows, but it never stops mattering: a row that aged
+    # out of Twilio's retention before anyone asked is priced by this rate for good, which is what
+    # `texts_unpriceable` counts.
     DEFAULT_SEGMENT_COST_USD = "0.0079".to_d
 
     # A row with no segment count is a text sent before BLO-1672 added the column. One segment is
@@ -80,6 +86,9 @@ module SuperAdmin
       texts_settled: 0,
       sms_cost_settled: BigDecimal(0),
       texts_estimated: 0,
+      # Accepted, asked about, and never going to be priced: past Twilio's retention. Keeps the
+      # estimate for good, so it is counted apart from the rows that are only waiting their turn.
+      texts_unpriceable: 0,
       estimated_segments: 0,
       # unit => BigDecimal, and empty in the normal case. See the "Currency" note above.
       other_currencies: {}.freeze,
@@ -95,17 +104,29 @@ module SuperAdmin
     # billed in.
     #
     # The classification in the CTE is the whole argument of this file, so it is written once there
-    # and only counted below:
+    # and only counted below. The one question that decides everything is "did Twilio bill us", and
+    # the SID is the only honest answer to it:
     #
-    #   settled   — Twilio was asked and answered. A real charge, whatever the row's status says:
-    #               a message that failed after Twilio accepted it can still cost money.
-    #   was_sent  — the carrier took it. `sent` and `delivered` only: a `failed` row is one Twilio
-    #               rejected and did not charge for, and `pending`/`sending` never left the building.
-    #   estimated — went out, has the SID that proves Twilio accepted it, and nobody has been told
-    #               the price yet. This is the only bucket the per-segment rate is applied to.
+    #   accepted    — Twilio gave us a SID, which it only does for a message it took and charged
+    #                 for. NOT the row's status: `undelivered` maps to `failed` (see
+    #                 Webhooks::TwilioStatusController::TERMINAL_STATUSES), and a text the carrier
+    #                 rejected after Twilio accepted it is billed exactly like one that arrived.
+    #                 A submit-time rejection never gets a SID — SendSmsJob writes the SID in the
+    #                 same UPDATE that sets `sent` — and so is free, which is the real meaning of
+    #                 "a text Twilio rejected costs nothing".
+    #   settled     — asked and answered: price_fetched_at stamped and a price present. The charge.
+    #   unpriceable — asked, and no answer is ever coming: stamped with the price still null, which
+    #                 is Sms::PriceBackfill marking a row that aged out of Twilio's retention. It
+    #                 keeps the estimate forever, so it is counted apart from rows that are merely
+    #                 waiting — otherwise the page shows an estimate that will never resolve and
+    #                 nobody can tell it from one that will.
+    #   estimated   — not asked yet. The estimate now, a real price later.
     #
-    # A row that is neither settled nor estimated costs zero, and that is a statement, not a
-    # fallback: a rejected text is free.
+    # Cost is drawn from `accepted` and nothing else, so the settled figure and the estimate cover
+    # the same population. They did not always: the estimate used to require `sent`/`delivered`,
+    # which meant a carrier-rejected text cost zero until the backfill settled it and then jumped
+    # to a real charge — the same row, priced two different ways depending only on how recently it
+    # had been asked about.
     SMS_SQL = <<~SQL.freeze
       WITH classified AS (
         SELECT
@@ -114,9 +135,9 @@ module SuperAdmin
           COALESCE(NULLIF(UPPER(sms_messages.price_unit), ''), 'USD') AS price_unit,
           COALESCE(sms_messages.num_segments, :assumed_segments) AS segments,
           sms_messages.price AS price,
-          sms_messages.status IN ('sent', 'delivered') AS was_sent,
-          sms_messages.price_fetched_at IS NOT NULL AND sms_messages.price IS NOT NULL AS settled,
-          sms_messages.twilio_sid IS NOT NULL AS accepted
+          sms_messages.twilio_sid IS NOT NULL AS accepted,
+          sms_messages.price_fetched_at IS NOT NULL AS asked,
+          sms_messages.price_fetched_at IS NOT NULL AND sms_messages.price IS NOT NULL AS settled
         FROM sms_messages
         INNER JOIN members ON members.id = sms_messages.member_id
         WHERE sms_messages.created_at >= :starts_at
@@ -126,12 +147,13 @@ module SuperAdmin
         group_id,
         month_start,
         price_unit,
-        COUNT(*) FILTER (WHERE was_sent) AS texts_sent,
-        COALESCE(SUM(segments) FILTER (WHERE was_sent), 0) AS segments,
+        COUNT(*) FILTER (WHERE accepted) AS texts_sent,
+        COALESCE(SUM(segments) FILTER (WHERE accepted), 0) AS segments,
         COUNT(*) FILTER (WHERE settled) AS texts_settled,
         COALESCE(SUM(price) FILTER (WHERE settled), 0) AS sms_cost_settled,
-        COUNT(*) FILTER (WHERE was_sent AND accepted AND NOT settled) AS texts_estimated,
-        COALESCE(SUM(segments) FILTER (WHERE was_sent AND accepted AND NOT settled), 0) AS estimated_segments
+        COUNT(*) FILTER (WHERE accepted AND NOT settled AND NOT asked) AS texts_estimated,
+        COUNT(*) FILTER (WHERE accepted AND NOT settled AND asked) AS texts_unpriceable,
+        COALESCE(SUM(segments) FILTER (WHERE accepted AND NOT settled), 0) AS estimated_segments
       FROM classified
       GROUP BY group_id, month_start, price_unit
     SQL
@@ -240,7 +262,7 @@ module SuperAdmin
         # wants that.
         months_in_range: window.months,
         fixed_monthly_cost_usd: money(fixed_monthly_cost),
-        sms_estimated_segment_cost_usd: unit_price(segment_cost),
+        sms_estimated_segment_cost_usd: money(segment_cost),
         houses_active: houses.length,
         houses_total: Group.count,
         totals: figures(total),
@@ -295,6 +317,7 @@ module SuperAdmin
         # Only dollars reach the headline figure. Anything else is carried beside it, unconverted.
         sms_cost_settled: unit == CURRENCY ? settled : BigDecimal(0),
         texts_estimated: integer(row["texts_estimated"]),
+        texts_unpriceable: integer(row["texts_unpriceable"]),
         estimated_segments: integer(row["estimated_segments"]),
         other_currencies: unit == CURRENCY || settled.zero? ? {} : { unit => settled }
       )
@@ -378,7 +401,7 @@ module SuperAdmin
         slug: house[:slug]
       }.merge(figures(house[:bucket])).merge(
         active_members: house[:active_members],
-        total_per_active_member: unit_price(per_member),
+        total_per_active_member: money(per_member),
         # Its own field, never folded into `total`: it is an allocation, not a charge this house
         # incurred, and the two must not be mistaken for each other.
         allocated_fixed_cost: money(allocated)
@@ -387,6 +410,10 @@ module SuperAdmin
 
     # --- figures ----------------------------------------------------------------------------------
 
+    # `texts_sent` and `segments` count what Twilio accepted and billed for — the population the
+    # cost figures below are drawn from — not what a handset received. On a page about money those
+    # have to be the same set, or the cost per text is divided by a denominator that excludes texts
+    # it was charged for. `texts_settled` + `texts_estimated` + `texts_unpriceable` = `texts_sent`.
     def figures(bucket)
       estimated = estimated_cost(bucket)
 
@@ -396,6 +423,7 @@ module SuperAdmin
         texts_settled: bucket[:texts_settled],
         sms_cost_settled: money(bucket[:sms_cost_settled]),
         texts_estimated: bucket[:texts_estimated],
+        texts_unpriceable: bucket[:texts_unpriceable],
         sms_cost_estimated: money(estimated),
         sms_cost: money(bucket[:sms_cost_settled] + estimated),
         sms_cost_other_currencies: other_currencies(bucket),
@@ -454,8 +482,8 @@ module SuperAdmin
         cost_per_active_member_per_month: percentiles(
           housed.map { |house| house[:total] / house[:active_members] / window.months }
         ),
-        cost_per_text_sent: unit_price(texts.positive? ? sms / texts : nil),
-        cost_per_title_classified: unit_price(titles.positive? ? total[:claude_cost] / titles : nil),
+        cost_per_text_sent: money(texts.positive? ? sms / texts : nil),
+        cost_per_title_classified: money(titles.positive? ? total[:claude_cost] / titles : nil),
         houses_measured: houses.length,
         houses_with_active_members: housed.length
       }
@@ -470,7 +498,7 @@ module SuperAdmin
     # ceiling is 10 — the p90 of ten houses would silently become the maximum.
     def percentiles(values)
       sorted = values.sort
-      PERCENTILES.transform_values { |percent| unit_price(percentile(sorted, percent)) }
+      PERCENTILES.transform_values { |percent| money(percentile(sorted, percent)) }
     end
 
     def percentile(sorted, percent)
@@ -482,17 +510,15 @@ module SuperAdmin
 
     # --- coercion and serialisation ---------------------------------------------------------------
 
-    # Aggregate money, as a JSON number. BigDecimal serialises as a *string* through Rails' encoder,
-    # and a client that has to parse its numbers back out of strings ends up doing Float arithmetic
+    # Money, as a JSON number. BigDecimal serialises as a *string* through Rails' encoder, and a
+    # client that has to parse its numbers back out of strings ends up doing Float arithmetic
     # anyway — so the conversion happens once, here, after every sum is final.
+    #
+    # One method for totals and per-unit prices both. There were two, at different precisions, and
+    # that was a way for a per-house total and the cost per text it implies to round to two
+    # different truths.
     def money(value)
       value.nil? ? nil : value.round(MONEY_PRECISION).to_f
-    end
-
-    # A per-unit price. Six decimals, matching ai_calls.cost_usd, because one segment costs less
-    # than a hundredth of a cent and four decimals would report a real cost as zero.
-    def unit_price(value)
-      value.nil? ? nil : value.round(UNIT_PRICE_PRECISION).to_f
     end
 
     def integer(value)
