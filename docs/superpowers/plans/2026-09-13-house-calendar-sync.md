@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let an admin connect the house's shared Google Calendar by its private iCal link, keep a fresh copy of the next 90 days of events on the server, infer who is away from event titles, and show events and away dates on the member dashboard feed.
+**Goal:** Let an admin connect the house's shared Google Calendar by its private iCal link, keep a fresh copy of the next 90 days of events on the server, ask Claude which titles mean a housemate is away, and show events and away dates on the member dashboard feed.
 
-**Architecture:** Rails owns the data: a `calendar_connections` row per group (the link plus sync bookkeeping) and `calendar_events` rows (one per expanded occurrence) refreshed by an hourly Solid Queue job through `CalendarFetch` → `CalendarParser` → `AwayClassifier` → `CalendarSync`. Admin endpoints under `/api/group/calendar` connect, sync, preview and disconnect; the member schedule endpoint from BLO-1666 gains an `events` array; the Next.js feed interleaves events and the hand-off ranking gains an "Away" group.
+**Architecture:** Rails owns the data: a `calendar_connections` row per group (the link plus sync bookkeeping) and `calendar_events` rows (one per expanded occurrence) refreshed by an hourly Solid Queue job through `CalendarFetch` → `CalendarParser` → `CalendarClassifier` → `CalendarSync`. Admin endpoints under `/api/group/calendar` connect, sync, preview and disconnect; the member schedule endpoint from BLO-1666 gains an `events` array; the Next.js feed interleaves events and the hand-off ranking gains an "Away" group.
 
-**Tech Stack:** Rails 8.1 (RSpec, FactoryBot, WebMock, Solid Queue, Net::HTTP), gems `icalendar` ~> 2.12 and `icalendar-recurrence` ~> 1.2, Next.js app with shadcn/ui, react-hook-form, zod, Vitest.
+**Tech Stack:** Rails 8.1 (RSpec, FactoryBot, WebMock, Solid Queue, Net::HTTP), gems `icalendar` ~> 2.12, `icalendar-recurrence` ~> 1.2 and `anthropic` (the official Claude SDK), Next.js app with shadcn/ui, react-hook-form, zod, Vitest.
 
 **Spec:** `docs/superpowers/specs/2026-09-13-house-calendar-sync-design.md` (this plan argues from it; read both). Also read `docs/superpowers/specs/2026-09-13-member-dashboard-feed-design.md` (BLO-1666), whose section 9 reserves the hooks Tasks 11–13 fill.
 
@@ -19,6 +19,10 @@
 - Only `SUMMARY`, `UID`, `DTSTART`, `DTEND`, `RRULE`, `EXDATE`, `RECURRENCE-ID`, `STATUS`, `X-WR-CALNAME`, `X-WR-TIMEZONE` are read from a feed. Nothing else is stored.
 - The stored link is a credential: never returned by the API, never logged, never pre-filled into a form. `ical_url` joins `config.filter_parameters`.
 - `kind` is exactly `"event"` or `"away"`. Titles are stored as received, truncated to 200 characters.
+- Away inference is Claude Haiku 4.5 through the `anthropic` gem, not a formula: one structured-output request per sync, chunked at 50 events. `ANTHROPIC_API_KEY` is required in production and the API refuses to boot without it.
+- A verdict is cached on `calendar_events.fingerprint`, so a title the house already has is never sent twice and the same title always gets the same verdict.
+- A failed model call never fails a sync. Those occurrences are stored pending (`kind` `event`, no members, `classified_at` null) and the next sync asks again.
+- Event titles never appear in a log line, an exception message, or anything the admin sees as an error. A classifier failure carries the exception class and the API's error type, nothing else.
 - Copy uses no em dashes. UI copy is in the spec; copy it verbatim.
 - Every commit message starts with `BLO-1667:`. Two PRs: Tasks 1–10 (backend plus admin settings), Tasks 11–13 (member integration).
 
@@ -30,13 +34,18 @@ Rails (`apps/api`)
 - `app/models/calendar_event.rb`, `app/models/calendar_event_member.rb`: occurrences and away matches.
 - `app/services/calendar_fetch.rb`: HTTP only.
 - `app/services/calendar_parser.rb`: ICS text → `Occurrence` structs in the group's zone.
-- `app/services/away_classifier.rb`: title → `kind` and matched members.
+- `app/services/calendar_classifier.rb`: fingerprints a title, and asks Claude Haiku 4.5 which batch of titles means away.
+- `config/initializers/calendar_classifier.rb`: `ANTHROPIC_API_KEY` and the model id, resolved at boot.
+- `bin/classifier-eval`: the spec's worked examples against the live model. Run by hand, never in `bin/ci`.
 - `app/services/calendar_sync.rb`: fetch, parse, classify, upsert, prune, bookkeeping.
 - `app/services/calendar_connect.rb`: validate a pasted link, create the connection, first sync.
 - `app/jobs/sync_house_calendars_job.rb` and `config/recurring.yml`.
-- `app/controllers/api/group_calendar_controller.rb`, routes, `app/serializers/calendar_connection_serializer.rb`, `app/serializers/calendar_event_serializer.rb`, `GroupSerializer` gains `calendar`.
+- `app/controllers/api/group_calendar_controller.rb`, routes, `app/serializers/calendar_connection_serializer.rb`, `app/serializers/calendar_event_serializer.rb`, `app/serializers/calendar_event_preview_serializer.rb`, `GroupSerializer` gains `calendar`.
 - `app/controllers/api/member_schedule_controller.rb` (from BLO-1666) gains `events`.
 - `spec/fixtures/ics/*.ics`, specs beside each unit.
+
+Repo root
+- `.env.example`: gains `ANTHROPIC_API_KEY`.
 
 Web (`apps/web`)
 - `src/lib/api/types.ts`: `CalendarSummary`, `CalendarEventItem`, `CalendarConnectResponse`, `CalendarEventsResponse`, `Group.calendar`, `MemberScheduleResponse.events`.
@@ -46,7 +55,7 @@ Web (`apps/web`)
 - `src/lib/dashboard.ts`: the `calendar-sync` warning.
 - `src/app/(member)/s/[token]/schedule-view.ts` and `cover-ranking.ts` (from BLO-1666): events and away.
 
-Parallel groups: A = Task 1. B = Tasks 2, 3, 4 (independent of A and of each other). C = Tasks 5, 6, 7 (need A and B). D = Tasks 8, 9, 10 (need 7 for the API shape; the web types can be written from the spec first). E = Tasks 11, 12, 13 (need A, 5, and BLO-1666 merged).
+Parallel groups: A = Task 1. B = Tasks 2, 3, 4 (independent of A and of each other; Task 4 wants only `id` and `name` off the roster, so it needs nothing from Task 1). C = Tasks 5, 6, 7 (need A and B). D = Tasks 8, 9, 10 (need 7 for the API shape; the web types can be written from the spec first). E = Tasks 11, 12, 13 (need A, 5, and BLO-1666 merged).
 
 ---
 
@@ -60,7 +69,7 @@ Parallel groups: A = Task 1. B = Tasks 2, 3, 4 (independent of A and of each oth
 - Test: `apps/api/spec/models/calendar_connection_spec.rb`
 
 **Interfaces:**
-- Produces: `CalendarConnection` (`group`, `calendar_events`, `ical_url`, `calendar_name`, `etag`, `last_modified`, `last_fetched_at`, `last_synced_at`, `last_error`, `consecutive_failures`, `disabled_at`, `events_count`; scope `enabled`; `#masked_url`; `#failing?`; `#record_failure!(message, disable: false)`; `#record_success!(**attrs)`), `CalendarEvent` (`calendar_connection`, `members` through `calendar_event_members`; `KINDS = %w[event away]`; scope `overlapping(from, to)`), `CalendarEventMember`.
+- Produces: `CalendarConnection` (`group`, `calendar_events`, `ical_url`, `calendar_name`, `etag`, `last_modified`, `last_fetched_at`, `last_synced_at`, `last_error`, `consecutive_failures`, `disabled_at`, `events_count`; scope `enabled`; `#masked_url`; `#failing?`; `#unclassified_count`; `#record_failure!(message, disable: false)`; `#record_success!(**attrs)`), `CalendarEvent` (`calendar_connection`, `members` through `calendar_event_members`; `KINDS = %w[event away]`; `fingerprint`, `reason`, `classified_at`; scopes `overlapping(from, to)`, `pending`, `classified`), `CalendarEventMember`.
 
 - [ ] **Step 1: Write the failing model spec**
 
@@ -102,6 +111,14 @@ RSpec.describe CalendarConnection do
     connection.record_success!(etag: "abc", calendar_name: "Park Vista", events_count: 12)
     expect(connection.reload).to have_attributes(consecutive_failures: 0, last_error: nil, disabled_at: nil, etag: "abc", calendar_name: "Park Vista", events_count: 12)
     expect(connection.last_synced_at).to be_present
+  end
+
+  it "counts the events still waiting for a verdict" do
+    connection = create(:calendar_connection, group: group)
+    create(:calendar_event, calendar_connection: connection)
+    create(:calendar_event, calendar_connection: connection, classified_at: nil)
+
+    expect(connection.unclassified_count).to eq(1)
   end
 
   it "deletes its events with the group" do
@@ -150,10 +167,17 @@ class CreateCalendarSync < ActiveRecord::Migration[8.1]
       t.datetime :ends_at
       t.boolean :all_day, null: false, default: false
       t.string :kind, null: false, default: "event"
+      # The verdict cache key (spec 7.3): the normalised title, the shape of the entry, and the
+      # roster. Not null, because every occurrence is fingerprinted before anything is stored, even
+      # when the model call then fails and `classified_at` stays null.
+      t.string :fingerprint, null: false
+      t.string :reason
+      t.datetime :classified_at
       t.datetime :synced_at, null: false
       t.timestamps
       t.index %i[calendar_connection_id instance_key], unique: true
       t.index %i[calendar_connection_id starts_on]
+      t.index %i[calendar_connection_id fingerprint]
       t.check_constraint "kind IN ('event', 'away')", name: "calendar_events_kind_known"
     end
 
@@ -195,6 +219,10 @@ class CalendarConnection < ApplicationRecord
     disabled_at.present? || consecutive_failures >= FAILING_AFTER
   end
 
+  # How many occurrences are still waiting on a verdict (spec 7.4). Counted rather than stored: it
+  # only changes when a sync runs, and only the settings card ever asks.
+  def unclassified_count = calendar_events.pending.count
+
   def record_failure!(message, disable: false)
     update!(consecutive_failures: consecutive_failures + 1, last_error: message,
             last_fetched_at: Time.current, disabled_at: disable ? Time.current : disabled_at)
@@ -219,11 +247,15 @@ class CalendarEvent < ApplicationRecord
   has_many :calendar_event_members, dependent: :delete_all
   has_many :members, through: :calendar_event_members
 
-  validates :uid, :instance_key, :summary, :starts_on, :ends_on, :synced_at, presence: true
+  validates :uid, :instance_key, :summary, :starts_on, :ends_on, :fingerprint, :synced_at, presence: true
   validates :kind, inclusion: { in: KINDS }
 
   scope :overlapping, ->(from, to) { where("ends_on >= ? AND starts_on <= ?", from, to) }
   scope :away, -> { where(kind: "away") }
+  # Pending means the model has not answered for this fingerprint yet: stored as a plain event with
+  # nobody on it, and retried by the next sync.
+  scope :pending, -> { where(classified_at: nil) }
+  scope :classified, -> { where.not(classified_at: nil) }
 
   def away? = kind == "away"
 end
@@ -268,6 +300,10 @@ FactoryBot.define do
     ends_on { Date.new(2026, 9, 20) }
     all_day { true }
     kind { "event" }
+    # A factory-built event is one the model has already answered for. A spec that wants a pending
+    # one says `classified_at: nil`.
+    fingerprint { SecureRandom.hex(32) }
+    classified_at { Time.current }
     synced_at { Time.current }
   end
 end
@@ -276,7 +312,7 @@ end
 - [ ] **Step 5: Migrate, run the spec, check the schema diff**
 
 Run: `cd apps/api && bin/rails db:migrate && bin/rails db:test:prepare && bundle exec rspec spec/models/calendar_connection_spec.rb`
-Expected: PASS (4 examples). Then `git diff db/schema.rb` shows only the three new tables (the dev database is shared across worktrees; if unrelated tables appear, another branch's migration is in your database, see the memory note on schema drift, and revert those hunks).
+Expected: PASS (5 examples). Then `git diff db/schema.rb` shows only the three new tables (the dev database is shared across worktrees; if unrelated tables appear, another branch's migration is in your database, see the memory note on schema drift, and revert those hunks).
 
 - [ ] **Step 6: Commit**
 
@@ -950,161 +986,552 @@ git commit -m "BLO-1667: CalendarParser expands iCal feeds into civil-date occur
 
 ---
 
-### Task 4: AwayClassifier
+### Task 4: CalendarClassifier (Claude Haiku 4.5)
 
 **Files:**
-- Create: `apps/api/app/services/away_classifier.rb`
-- Test: `apps/api/spec/services/away_classifier_spec.rb`
+- Create: `apps/api/app/services/calendar_classifier.rb`
+- Create: `apps/api/config/initializers/calendar_classifier.rb`
+- Create: `apps/api/bin/classifier-eval`
+- Create: `apps/api/spec/support/anthropic_stubs.rb`
+- Modify: `apps/api/Gemfile` (add `gem "anthropic"`), `.env.example` (repo root)
+- Test: `apps/api/spec/services/calendar_classifier_spec.rb`
 
 **Interfaces:**
-- Consumes: `Member` records (`id`, `name`).
-- Produces: `AwayClassifier.new(members)` with `#classify(summary:, all_day:, starts_on:, ends_on:)` → `Hash` `{ kind: "event" | "away", member_ids: [Integer] }`.
+- Consumes: anything answering `id` and `name` (in the app, `group.members.active`); `Rails.configuration.x.calendar_classifier`.
+- Produces: `CalendarClassifier.new(members:, model: Rails.configuration.x.calendar_classifier.model, client: nil)` with `#fingerprint(summary:, all_day:, starts_on:, ends_on:)` → SHA-256 hex, and `#classify(items)` → `{ ref => CalendarClassifier::Verdict }` holding only the verdicts that survived validation. `Verdict = Struct.new(:kind, :member_ids, :reason, keyword_init: true)`. `CalendarClassifier::Failed` is raised when no key is configured, when the API call fails, and when the model stops on `max_tokens` or a refusal; its message carries the cause's class and error type and never a title.
+- Test helpers: `stub_claude_verdicts(verdicts)` and `stub_claude_for_titles(kinds)` from `spec/support/anthropic_stubs.rb`.
 
-- [ ] **Step 1: Write the failing spec**
+- [ ] **Step 1: Add the gem and the boot-time config**
+
+In `apps/api/Gemfile`, after the `twilio-ruby` block:
 
 ```ruby
-# apps/api/spec/services/away_classifier_spec.rb
-require "rails_helper"
+# Anthropic's official Ruby SDK. The one place this app talks to a model: the house calendar's away
+# inference (BLO-1667). Titles are short and the reply is schema-constrained, so this is Haiku 4.5
+# and one request per sync. No spec reaches the live API; WebMock stops the network.
+gem "anthropic"
+```
 
-RSpec.describe AwayClassifier do
-  let(:group) { create(:group) }
-  let!(:bass) { create(:member, group: group, name: "Bass") }
-  let!(:eliza) { create(:member, group: group, name: "Eliza") }
-  let!(:raph) { create(:member, group: group, name: "Raph") }
-  let!(:ciara) { create(:member, group: group, name: "Ciara") }
-  let!(:alfie) { create(:member, group: group, name: "Alfie") }
-  let!(:mic) { create(:member, group: group, name: "Mic") }
+Run `cd apps/api && bundle install`.
 
-  subject(:classifier) { described_class.new(group.members.active) }
+```ruby
+# apps/api/config/initializers/calendar_classifier.rb
+# Everything the away classifier needs, resolved once, at boot, next door to the SMS rules and for
+# the same reason: production refuses to boot misconfigured rather than discover it from a house
+# whose calendar never sorted itself.
+#
+# Rails loads initializers in alphabetical order, so sms.rb has not run yet and SmsBoot is not
+# defined. require_relative pulls the module in now. Rails loading sms.rb again a moment later is
+# harmless: it only reassigns the same config values.
+require_relative "sms"
 
-  def classify(summary, all_day: true, starts_on: Date.new(2026, 9, 16), ends_on: Date.new(2026, 9, 19))
-    classifier.classify(summary: summary, all_day: all_day, starts_on: starts_on, ends_on: ends_on)
-  end
+Rails.application.configure do
+  # No development fallback on purpose. Spec section 7.4 says a missing key outside production must
+  # behave exactly like a failed call, so CalendarClassifier raises Failed, CalendarSync catches it,
+  # and the events sit pending until somebody sets the key.
+  config.x.calendar_classifier.api_key =
+    SmsBoot.require_in_production("ANTHROPIC_API_KEY", ENV["ANTHROPIC_API_KEY"], env: Rails.env)
 
-  it "recognises the house's own away titles" do
-    expect(classify("Alfie away in Carlisle (Filming)")).to eq(kind: "away", member_ids: [alfie.id])
-    expect(classify("Ciara – France")).to eq(kind: "away", member_ids: [ciara.id])
-    expect(classify("Bass and Eliza France")).to eq(kind: "away", member_ids: [bass.id, eliza.id])
-    expect(classify("Bass & Eliza France")).to eq(kind: "away", member_ids: [bass.id, eliza.id])
-    expect(classify("Mic Ireland with fam")).to eq(kind: "away", member_ids: [mic.id])
-    expect(classify("Alfie in Greece (Song Leader Retreat)")).to eq(kind: "away", member_ids: [alfie.id])
-    expect(classify("Away: Raph and Ciara")).to eq(kind: "away", member_ids: [raph.id, ciara.id])
-  end
-
-  it "leaves chores, celebrations and non-housemates as events" do
-    expect(classify("Raph Bins Out")).to eq(kind: "event", member_ids: [])
-    expect(classify("Alfie Bday")).to eq(kind: "event", member_ids: [])
-    expect(classify("Naomi's birthday")).to eq(kind: "event", member_ids: [])
-    expect(classify("Alfie's birthday")).to eq(kind: "event", member_ids: [])
-    expect(classify("Ester in London [ES4C]")).to eq(kind: "event", member_ids: [])
-    expect(classify("House dinner @ home", all_day: false)).to eq(kind: "event", member_ids: [])
-  end
-
-  it "treats a timed slot on one day as an event, and an overnight timed one as away" do
-    expect(classify("Raph – Tummo retreat w Nico", all_day: false, starts_on: Date.new(2026, 9, 26), ends_on: Date.new(2026, 9, 26))).to eq(kind: "event", member_ids: [])
-    expect(classify("Raph – Tummo retreat w Nico", all_day: false, starts_on: Date.new(2026, 9, 26), ends_on: Date.new(2026, 9, 27))).to eq(kind: "away", member_ids: [raph.id])
-  end
-
-  it "matches whole words only, and full names when first names collide" do
-    create(:member, group: group, name: "Mic Taylor")
-    collide = described_class.new(group.members.active)
-
-    expect(classify("Raphael – Tummo retreat")).to eq(kind: "event", member_ids: [])
-    expect(collide.classify(summary: "Mic Ireland", all_day: true, starts_on: Date.new(2026, 9, 16), ends_on: Date.new(2026, 9, 19))).to eq(kind: "event", member_ids: [])
-    expect(collide.classify(summary: "Mic Taylor Ireland", all_day: true, starts_on: Date.new(2026, 9, 16), ends_on: Date.new(2026, 9, 19))[:member_ids]).to eq([group.members.find_by(name: "Mic Taylor").id])
-  end
+  # Haiku 4.5 is a fifth of Sonnet's price and plenty for one-line titles. Switching is this one
+  # string plus a rerun of bin/classifier-eval (spec open question 2).
+  config.x.calendar_classifier.model = "claude-haiku-4-5"
 end
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+In `.env.example` at the repo root, add a section after the Twilio block:
 
-Run: `cd apps/api && bundle exec rspec spec/services/away_classifier_spec.rb`
-Expected: FAIL, `uninitialized constant AwayClassifier`.
+```bash
+# --- Anthropic (house calendar away inference) ---------------------------------------
 
-- [ ] **Step 3: Implement**
+# The hourly calendar sync asks Claude Haiku 4.5 which event titles mean a housemate is
+# away (BLO-1667). Event titles, their dates, and housemates' names as entered in the app
+# are the only things that leave the server. Production refuses to boot without this key,
+# the same way it refuses to boot without Twilio credentials.
+#
+# Development and test boot fine without one: the classifier raises, the sync stores the
+# events unsorted, and the next run tries again. Use a key from a dedicated Anthropic
+# workspace so the spend shows up on its own line.
+ANTHROPIC_API_KEY=
+```
+
+- [ ] **Step 2: Write the stub helper and the failing spec**
 
 ```ruby
-# apps/api/app/services/away_classifier.rb
-# Decides whether a calendar title means a housemate is away, the way the house already writes them:
-# "Alfie away in Carlisle", "Ciara – France", "Bass and Eliza France". The rule (spec section 7):
-# the title starts with one or more housemate names, the entry is all-day or overnight, and the
-# rest of the title is not a chore or a celebration. Recomputed on every sync, so a renamed event
-# or a renamed member corrects itself within the hour.
-class AwayClassifier
-  EXCLUSIONS = %w[bin bins birthday bday b-day dinner party meeting clean cleaning rota shift pay rent].freeze
-  JOINERS = /\s*(?:,|and|&|\+)\s*/i
+# apps/api/spec/support/anthropic_stubs.rb
+# Every spec that reaches CalendarClassifier goes through here, so there is exactly one place that
+# knows the shape of a Messages API reply. WebMock blocks the network besides: the only way a house's
+# titles could reach Anthropic from a spec is by writing a stub that bypasses this file.
+module AnthropicStubs
+  MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 
-  Name = Struct.new(:member_id, :pattern, :length, keyword_init: true)
-
-  def initialize(members)
-    @names = build_names(members)
+  # Test boots with no ANTHROPIC_API_KEY, and the initializer has no development fallback (spec 7.4
+  # wants a missing key to behave like a failed call). A spec that wants the call to happen says so.
+  def stub_claude_key(key = "sk-ant-api03-test")
+    allow(Rails.configuration.x.calendar_classifier).to receive(:api_key).and_return(key)
   end
 
-  def classify(summary:, all_day:, starts_on:, ends_on:)
-    title = normalise(summary)
-    explicit = title.sub!(/\Aaway[:\s-]+/, "") ? true : false
-    member_ids, rest = consume_names(title)
+  # `verdicts` is what the model would have answered: [{ ref:, kind:, member_ids:, reason: }, ...].
+  def stub_claude_verdicts(verdicts, stop_reason: "end_turn")
+    stub_claude_key
+    stub_request(:post, MESSAGES_URL).to_return(claude_reply(verdicts, stop_reason: stop_reason))
+  end
 
-    return { kind: "event", member_ids: [] } if member_ids.empty?
-    return { kind: "event", member_ids: [] } if excluded?(rest)
-    return { kind: "event", member_ids: [] } unless explicit || all_day || ends_on > starts_on
-
-    { kind: "away", member_ids: member_ids }
+  # CalendarSync specs cannot know the fingerprints, so this answers whatever was asked: `kinds` maps
+  # a title to [kind, member_ids, reason], and any title not listed comes back as a plain event.
+  def stub_claude_for_titles(kinds)
+    stub_claude_key
+    stub_request(:post, MESSAGES_URL).to_return do |request|
+      items = JSON.parse(JSON.parse(request.body).dig("messages", 0, "content"))
+      claude_reply(items.map { |item|
+        kind, member_ids, reason = kinds.fetch(item["title"], ["event", [], "not a trip"])
+        { ref: item["ref"], kind: kind, member_ids: member_ids, reason: reason }
+      })
+    end
   end
 
   private
 
-  def normalise(summary)
-    summary.to_s.downcase
-      .gsub(/\[[^\]]*\]|\([^)]*\)/, " ")
-      .gsub(/[^\p{L}\p{N}\s\-–&+,']/, " ")
-      .gsub(/\s+/, " ")
-      .strip
+  def claude_reply(verdicts, stop_reason: "end_turn")
+    {
+      status: 200,
+      headers: { "Content-Type" => "application/json" },
+      body: {
+        id: "msg_01Stub", type: "message", role: "assistant", model: "claude-haiku-4-5",
+        content: [{ type: "text", text: JSON.generate(verdicts: verdicts) }],
+        stop_reason: stop_reason, stop_sequence: nil,
+        usage: { input_tokens: 1, output_tokens: 1 }
+      }.to_json
+    }
+  end
+end
+
+RSpec.configure { |config| config.include AnthropicStubs }
+```
+
+Check how `spec/rails_helper.rb` pulls in `spec/support` (`spec/support/workos_auth.rb` is already loaded there); if the directory is globbed, this file needs no registration.
+
+```ruby
+# apps/api/spec/services/calendar_classifier_spec.rb
+require "rails_helper"
+
+RSpec.describe CalendarClassifier do
+  let(:group) { create(:group) }
+  let!(:bass) { create(:member, group: group, name: "Bass") }
+  let!(:alfie) { create(:member, group: group, name: "Alfie") }
+
+  # max_retries 0 so the failure examples do not sleep through the SDK's two backoffs.
+  let(:client) { Anthropic::Client.new(api_key: "sk-ant-api03-test", timeout: 5, max_retries: 0) }
+  subject(:classifier) { described_class.new(members: group.members.active.to_a, client: client) }
+
+  def item(ref, summary, all_day: true, starts_on: Date.new(2026, 9, 16), ends_on: Date.new(2026, 9, 19))
+    { ref: ref, summary: summary, all_day: all_day, starts_on: starts_on, ends_on: ends_on }
   end
 
-  # First names win unless two housemates share one, in which case only the full name counts.
-  def build_names(members)
-    firsts = members.map { |member| [member, member.name.to_s.split.first.to_s.downcase] }
-    counts = firsts.map(&:last).tally
-    firsts.flat_map do |member, first|
-      full = member.name.to_s.downcase.strip
-      candidates = counts[first] > 1 ? [full] : [full, first].uniq
-      candidates.reject(&:blank?).map { |name| Name.new(member_id: member.id, pattern: /\A#{Regexp.escape(name)}(?!'s)\b/, length: name.length) }
-    end.sort_by { |name| -name.length }
+  def carlisle = item("fp1", "Alfie away in Carlisle (Filming)")
+
+  it "sends the model, the schema, the roster and the titles, and nothing else from the feed" do
+    stub_claude_verdicts([{ ref: "fp1", kind: "away", member_ids: [alfie.id], reason: "Alfie, three nights in Carlisle" }])
+
+    classifier.classify([carlisle])
+
+    expect(a_request(:post, AnthropicStubs::MESSAGES_URL).with { |request|
+      body = JSON.parse(request.body)
+      system = body["system"]
+      user = body.dig("messages", 0, "content")
+      body["model"] == "claude-haiku-4-5" &&
+        body.dig("output_config", "format", "type") == "json_schema" &&
+        body.dig("output_config", "format", "schema", "properties", "verdicts").present? &&
+        system.include?("Alfie") && system.include?(alfie.id.to_s) && system.include?("Bass") &&
+        user.include?("Alfie away in Carlisle (Filming)") && user.include?("fp1") &&
+        !request.body.include?("instance_key") && !request.body.include?("google.com")
+    }).to have_been_made
   end
 
-  # Peel "bass and eliza" off the front, longest name first, returning the ids and the remainder.
-  def consume_names(title)
-    ids = []
-    rest = title
-    loop do
-      name = @names.find { |candidate| rest.match?(candidate.pattern) }
-      break unless name
+  it "turns a valid reply into verdicts" do
+    stub_claude_verdicts([{ ref: "fp1", kind: "away", member_ids: [alfie.id], reason: "Alfie, three nights in Carlisle" }])
 
-      ids << name.member_id unless ids.include?(name.member_id)
-      rest = rest.sub(name.pattern, "").sub(/\A#{JOINERS}/, "").strip
-      break unless rest.match?(/\A\p{L}/)
+    expect(classifier.classify([carlisle])).to eq(
+      "fp1" => described_class::Verdict.new(kind: "away", member_ids: [alfie.id], reason: "Alfie, three nights in Carlisle")
+    )
+  end
+
+  it "drops a ref it was never asked about" do
+    stub_claude_verdicts([{ ref: "invented", kind: "away", member_ids: [alfie.id], reason: "made up" }])
+
+    expect(classifier.classify([carlisle])).to eq({})
+  end
+
+  it "drops member ids that are not on the roster" do
+    stub_claude_verdicts([{ ref: "fp1", kind: "away", member_ids: [alfie.id, 99_999], reason: "Alfie and a stranger" }])
+
+    expect(classifier.classify([carlisle])["fp1"].member_ids).to eq([alfie.id])
+  end
+
+  it "turns an away verdict with nobody on it into an event" do
+    stub_claude_verdicts([{ ref: "fp1", kind: "away", member_ids: [], reason: "somebody is away" }])
+
+    expect(classifier.classify([carlisle])["fp1"]).to have_attributes(kind: "event", member_ids: [])
+  end
+
+  it "ignores a kind it does not know" do
+    stub_claude_verdicts([{ ref: "fp1", kind: "maybe", member_ids: [alfie.id], reason: "hedging" }])
+
+    expect(classifier.classify([carlisle])).to eq({})
+  end
+
+  it "truncates the reason to 120 characters" do
+    stub_claude_verdicts([{ ref: "fp1", kind: "event", member_ids: [], reason: "n" * 400 }])
+
+    expect(classifier.classify([carlisle])["fp1"].reason.length).to eq(120)
+  end
+
+  it "sends 101 events as three requests" do
+    stub_claude_verdicts([])
+
+    classifier.classify(Array.new(101) { |n| item("fp#{n}", "Event #{n}") })
+
+    expect(a_request(:post, AnthropicStubs::MESSAGES_URL)).to have_been_made.times(3)
+  end
+
+  it "raises Failed on a 429, a 500 and a timeout, and never puts the title in the message" do
+    stub_claude_key
+
+    [429, 500].each do |status|
+      stub_request(:post, AnthropicStubs::MESSAGES_URL).to_return(status: status, body: "{}")
+      expect { classifier.classify([carlisle]) }.to raise_error(described_class::Failed) { |e|
+        expect(e.message).not_to include("Carlisle")
+        expect(e.message).not_to include("sk-ant")
+      }
     end
-    [ids, rest]
+
+    stub_request(:post, AnthropicStubs::MESSAGES_URL).to_timeout
+    expect { classifier.classify([carlisle]) }.to raise_error(described_class::Failed) { |e|
+      expect(e.message).not_to include("Carlisle")
+    }
   end
 
-  def excluded?(rest)
-    words = rest.scan(/[\p{L}\-]+/)
-    words.intersect?(EXCLUSIONS)
+  it "raises Failed when the model runs out of tokens or refuses" do
+    stub_claude_verdicts([], stop_reason: "max_tokens")
+    expect { classifier.classify([carlisle]) }.to raise_error(described_class::Failed, /max_tokens/)
+
+    stub_claude_verdicts([], stop_reason: "refusal")
+    expect { classifier.classify([carlisle]) }.to raise_error(described_class::Failed, /refusal/)
+  end
+
+  it "raises Failed when no key is configured, without reaching the network" do
+    allow(Rails.configuration.x.calendar_classifier).to receive(:api_key).and_return(nil)
+    keyless = described_class.new(members: group.members.active.to_a)
+
+    expect { keyless.classify([carlisle]) }.to raise_error(described_class::Failed, /ANTHROPIC_API_KEY/)
+    expect(a_request(:post, AnthropicStubs::MESSAGES_URL)).not_to have_been_made
+  end
+
+  it "fingerprints the title, the shape and the roster, and nothing else" do
+    args = { summary: "Alfie in Greece", all_day: true, starts_on: Date.new(2026, 9, 25), ends_on: Date.new(2026, 10, 1) }
+    first = classifier.fingerprint(**args)
+
+    expect(classifier.fingerprint(**args.merge(summary: "  ALFIE   in   Greece "))).to eq(first)
+    expect(classifier.fingerprint(**args.merge(starts_on: Date.new(2026, 11, 2), ends_on: Date.new(2026, 11, 9)))).to eq(first)
+    expect(classifier.fingerprint(**args.merge(summary: "Alfie in Crete"))).not_to eq(first)
+    expect(classifier.fingerprint(**args.merge(all_day: false))).not_to eq(first)
+    expect(classifier.fingerprint(**args.merge(ends_on: args[:starts_on]))).not_to eq(first)
+
+    alfie.update!(name: "Alfred")
+    expect(described_class.new(members: group.members.active.to_a, client: client).fingerprint(**args)).not_to eq(first)
   end
 end
 ```
 
-- [ ] **Step 4: Run the spec**
+- [ ] **Step 3: Run it to verify it fails**
 
-Run: `cd apps/api && bundle exec rspec spec/services/away_classifier_spec.rb`
-Expected: PASS (4 examples). If "Bass and Eliza France" yields only Bass, the joiner strip is not running before the second name match; check `consume_names` strips `JOINERS` after each hit.
+Run: `cd apps/api && bundle exec rspec spec/services/calendar_classifier_spec.rb`
+Expected: FAIL, `uninitialized constant CalendarClassifier`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Implement**
+
+```ruby
+# apps/api/app/services/calendar_classifier.rb
+# Asks Claude which calendar titles mean a housemate is away. The house writes them the way people
+# write things ("Alfie away in Carlisle", "Ciara – France", "Raph off to Lisbon"), and no formula
+# survives the next title nobody anticipated, so a small model reads them instead (spec section 7).
+#
+# Two rules hold this together. The reply is data, never instruction: every verdict is checked
+# against the refs we sent and the roster we sent before anything is stored, and nothing from it is
+# interpolated anywhere except a `reason` that is truncated and rendered as text. And a title is the
+# house's own business: it never reaches a log line or an exception message, so a Failed carries the
+# cause's class and error type and nothing else.
+class CalendarClassifier
+  Verdict = Struct.new(:kind, :member_ids, :reason, keyword_init: true)
+
+  class Failed < StandardError; end
+
+  BATCH_SIZE = 50
+  MAX_TOKENS = 4096
+  REASON_LIMIT = 120
+  TIMEOUT_SECONDS = 20
+  MAX_RETRIES = 2
+  KINDS = %w[event away].freeze
+
+  # Structured output, so the reply is always this shape and there is no free text to parse. Every
+  # object needs additionalProperties false and a required list; length and range constraints are
+  # not supported, which is why `reason` is capped in Ruby below rather than in the schema.
+  SCHEMA = {
+    type: "object",
+    properties: {
+      verdicts: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            ref: { type: "string" },
+            kind: { type: "string", enum: KINDS },
+            member_ids: { type: "array", items: { type: "integer" } },
+            reason: { type: "string" }
+          },
+          required: %w[ref kind member_ids reason],
+          additionalProperties: false
+        }
+      }
+    },
+    required: %w[verdicts],
+    additionalProperties: false
+  }.freeze
+
+  # Plain words, not a rule list: the model is here precisely because the rule list kept missing
+  # titles. Kept byte-identical across calls so a fingerprint means the same thing tomorrow.
+  SYSTEM_PROMPT = <<~PROMPT
+    You help a shared-house rota app read the house's own Google Calendar. Each event you are given
+    is a real entry from one house's calendar. Say, for each one, whether it means a housemate is
+    away.
+
+    An event is "away" when a housemate will not be sleeping at the house for at least one night.
+    Two things have to be true. The title names one or more of the housemates on the roster below,
+    by first name or by full name. And the event is all-day, or it spans a night. A possessive like
+    "Alfie's" is about that person rather than something they are doing, so on its own it is not a
+    trip.
+
+    Everything else is "event": chores and bins, birthdays and parties, dinners and meetings, a
+    timed slot on a single day even when it names a housemate, and anything about people who are not
+    on the roster.
+
+    When you are unsure, answer "event". A trip you miss costs the house far less than a housemate
+    wrongly shown as away.
+
+    Only ever return member ids that appear in the roster below. An away verdict must name at least
+    one of them.
+
+    Give a reason of one short clause, the kind of thing an admin can read next to the title:
+    "Alfie, three nights in Carlisle", or "a birthday, not a trip".
+
+    The housemates who live here:
+  PROMPT
+
+  def initialize(members:, model: Rails.configuration.x.calendar_classifier.model, client: nil)
+    @roster = members.map { |member| [member.id, member.name.to_s] }.sort_by(&:first)
+    @model = model
+    @client = client
+  end
+
+  # A verdict depends on the title, whether the entry is all-day, whether it spans a night, and who
+  # is on the roster. Nothing else. So this is the cache key for a verdict (spec 7.3): the same title
+  # next month reuses the answer, and renaming a member or an event invalidates it.
+  def fingerprint(summary:, all_day:, starts_on:, ends_on:)
+    Digest::SHA256.hexdigest([
+      normalise(summary),
+      all_day ? "all_day" : "timed",
+      ends_on > starts_on ? "overnight" : "same_day",
+      roster_key
+    ].join("\n"))
+  end
+
+  # items: [{ ref:, summary:, all_day:, starts_on:, ends_on: }, ...] where ref is the fingerprint.
+  # Returns { ref => Verdict } holding only what survived validation; a ref with no valid verdict is
+  # simply absent, and the caller leaves that occurrence pending.
+  def classify(items)
+    return {} if items.empty?
+
+    items.each_slice(BATCH_SIZE).reduce({}) { |found, chunk| found.merge(classify_chunk(chunk)) }
+  end
+
+  private
+
+  attr_reader :model
+
+  def normalise(summary) = summary.to_s.downcase.gsub(/\s+/, " ").strip
+
+  def roster_key = @roster.map { |id, name| "#{id}:#{name}" }.sort.join(",")
+
+  def roster_ids = @roster.map(&:first)
+
+  def system_prompt
+    "#{SYSTEM_PROMPT}#{@roster.map { |id, name| "- #{id}: #{name}" }.join("\n")}\n"
+  end
+
+  # Built here rather than in the initializer because CalendarSync constructs a classifier on every
+  # sync just to fingerprint, and fingerprinting has to work with no key at all.
+  def client
+    @client ||= begin
+      key = Rails.configuration.x.calendar_classifier.api_key
+      raise Failed, "ANTHROPIC_API_KEY is not set" if key.blank?
+
+      Anthropic::Client.new(api_key: key, timeout: TIMEOUT_SECONDS, max_retries: MAX_RETRIES)
+    end
+  end
+
+  def classify_chunk(chunk)
+    message = request(chunk)
+    raise Failed, "the model stopped on #{message.stop_reason}" unless message.stop_reason == :end_turn
+
+    accept(JSON.parse(text_of(message))["verdicts"], chunk)
+  rescue JSON::ParserError
+    raise Failed, "the reply was not the JSON the schema asked for"
+  end
+
+  def request(chunk)
+    client.messages.create(
+      model: model,
+      max_tokens: MAX_TOKENS,
+      system_: system_prompt,
+      messages: [{ role: "user", content: JSON.generate(payload_for(chunk)) }],
+      output_config: { format: { type: "json_schema", schema: SCHEMA } }
+    )
+  # Most specific first. The class already names the status (RateLimitError is the 429,
+  # InternalServerError the 5xx) and `.type` adds the API's own label, so the message needs nothing
+  # from the request to be diagnosable.
+  rescue Anthropic::Errors::RateLimitError => e
+    raise Failed, "#{e.class} (#{e.type})"
+  rescue Anthropic::Errors::APIStatusError => e
+    raise Failed, "#{e.class} (#{e.type})"
+  rescue Anthropic::Errors::APIConnectionError => e
+    raise Failed, e.class.to_s
+  end
+
+  def payload_for(chunk)
+    chunk.map do |item|
+      {
+        ref: item[:ref],
+        title: item[:summary],
+        all_day: item[:all_day],
+        starts_on: item[:starts_on].iso8601,
+        ends_on: item[:ends_on].iso8601,
+        nights: (item[:ends_on] - item[:starts_on]).to_i
+      }
+    end
+  end
+
+  # content is an array of block objects, and `type` is a Symbol rather than a String.
+  def text_of(message)
+    block = message.content.find { |candidate| candidate.type == :text }
+    raise Failed, "the reply carried no text block" if block.nil?
+
+    block.text
+  end
+
+  # Spec 7.2. Anything that fails a check is dropped rather than argued with; the next sync asks
+  # again, which is cheaper than a repair path nobody will ever read.
+  def accept(verdicts, chunk)
+    refs = chunk.map { |item| item[:ref].to_s }
+
+    Array(verdicts).each_with_object({}) do |raw, accepted|
+      ref = raw["ref"].to_s
+      next unless refs.include?(ref)
+
+      kind = raw["kind"].to_s
+      next unless KINDS.include?(kind)
+
+      member_ids = Array(raw["member_ids"]).map(&:to_i).uniq.select { |id| roster_ids.include?(id) }
+      kind = "event" if kind == "away" && member_ids.empty?
+      member_ids = [] if kind == "event"
+
+      accepted[ref] = Verdict.new(kind: kind, member_ids: member_ids,
+                                  reason: raw["reason"].to_s.squish.truncate(REASON_LIMIT).presence)
+    end
+  end
+end
+```
+
+- [ ] **Step 5: Run the spec**
+
+Run: `cd apps/api && bundle exec rspec spec/services/calendar_classifier_spec.rb`
+Expected: PASS (12 examples). Two names to confirm against the installed gem rather than guess: the create call takes `system_:` with a trailing underscore (the SDK avoids shadowing `Kernel#system`, and the wire key is still `system`, which is what the request assertion reads), and `Anthropic::Errors::APIStatusError` answers `#type`. If either differs, fix the call and leave the assertions alone: they pin the wire, not the SDK.
+
+- [ ] **Step 6: Write the eval script and run it against the live model**
+
+```ruby
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The away classifier against the LIVE model, on the house's own titles (spec section 7.5).
+# Deliberately not a spec: every spec stubs the API and this one must not, so it is not in bin/ci.
+# Run it by hand before PR 1 merges and whenever the prompt or the model changes. Expect 12 of 12.
+#
+#   cd apps/api && ANTHROPIC_API_KEY=sk-ant-... bin/classifier-eval
+#
+# It reads and writes nothing: the roster is six plain structs, not Member records.
+
+require_relative "../config/environment"
+
+Housemate = Struct.new(:id, :name)
+ROSTER = [
+  Housemate.new(1, "Bass"), Housemate.new(2, "Eliza"), Housemate.new(3, "Raph"),
+  Housemate.new(4, "Ciara"), Housemate.new(5, "Alfie"), Housemate.new(6, "Mic")
+].freeze
+
+# title, all-day?, nights, expected kind, expected housemates
+CASES = [
+  ["Alfie away in Carlisle (Filming)", true, 3, "away", %w[Alfie]],
+  ["Ciara – France", true, 2, "away", %w[Ciara]],
+  ["Bass and Eliza France", true, 4, "away", %w[Bass Eliza]],
+  ["Mic Ireland with fam", true, 5, "away", %w[Mic]],
+  ["Alfie in Greece (Song Leader Retreat)", true, 6, "away", %w[Alfie]],
+  ["Raph off to Lisbon", true, 3, "away", %w[Raph]],
+  ["Raph Bins Out", true, 0, "event", []],
+  ["Alfie Bday", true, 0, "event", []],
+  ["Naomi's birthday", true, 0, "event", []],
+  ["Ester in London [ES4C]", true, 4, "event", []],
+  ["House dinner @ home", false, 0, "event", []],
+  ["Raphael – Tummo retreat w Nico", false, 0, "event", []]
+].freeze
+
+def names_for(ids) = ROSTER.select { |housemate| ids.include?(housemate.id) }.map(&:name).sort
+
+start = Date.new(2026, 9, 16)
+items = CASES.each_with_index.map do |(title, all_day, nights, _kind, _names), index|
+  { ref: "row-#{index}", summary: title, all_day: all_day, starts_on: start, ends_on: start + nights }
+end
+
+begin
+  verdicts = CalendarClassifier.new(members: ROSTER).classify(items)
+rescue CalendarClassifier::Failed => e
+  warn "classifier-eval could not reach the model: #{e.message}"
+  warn "Set ANTHROPIC_API_KEY and try again."
+  exit 1
+end
+
+failures = 0
+CASES.each_with_index do |(title, _all_day, _nights, kind, expected), index|
+  verdict = verdicts["row-#{index}"]
+  got = verdict ? names_for(verdict.member_ids) : []
+  ok = !verdict.nil? && verdict.kind == kind && got == expected.sort
+  failures += 1 unless ok
+  puts format("%-5s %-40s %-6s %-14s %s", ok ? "PASS" : "FAIL", title,
+              verdict&.kind || "none", got.join(", "), verdict&.reason)
+end
+
+puts "#{CASES.size - failures} of #{CASES.size} as expected"
+exit(failures.zero? ? 0 : 1)
+```
+
+Run: `cd apps/api && chmod +x bin/classifier-eval && ANTHROPIC_API_KEY=<a real key> bin/classifier-eval`
+Expected: 12 of 12, exit 0. A failing row is a prompt problem, not a code problem: adjust the wording in `SYSTEM_PROMPT` and rerun. "Raph off to Lisbon" and "Ester in London [ES4C]" are the two that decide whether Haiku is enough; if either stays wrong after a wording pass, set `config.x.calendar_classifier.model` to `claude-sonnet-5`, rerun, and record the outcome against spec open question 2.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add apps/api/app/services/away_classifier.rb apps/api/spec/services/away_classifier_spec.rb
-git commit -m "BLO-1667: AwayClassifier reads away dates from calendar titles"
+git add apps/api/app/services/calendar_classifier.rb apps/api/config/initializers/calendar_classifier.rb \
+  apps/api/bin/classifier-eval apps/api/spec/services/calendar_classifier_spec.rb \
+  apps/api/spec/support/anthropic_stubs.rb apps/api/Gemfile apps/api/Gemfile.lock .env.example
+git commit -m "BLO-1667: CalendarClassifier asks Claude which titles mean away"
 ```
 
 ---
@@ -1116,7 +1543,7 @@ git commit -m "BLO-1667: AwayClassifier reads away dates from calendar titles"
 - Test: `apps/api/spec/services/calendar_sync_spec.rb`, `apps/api/spec/services/calendar_connect_spec.rb`
 
 **Interfaces:**
-- Consumes: Task 1 models; `CalendarFetch.call` (Task 2); `CalendarParser` (Task 3); `AwayClassifier` (Task 4).
+- Consumes: Task 1 models; `CalendarFetch.call` (Task 2); `CalendarParser` (Task 3); `CalendarClassifier` (Task 4), for both fingerprints and verdicts.
 - Produces: `CalendarSync.new(connection).call` → the reloaded connection; never raises for fetch or parse problems (they are recorded on the connection); `CalendarSync::PAST_DAYS = 7`, `FUTURE_DAYS = 90`; `CalendarSync.window_for(group)` → `[from, to]`. `CalendarConnect.call(group:, url:)` → the created or replaced `CalendarConnection`, already synced; raises `CalendarConnect::Invalid` with `#code` in `%w[not_https unreachable not_a_calendar too_large gone]` and `#message` holding the spec's copy. `CalendarSync::MESSAGES` maps error classes to the admin-facing sentences.
 
 - [ ] **Step 1: Write the failing sync spec**
@@ -1133,17 +1560,24 @@ RSpec.describe CalendarSync do
 
   around { |example| travel_to(Time.zone.parse("2026-09-13 12:00:00 UTC")) { example.run } }
 
+  # Every example here runs a real sync, so every example needs an answer from Claude. WebMock takes
+  # the last matching stub, so an example that wants a different answer simply restubs.
+  before { stub_claude_for_titles("Alfie in Greece (Song Leader Retreat)" => ["away", [alfie.id], "Alfie, six nights in Greece"]) }
+
   def stub_feed(body, status: 200, headers: {})
     stub_request(:get, connection.ical_url).to_return(status: status, body: body, headers: headers)
   end
 
-  it "stores occurrences inside the window, classifies away, and records success" do
+  it "stores occurrences inside the window, asks Claude who is away, and records success" do
     stub_feed(feed, headers: { "ETag" => "\"v1\"" })
 
     described_class.new(connection).call
 
     event = connection.calendar_events.sole
-    expect(event).to have_attributes(uid: "greece@google.com", kind: "away", starts_on: Date.new(2026, 9, 25), ends_on: Date.new(2026, 10, 1))
+    expect(event).to have_attributes(uid: "greece@google.com", kind: "away", reason: "Alfie, six nights in Greece",
+                                     starts_on: Date.new(2026, 9, 25), ends_on: Date.new(2026, 10, 1))
+    expect(event.fingerprint).to be_present
+    expect(event.classified_at).to eq(Time.current)
     expect(event.members).to eq([alfie])
     expect(connection.reload).to have_attributes(calendar_name: "Park vista", events_count: 1, etag: "\"v1\"", consecutive_failures: 0, last_error: nil)
     expect(connection.last_synced_at).to eq(Time.current)
@@ -1174,15 +1608,52 @@ RSpec.describe CalendarSync do
     expect(connection.reload.events_count).to eq(0)
   end
 
-  it "reclassifies when a member is renamed" do
+  it "reuses the stored verdict and asks Claude nothing on a second sync" do
+    stub_feed(feed)
+
+    2.times { described_class.new(connection).call }
+
+    expect(a_request(:post, AnthropicStubs::MESSAGES_URL)).to have_been_made.once
+    expect(connection.calendar_events.sole).to have_attributes(kind: "away")
+  end
+
+  it "asks again when a member is renamed, because the fingerprint changes" do
     stub_feed(feed)
     described_class.new(connection).call
     alfie.update!(name: "Alfred")
 
     described_class.new(connection).call
 
-    expect(connection.calendar_events.sole).to have_attributes(kind: "event")
-    expect(CalendarEventMember.count).to eq(0)
+    expect(a_request(:post, AnthropicStubs::MESSAGES_URL)).to have_been_made.twice
+  end
+
+  it "stores the events pending when Claude fails, and still records the sync as a success" do
+    stub_feed(feed)
+    # A revoked key. The SDK does not retry a 401, so this example does not sleep through two backoffs.
+    stub_request(:post, AnthropicStubs::MESSAGES_URL).to_return(status: 401, body: "{}")
+
+    described_class.new(connection).call
+
+    event = connection.calendar_events.sole
+    expect(event).to have_attributes(kind: "event", classified_at: nil, reason: nil)
+    expect(event.members).to be_empty
+    expect(connection.reload).to have_attributes(consecutive_failures: 0, last_error: nil, events_count: 1)
+    expect(connection.unclassified_count).to eq(1)
+  end
+
+  it "retries the pending fingerprint next time, and stops once it has a verdict" do
+    stub_feed(feed)
+    stub_request(:post, AnthropicStubs::MESSAGES_URL).to_return(status: 401, body: "{}")
+    described_class.new(connection).call
+
+    stub_feed(feed)
+    stub_claude_for_titles("Alfie in Greece (Song Leader Retreat)" => ["away", [alfie.id], "Alfie, six nights in Greece"])
+    described_class.new(connection).call
+    described_class.new(connection).call
+
+    expect(a_request(:post, AnthropicStubs::MESSAGES_URL)).to have_been_made.twice
+    expect(connection.calendar_events.sole).to have_attributes(kind: "away", reason: "Alfie, six nights in Greece")
+    expect(connection.calendar_events.pending).to be_empty
   end
 
   it "records a reset link and disables after three, keeping stale events" do
@@ -1226,6 +1697,10 @@ RSpec.describe CalendarConnect do
   let(:feed) { file_fixture("ics/google_export.ics").read }
 
   around { |example| travel_to(Time.zone.parse("2026-09-13 12:00:00 UTC")) { example.run } }
+
+  # Connect runs the first sync inline, so it reaches Claude. Nothing here asserts a verdict, so an
+  # empty map is enough: every title comes back a plain event.
+  before { stub_claude_for_titles({}) }
 
   it "creates the connection and runs the first sync" do
     stub_request(:get, url).to_return(status: 200, body: feed)
@@ -1329,34 +1804,88 @@ class CalendarSync
 
   def group = connection.group
 
+  # Spec section 6 step 3. Fingerprint everything, reuse every verdict the house already has, ask
+  # Claude only about what is left, then write the lot in one transaction.
   def store(occurrences)
     now = Time.current
-    classifier = AwayClassifier.new(group.members.active)
-    classified = occurrences.map do |occurrence|
-      verdict = classifier.classify(summary: occurrence.summary, all_day: occurrence.all_day, starts_on: occurrence.starts_on, ends_on: occurrence.ends_on)
-      [occurrence, verdict]
+    classifier = CalendarClassifier.new(members: group.members.active.to_a)
+    printed = occurrences.map do |occurrence|
+      [occurrence, classifier.fingerprint(summary: occurrence.summary, all_day: occurrence.all_day,
+                                          starts_on: occurrence.starts_on, ends_on: occurrence.ends_on)]
     end
+
+    verdicts = stored_verdicts(printed.map(&:last).uniq)
+    verdicts.merge!(fresh_verdicts(classifier, printed, verdicts.keys))
 
     CalendarEvent.transaction do
-      if classified.any?
-        rows = classified.map do |occurrence, verdict|
-          { calendar_connection_id: connection.id, uid: occurrence.uid, instance_key: occurrence.instance_key,
-            summary: occurrence.summary, starts_on: occurrence.starts_on, ends_on: occurrence.ends_on,
-            starts_at: occurrence.starts_at, ends_at: occurrence.ends_at, all_day: occurrence.all_day,
-            kind: verdict[:kind], synced_at: now, created_at: now, updated_at: now }
-        end
-        CalendarEvent.upsert_all(rows, unique_by: %i[calendar_connection_id instance_key],
-                                       update_only: %i[uid summary starts_on ends_on starts_at ends_at all_day kind synced_at updated_at])
-      end
+      upsert_rows(printed, verdicts, now)
       connection.calendar_events.where("synced_at < ?", now).delete_all
-
-      ids_by_key = connection.calendar_events.pluck(:instance_key, :id).to_h
-      CalendarEventMember.where(calendar_event_id: ids_by_key.values).delete_all
-      links = classified.flat_map do |occurrence, verdict|
-        verdict[:member_ids].map { |member_id| { calendar_event_id: ids_by_key.fetch(occurrence.instance_key), member_id: member_id } }
-      end
-      CalendarEventMember.insert_all(links) if links.any?
+      relink(printed, verdicts)
     end
+  end
+
+  # A verdict depends only on the title, the shape of the entry and the roster, all of which the
+  # fingerprint carries, so a title the house already has is never sent twice: weekly bins are
+  # classified once, not once a week. Read before the upsert, so these are the previous run's rows.
+  # Most recently classified wins if two rows somehow share a fingerprint.
+  def stored_verdicts(fingerprints)
+    return {} if fingerprints.empty?
+
+    connection.calendar_events.classified.where(fingerprint: fingerprints)
+      .includes(:calendar_event_members).order(:classified_at)
+      .each_with_object({}) do |event, found|
+        found[event.fingerprint] = CalendarClassifier::Verdict.new(
+          kind: event.kind, member_ids: event.calendar_event_members.map(&:member_id), reason: event.reason
+        )
+      end
+  end
+
+  # Only the fingerprints with no stored verdict, de-duplicated, so a hundred instances of one
+  # recurring title are one line in the request. A failed call is not a failed sync (spec 7.4): those
+  # occurrences are stored pending and the next run asks again. The log line carries the classifier's
+  # message, which by construction holds no titles.
+  def fresh_verdicts(classifier, printed, known)
+    wanted = printed.map(&:last).uniq - known
+    return {} if wanted.empty?
+
+    by_print = printed.to_h { |occurrence, fingerprint| [fingerprint, occurrence] }
+    classifier.classify(wanted.map { |fingerprint|
+      occurrence = by_print.fetch(fingerprint)
+      { ref: fingerprint, summary: occurrence.summary, all_day: occurrence.all_day,
+        starts_on: occurrence.starts_on, ends_on: occurrence.ends_on }
+    })
+  rescue CalendarClassifier::Failed => e
+    Rails.logger.warn("CalendarClassifier failed for connection #{connection.id}: #{e.message}")
+    Rails.error.report(e, context: { calendar_connection_id: connection.id }, source: "houserota.calendar_classifier")
+    {}
+  end
+
+  def upsert_rows(printed, verdicts, now)
+    return if printed.empty?
+
+    rows = printed.map do |occurrence, fingerprint|
+      verdict = verdicts[fingerprint]
+      { calendar_connection_id: connection.id, uid: occurrence.uid, instance_key: occurrence.instance_key,
+        summary: occurrence.summary, starts_on: occurrence.starts_on, ends_on: occurrence.ends_on,
+        starts_at: occurrence.starts_at, ends_at: occurrence.ends_at, all_day: occurrence.all_day,
+        kind: verdict&.kind || "event", fingerprint: fingerprint, reason: verdict&.reason,
+        classified_at: verdict ? now : nil, synced_at: now, created_at: now, updated_at: now }
+    end
+    CalendarEvent.upsert_all(rows, unique_by: %i[calendar_connection_id instance_key],
+                                   update_only: %i[uid summary starts_on ends_on starts_at ends_at all_day
+                                                   kind fingerprint reason classified_at synced_at updated_at])
+  end
+
+  def relink(printed, verdicts)
+    ids_by_key = connection.calendar_events.pluck(:instance_key, :id).to_h
+    CalendarEventMember.where(calendar_event_id: ids_by_key.values).delete_all
+    links = printed.flat_map do |occurrence, fingerprint|
+      verdict = verdicts[fingerprint]
+      next [] if verdict.nil?
+
+      verdict.member_ids.map { |member_id| { calendar_event_id: ids_by_key.fetch(occurrence.instance_key), member_id: member_id } }
+    end
+    CalendarEventMember.insert_all(links) if links.any?
   end
 end
 ```
@@ -1409,7 +1938,7 @@ end
 - [ ] **Step 6: Run both specs**
 
 Run: `cd apps/api && bundle exec rspec spec/services/calendar_sync_spec.rb spec/services/calendar_connect_spec.rb`
-Expected: PASS (6 + 3 examples). `upsert_all` with `update_only` needs Rails 7.1+; this app is 8.1. If the retitle test fails on `id` stability, the unique index name in `unique_by` must be the column pair exactly as in Task 1.
+Expected: PASS (9 + 3 examples). `upsert_all` with `update_only` needs Rails 7.1+; this app is 8.1. If the retitle test fails on `id` stability, the unique index name in `unique_by` must be the column pair exactly as in Task 1. If "reuses the stored verdict" makes two calls, `stored_verdicts` is reading after the upsert instead of before it, or `classified_at` is not being written on the first pass.
 
 - [ ] **Step 7: Commit**
 
@@ -1527,13 +2056,14 @@ git commit -m "BLO-1667: hourly SyncHouseCalendarsJob"
 ### Task 7: Admin calendar endpoints, serializers, throttle, log redaction
 
 **Files:**
-- Create: `apps/api/app/controllers/api/group_calendar_controller.rb`, `apps/api/app/serializers/calendar_connection_serializer.rb`, `apps/api/app/serializers/calendar_event_serializer.rb`
+- Create: `apps/api/app/controllers/api/group_calendar_controller.rb`, `apps/api/app/serializers/calendar_connection_serializer.rb`, `apps/api/app/serializers/calendar_event_serializer.rb`, `apps/api/app/serializers/calendar_event_preview_serializer.rb`
 - Modify: `apps/api/config/routes.rb` (inside `namespace :api`, after `resource :group ...`), `apps/api/app/serializers/group_serializer.rb`, `apps/api/config/initializers/filter_parameter_logging.rb`, `apps/api/config/initializers/rack_attack.rb`
 - Test: `apps/api/spec/requests/api/group_calendar_spec.rb`, extend `apps/api/spec/requests/api/group_spec.rb`
 
 **Interfaces:**
 - Consumes: Task 5 services, Task 1 models.
-- Produces: `GET /api/group` → `group.calendar` (`null` or `{ calendar_name, masked_url, events_count, last_synced_at, last_error, failing }`); `PUT /api/group/calendar` `{ ical_url }` → `{ calendar, events_preview: [CalendarEvent...] }` or 422 `{ error: "invalid", fields: { ical_url: [message] }, code }`; `POST /api/group/calendar/sync` → `{ calendar }`; `DELETE /api/group/calendar` → 204; `GET /api/group/calendar/events?days=30` → `{ events: [...] }`. Event JSON: `{ id, title, starts_on, ends_on, all_day, start_time, kind, member_ids }` (`start_time` "HH:MM" in the group's zone or null).
+- Produces: `GET /api/group` → `group.calendar` (`null` or `{ calendar_name, masked_url, events_count, unclassified_count, last_synced_at, last_error, failing }`); `PUT /api/group/calendar` `{ ical_url }` → `{ calendar, events_preview: [CalendarEvent...] }` or 422 `{ error: "invalid", fields: { ical_url: [message] }, code }`; `POST /api/group/calendar/sync` → `{ calendar }`; `DELETE /api/group/calendar` → 204; `GET /api/group/calendar/events?days=30` → `{ events: [...] }`. Event JSON: `{ id, title, starts_on, ends_on, all_day, start_time, kind, member_ids }` (`start_time` "HH:MM" in the group's zone or null), plus `reason` on the two admin surfaces only.
+- The admin's preview adds the model's one-line `reason`; the member payload does not. Spec section 13 keeps what members receive to title, dates, kind and member ids, so `CalendarEventPreviewSerializer` is a two-line subclass rather than a flag on the shared one.
 
 - [ ] **Step 1: Write the failing request specs**
 
@@ -1550,6 +2080,9 @@ RSpec.describe "Api::GroupCalendar" do
 
   around { |example| travel_to(Time.zone.parse("2026-09-13 12:00:00 UTC")) { example.run } }
 
+  # Connect and "Sync now" both classify inline, so the Claude call is stubbed for the whole file.
+  before { stub_claude_for_titles("Alfie in Greece (Song Leader Retreat)" => ["away", [alfie.id], "Alfie, six nights in Greece"]) }
+
   describe "PUT /api/group/calendar" do
     it "connects, syncs, and returns the summary and a preview without the link" do
       stub_request(:get, url).to_return(status: 200, body: feed)
@@ -1558,9 +2091,20 @@ RSpec.describe "Api::GroupCalendar" do
 
       expect(response).to have_http_status(:ok)
       body = response.parsed_body
-      expect(body["calendar"]).to include("calendar_name" => "Park vista", "masked_url" => "calendar.google.com/…def456/basic.ics", "events_count" => 1, "failing" => false, "last_error" => nil)
-      expect(body["events_preview"].first).to include("title" => "Alfie in Greece (Song Leader Retreat)", "kind" => "away", "member_ids" => [alfie.id], "starts_on" => "2026-09-25", "ends_on" => "2026-10-01", "all_day" => true, "start_time" => nil)
+      expect(body["calendar"]).to include("calendar_name" => "Park vista", "masked_url" => "calendar.google.com/…def456/basic.ics", "events_count" => 1, "unclassified_count" => 0, "failing" => false, "last_error" => nil)
+      expect(body["events_preview"].first).to include("title" => "Alfie in Greece (Song Leader Retreat)", "kind" => "away", "member_ids" => [alfie.id], "reason" => "Alfie, six nights in Greece", "starts_on" => "2026-09-25", "ends_on" => "2026-10-01", "all_day" => true, "start_time" => nil)
       expect(response.body).not_to include("abc123def456")
+    end
+
+    it "counts the events still waiting for a verdict when Claude was unreachable" do
+      stub_request(:get, url).to_return(status: 200, body: feed)
+      stub_request(:post, AnthropicStubs::MESSAGES_URL).to_return(status: 401, body: "{}")
+
+      put "/api/group/calendar", params: { ical_url: url }, headers: headers
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["calendar"]).to include("events_count" => 1, "unclassified_count" => 1, "failing" => false)
+      expect(response.parsed_body["events_preview"].first).to include("kind" => "event", "reason" => nil)
     end
 
     it "rejects a bad link with a field error" do
@@ -1659,7 +2203,7 @@ Add to `apps/api/spec/requests/api/group_spec.rb`, inside `describe "GET /api/gr
       create(:calendar_connection, group: group, calendar_name: "Park Vista", events_count: 3, consecutive_failures: 3, last_error: "Couldn't reach the calendar.")
       get "/api/group", headers: headers
 
-      expect(response.parsed_body["group"]["calendar"]).to include("calendar_name" => "Park Vista", "events_count" => 3, "failing" => true, "last_error" => "Couldn't reach the calendar.")
+      expect(response.parsed_body["group"]["calendar"]).to include("calendar_name" => "Park Vista", "events_count" => 3, "unclassified_count" => 0, "failing" => true, "last_error" => "Couldn't reach the calendar.")
       expect(response.parsed_body["group"]["calendar"]).not_to have_key("ical_url")
     end
 ```
@@ -1694,6 +2238,9 @@ class CalendarConnectionSerializer < ApplicationSerializer
       calendar_name: record.calendar_name,
       masked_url: record.masked_url,
       events_count: record.events_count,
+      # Spec 7.4: how many titles the model has not answered for yet, so the card can say so and
+      # the admin knows the list is still filling in rather than wrong.
+      unclassified_count: record.unclassified_count,
       last_synced_at: record.last_synced_at,
       last_error: record.last_error,
       failing: record.failing?
@@ -1720,6 +2267,17 @@ class CalendarEventSerializer < ApplicationSerializer
       member_ids: record.calendar_event_members.map(&:member_id).sort
     }
   end
+end
+```
+
+```ruby
+# apps/api/app/serializers/calendar_event_preview_serializer.rb
+# The same occurrence as the admin sees it in "What we found", plus the model's one-line reason for
+# the verdict. A subclass rather than a flag because the split is a privacy boundary, not an option:
+# spec section 13 keeps the member payload to title, dates, kind and member ids, and a serializer
+# that can be asked for either shape is one argument away from leaking the wrong one.
+class CalendarEventPreviewSerializer < CalendarEventSerializer
+  def as_json = super.merge(reason: record.reason)
 end
 ```
 
@@ -1771,7 +2329,7 @@ module Api
     def preview(connection, days)
       today = current_group.today
       events = connection.calendar_events.overlapping(today, today + days).includes(:calendar_event_members, calendar_connection: :group).order(:starts_on, :starts_at)
-      CalendarEventSerializer.many(events)
+      CalendarEventPreviewSerializer.many(events)
     end
   end
 end
@@ -1820,7 +2378,7 @@ git commit -m "BLO-1667: admin calendar endpoints, summary serializer, redaction
 
 **Interfaces:**
 - Consumes: Task 7 JSON shapes.
-- Produces (TypeScript): `CalendarSummary`, `CalendarEventItem`, `CalendarConnectResponse`, `CalendarEventsResponse`, `Group.calendar: CalendarSummary | null`; `connectCalendar(icalUrl)`, `syncCalendar()`, `disconnectCalendar()`, `listCalendarEvents(days)`; server actions `connectHouseCalendar(icalUrl)`, `syncHouseCalendar()`, `disconnectHouseCalendar()` each returning `{ ok: true, ... } | { ok: false; error: ApiErrorBody }`.
+- Produces (TypeScript): `CalendarSummary`, `CalendarEventItem`, `CalendarEventPreviewItem`, `CalendarConnectResponse`, `CalendarEventsResponse`, `Group.calendar: CalendarSummary | null`; `connectCalendar(icalUrl)`, `syncCalendar()`, `disconnectCalendar()`, `listCalendarEvents(days)`; server actions `connectHouseCalendar(icalUrl)`, `syncHouseCalendar()`, `disconnectHouseCalendar()` each returning `{ ok: true, ... } | { ok: false; error: ApiErrorBody }`.
 
 - [ ] **Step 1: Add the types**
 
@@ -1842,6 +2400,8 @@ export interface CalendarSummary {
   calendar_name: string | null;
   masked_url: string;
   events_count: number;
+  /** Events still waiting on a verdict from the model; the card says so while this is above zero. */
+  unclassified_count: number;
   last_synced_at: string | null;
   last_error: string | null;
   failing: boolean;
@@ -1862,9 +2422,17 @@ export interface CalendarEventItem {
   member_ids: number[];
 }
 
+/**
+ * What the admin surfaces return: an event plus the model's one-line reason for its verdict. Members
+ * get `CalendarEventItem` without it, which is the shape spec section 13 pins.
+ */
+export interface CalendarEventPreviewItem extends CalendarEventItem {
+  reason: string | null;
+}
+
 export interface CalendarConnectResponse {
   calendar: CalendarSummary;
-  events_preview: CalendarEventItem[];
+  events_preview: CalendarEventPreviewItem[];
 }
 
 export interface CalendarSyncResponse {
@@ -1872,14 +2440,14 @@ export interface CalendarSyncResponse {
 }
 
 export interface CalendarEventsResponse {
-  events: CalendarEventItem[];
+  events: CalendarEventPreviewItem[];
 }
 ```
 
 - [ ] **Step 2: Run typecheck to see what breaks**
 
 Run: `cd apps/web && npm run typecheck`
-Expected: errors only in test files that build a `Group` literal without `calendar`. Add `calendar: null,` to each (in `dashboard.test.ts` the `group()` helper). Re-run until clean.
+Expected: errors only in test files that build a `Group` literal without `calendar`. Add `calendar: null,` to each (in `dashboard.test.ts` the `group()` helper). A test that builds a `CalendarSummary` literal also needs `unclassified_count`. Re-run until clean.
 
 - [ ] **Step 3: Add the client calls**
 
@@ -1917,7 +2485,7 @@ Append to `apps/web/src/app/(admin)/dashboard/actions.ts`:
 
 ```ts
 import { connectCalendar, disconnectCalendar, syncCalendar } from "@/lib/api/admin";
-import type { CalendarEventItem, CalendarSummary } from "@/lib/api/types";
+import type { CalendarEventPreviewItem, CalendarSummary } from "@/lib/api/types";
 
 export type CalendarActionResult<T> = ({ ok: true } & T) | { ok: false; error: ApiErrorBody };
 
@@ -1925,7 +2493,7 @@ export type CalendarActionResult<T> = ({ ok: true } & T) | { ok: false; error: A
 // through this server action and is never echoed back — the API answers with a masked form only.
 export async function connectHouseCalendar(
   icalUrl: string,
-): Promise<CalendarActionResult<{ calendar: CalendarSummary; events: CalendarEventItem[] }>> {
+): Promise<CalendarActionResult<{ calendar: CalendarSummary; events: CalendarEventPreviewItem[] }>> {
   try {
     const { calendar, events_preview } = await connectCalendar(icalUrl);
     revalidatePath("/dashboard");
@@ -1981,7 +2549,7 @@ git commit -m "BLO-1667: web types, admin client and actions for the house calen
 
 **Interfaces:**
 - Consumes: Task 8 actions and types; `Group.calendar`.
-- Produces: `<HouseCalendarSettings calendar={group.calendar} initialEvents={events} />`.
+- Produces: `<HouseCalendarSettings calendar={group.calendar} initialEvents={events} />`, showing each verdict's reason and the pending-events line from spec section 4 state 3.
 
 - [ ] **Step 1: Write the component**
 
@@ -2000,7 +2568,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { toastApiError } from "@/lib/api/toast";
-import type { CalendarEventItem, CalendarSummary } from "@/lib/api/types";
+import type { CalendarEventPreviewItem, CalendarSummary } from "@/lib/api/types";
 import { formatLongDate, formatTimestamp } from "@/lib/date";
 
 import { connectHouseCalendar, disconnectHouseCalendar, syncHouseCalendar } from "../actions";
@@ -2021,7 +2589,7 @@ export function HouseCalendarSettings({
   initialEvents,
 }: {
   calendar: CalendarSummary | null;
-  initialEvents: CalendarEventItem[];
+  initialEvents: CalendarEventPreviewItem[];
 }) {
   const [summary, setSummary] = React.useState(calendar);
   const [events, setEvents] = React.useState(initialEvents);
@@ -2086,6 +2654,7 @@ export function HouseCalendarSettings({
               <FieldDescription>
                 In Google Calendar open Settings, pick the house calendar, and copy the Secret address in
                 iCal format. Anyone with this link can read the calendar, so it is stored like a password.
+                Event titles are sent to Anthropic&apos;s Claude to tell trips from other events.
               </FieldDescription>
               <FieldError errors={[errors.ical_url]} />
             </Field>
@@ -2107,6 +2676,11 @@ export function HouseCalendarSettings({
               {summary.last_error}
             </p>
           ) : null}
+          {summary.unclassified_count > 0 ? (
+            <p role="status" className="text-muted-foreground text-sm">
+              {summary.unclassified_count} events not sorted yet. We&apos;ll try again within the hour.
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="secondary" onClick={onSync} loading={busy === "sync"}>
               Sync now
@@ -2122,16 +2696,21 @@ export function HouseCalendarSettings({
             ) : (
               <ul className="mt-2 flex flex-col gap-2">
                 {events.map((event) => (
-                  <li key={event.id} className="flex flex-wrap items-center gap-2">
-                    <Badge variant={event.kind === "away" ? "warning" : "info"}>
-                      {event.kind === "away" ? "Away" : "Event"}
-                    </Badge>
-                    <span>{event.title}</span>
-                    <span className="text-muted-foreground">
-                      {formatLongDate(event.starts_on)}
-                      {event.ends_on !== event.starts_on ? ` to ${formatLongDate(event.ends_on)}` : ""}
-                      {event.start_time ? ` · ${event.start_time}` : ""}
+                  <li key={event.id} className="flex flex-col gap-0.5">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <Badge variant={event.kind === "away" ? "warning" : "info"}>
+                        {event.kind === "away" ? "Away" : "Event"}
+                      </Badge>
+                      <span>{event.title}</span>
+                      <span className="text-muted-foreground">
+                        {formatLongDate(event.starts_on)}
+                        {event.ends_on !== event.starts_on ? ` to ${formatLongDate(event.ends_on)}` : ""}
+                        {event.start_time ? ` · ${event.start_time}` : ""}
+                      </span>
                     </span>
+                    {event.reason ? (
+                      <span className="text-muted-foreground text-xs">{event.reason}</span>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -2144,7 +2723,7 @@ export function HouseCalendarSettings({
 }
 ```
 
-Check the `Badge` variants that exist in `apps/web/src/components/ui/badge.tsx` and use the warning-tinted (Blush or Peach) one for Away and the info (Sky) one for Event; rename the two `variant` values above to whatever the file exports. Check `formatLongDate` and `formatTimestamp` signatures in `apps/web/src/lib/date.ts` and pass what they take. Member names for away events are not shown here on purpose: the classification list is about titles, which is what the admin can change.
+Check the `Badge` variants that exist in `apps/web/src/components/ui/badge.tsx` and use the warning-tinted (Blush or Peach) one for Away and the info (Sky) one for Event; rename the two `variant` values above to whatever the file exports. Check `formatLongDate` and `formatTimestamp` signatures in `apps/web/src/lib/date.ts` and pass what they take. Member names for away events are not shown here on purpose: the list is about titles, which is what the admin can change, and the model's reason already names whoever it matched.
 
 - [ ] **Step 2: Mount it and feed it the preview**
 
@@ -2156,7 +2735,7 @@ const calendarEvents = group.calendar ? (await listCalendarEvents(30)).events : 
 
 (import `listCalendarEvents` from `@/lib/api/admin`; if `group.calendar` is set but the request fails with `isApiError`, fall back to `[]` and let the settings card show the stored `last_error`). Pass it down: `<GroupSettings group={group} calendarEvents={calendarEvents} />`.
 
-In `group-settings.tsx`, accept `calendarEvents: CalendarEventItem[]` and render, after the closing `</form>` inside `CardContent`:
+In `group-settings.tsx`, accept `calendarEvents: CalendarEventPreviewItem[]` and render, after the closing `</form>` inside `CardContent`:
 
 ```tsx
 <HouseCalendarSettings calendar={group.calendar} initialEvents={calendarEvents} />
@@ -2165,7 +2744,7 @@ In `group-settings.tsx`, accept `calendarEvents: CalendarEventItem[]` and render
 - [ ] **Step 3: Typecheck, lint, build, and look at it**
 
 Run: `cd apps/web && npm run typecheck && npm run lint && npm run build`
-Expected: clean. Then run the API (`cd apps/api && bin/dev`) and web (`cd apps/web && npm run dev`) against the seeded demo house, sign in as its admin, paste the real house calendar link, and confirm: the connected summary appears, "What we found" lists the coming month with Away and Event badges matching the spec's table, "Sync now" reports success, and "Disconnect" returns to the empty form. Capture phone (390px) and desktop (1440px) screenshots of the section in the not-connected, connected and failing states (set `consecutive_failures` to 3 in a console for the failing one) for the PR gallery.
+Expected: clean. Then run the API (`cd apps/api && ANTHROPIC_API_KEY=sk-ant-... bin/dev`; without a key every event comes back unsorted, which is a different screenshot) and web (`cd apps/web && npm run dev`) against the seeded demo house, sign in as its admin, paste the real house calendar link, and confirm: the connected summary appears, "What we found" lists the coming month with Away and Event badges matching the spec's table and a one-line reason under each title, "Sync now" reports success, and "Disconnect" returns to the empty form. Read the reasons against Google Calendar; a wrong verdict is fixed by renaming the event there, not in the app. Capture phone (390px) and desktop (1440px) screenshots of the section in the not-connected, connected and failing states (set `consecutive_failures` to 3 in a console for the failing one), plus the pending line (set `classified_at` to nil on a couple of rows) for the PR gallery.
 
 - [ ] **Step 4: Commit**
 
@@ -2196,6 +2775,7 @@ describe("house calendar", () => {
     calendar_name: "Park Vista",
     masked_url: "calendar.google.com/…f3f9a/basic.ics",
     events_count: 12,
+    unclassified_count: 0,
     last_synced_at: "2026-09-13T09:27:00Z",
     last_error: "Couldn't reach the calendar.",
     failing: true,
@@ -2604,10 +3184,13 @@ git commit -m "BLO-1667: hand-off ranking deprioritises housemates who are away"
 
 ## Self-review
 
-- Spec coverage: connection flow (Tasks 5, 7, 9), storage and secret handling (1, 7), sync mechanics and job (2, 3, 5, 6), away inference and admin visibility (4, 9), failures on the dashboard (10), member payload and feed hooks (11, 12, 13), gems and fixtures (3), throttle and redaction (7), rollout as two PRs (checkpoints). Admin week glance: intentionally no task (spec section 10).
-- Names used across tasks: `CalendarFetch.call`/`Result`; `CalendarParser.new(body, zone:, from:, to:)`, `Occurrence`; `AwayClassifier.new(members).classify(summary:, all_day:, starts_on:, ends_on:)`; `CalendarSync.new(connection).call`, `CalendarSync.window_for(group)`, `CalendarSync::MESSAGES`, `FUTURE_DAYS`; `CalendarConnect.call(group:, url:)`, `CalendarConnect::Invalid#code`; `CalendarConnectionSerializer`, `CalendarEventSerializer`; web `CalendarSummary`, `CalendarEventItem`, `connectCalendar`/`syncCalendar`/`disconnectCalendar`/`listCalendarEvents`, `connectHouseCalendar`/`syncHouseCalendar`/`disconnectHouseCalendar`, `HouseCalendarSettings`, `eventsStartingOn`/`awayMemberIdsOn`/`awayLabel`/`eventRangeLabel`/`toFeedEvent`, `rankCoverCandidates` with `away`.
-- Known adaptation points (not placeholders): the recurrence gem's exact value types (Task 3 Step 1 probe settles them), the Badge variant names and date formatter output (Tasks 9, 12), and the BLO-1666 file internals (Tasks 11–13), each with the exact contract the tests pin.
+- Spec coverage: connection flow (Tasks 5, 7, 9), storage and secret handling (1, 7), sync mechanics and job (2, 3, 5, 6), away inference, its cache and its failure mode (4, 5, 9), failures on the dashboard (10), member payload and feed hooks (11, 12, 13), gems and fixtures (3), throttle and redaction (7), rollout as two PRs (checkpoints). Admin week glance: intentionally no task (spec section 10).
+- Names used across tasks: `CalendarFetch.call`/`Result`; `CalendarParser.new(body, zone:, from:, to:)`, `Occurrence`; `CalendarClassifier.new(members:, model:, client:)` with `#fingerprint(summary:, all_day:, starts_on:, ends_on:)` and `#classify(items)`, `CalendarClassifier::Verdict`, `CalendarClassifier::Failed`, `stub_claude_verdicts`/`stub_claude_for_titles`; `CalendarSync.new(connection).call`, `CalendarSync.window_for(group)`, `CalendarSync::MESSAGES`, `FUTURE_DAYS`; `CalendarConnect.call(group:, url:)`, `CalendarConnect::Invalid#code`; `CalendarConnectionSerializer`, `CalendarEventSerializer`, `CalendarEventPreviewSerializer`; web `CalendarSummary`, `CalendarEventItem`, `CalendarEventPreviewItem`, `connectCalendar`/`syncCalendar`/`disconnectCalendar`/`listCalendarEvents`, `connectHouseCalendar`/`syncHouseCalendar`/`disconnectHouseCalendar`, `HouseCalendarSettings`, `eventsStartingOn`/`awayMemberIdsOn`/`awayLabel`/`eventRangeLabel`/`toFeedEvent`, `rankCoverCandidates` with `away`.
+- Known adaptation points (not placeholders): the recurrence gem's exact value types (Task 3 Step 1 probe settles them), two names in the Anthropic gem (`system_:` and `APIStatusError#type`, Task 4 Step 5 confirms them against the installed gem), the Badge variant names and date formatter output (Tasks 9, 12), and the BLO-1666 file internals (Tasks 11–13), each with the exact contract the tests pin.
+- Not in any task, on purpose: a per-event override of a verdict (spec open question 3; rename the event in Google Calendar instead) and prompt caching (the prompt is well under Haiku's minimum cacheable prefix).
 
 ## Execution
 
 Plan complete. Recommended execution: subagent-driven, one Opus subagent per task, with groups B (Tasks 2–4) running in parallel with A (Task 1), then C (5–7), then D (8–10) for PR 1; group E (11–13) only after BLO-1666 and PR 1 have merged and the branch is rebased.
+
+Two things happen outside the task list before PR 1 merges: run `cd apps/api && bin/classifier-eval` against the live model and record the score in the PR, and set `ANTHROPIC_API_KEY` on Railway, because the API refuses to boot in production without it.

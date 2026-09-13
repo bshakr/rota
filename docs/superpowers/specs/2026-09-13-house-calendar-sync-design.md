@@ -13,7 +13,7 @@ The house already keeps a shared Google Calendar: who is away, house dinners, me
 Goals
 - An admin connects the house calendar by pasting one link, with immediate feedback that it worked.
 - The app keeps a fresh copy of the next three months of events with no further admin effort.
-- Away dates are inferred from event titles the way the house already writes them, and the admin can see what was inferred.
+- Away dates are inferred from event titles the way the house already writes them, by a small Claude model rather than a formula, and the admin can see what was inferred and why.
 - Members see upcoming events in the feed and the hand-off ranking knows who is away.
 - Failures are visible on the admin dashboard, never silent.
 
@@ -25,16 +25,16 @@ Non-goals
 
 ## 3. Approach in one paragraph
 
-Google Calendar exposes a per-calendar "Secret address in iCal format" (Settings → Integrate calendar). It is a plain HTTPS URL that returns the whole calendar as an `.ics` file with no login. The admin pastes it into group settings; the API fetches and parses it once to confirm it works, stores it, and an hourly Solid Queue job re-fetches it, expands recurring events over a rolling window, and upserts the result into a `calendar_events` table. Members read those rows through the schedule endpoint from BLO-1666. Google caches these feeds, so events appear within one to two hours of being added; that is acceptable for house events and is stated in the settings UI. The Calendar API path was rejected: it needs a Google Cloud project, a service account key on the server, and the calendar shared with a robot account, for a freshness gain nobody asked for.
+Google Calendar exposes a per-calendar "Secret address in iCal format" (Settings → Integrate calendar). It is a plain HTTPS URL that returns the whole calendar as an `.ics` file with no login. The admin pastes it into group settings; the API fetches and parses it once to confirm it works, stores it, and an hourly Solid Queue job re-fetches it, expands recurring events over a rolling window, asks Claude Haiku 4.5 which titles mean a housemate is away, and upserts the result into a `calendar_events` table. Members read those rows through the schedule endpoint from BLO-1666. Google caches these feeds, so events appear within one to two hours of being added; that is acceptable for house events and is stated in the settings UI. The Calendar API path was rejected: it needs a Google Cloud project, a service account key on the server, and the calendar shared with a robot account, for a freshness gain nobody asked for.
 
 ## 4. Admin connection flow
 
 Where: a new "House calendar" section in the existing group-settings card on the admin dashboard (`apps/web/src/app/(admin)/dashboard/_components/group-settings.tsx`, anchor `#group-settings`).
 
 States
-1. Not connected: one field "Calendar link" with help text: "In Google Calendar open Settings, pick the house calendar, and copy the Secret address in iCal format. Anyone with this link can read the calendar, so it is stored like a password." Button "Connect".
-2. Connecting (on submit): the API fetches and parses the calendar in the same request (timeouts below), runs the first sync inline, and returns a summary. Typical time: under three seconds.
-3. Connected: "Connected to {calendar name} · {n} events in the next 90 days · last checked {relative time}". The link is shown masked (host plus the last four characters of the secret). Buttons: "Sync now" and "Disconnect". A small "What we found" disclosure lists the next 30 days of events with an Away or Event badge and the housemates each away event was matched to, so a misclassified title can be spotted and renamed in Google Calendar.
+1. Not connected: one field "Calendar link" with help text: "In Google Calendar open Settings, pick the house calendar, and copy the Secret address in iCal format. Anyone with this link can read the calendar, so it is stored like a password. Event titles are sent to Anthropic's Claude to tell trips from other events." Button "Connect".
+2. Connecting (on submit): the API fetches and parses the calendar in the same request (timeouts below), runs the first sync inline (including the first Claude classification, section 7), and returns a summary. Typical time: five to fifteen seconds for a busy calendar, so the button reads "Connecting" until it returns (open question 7 covers doing this in the background instead).
+3. Connected: "Connected to {calendar name} · {n} events in the next 90 days · last checked {relative time}". The link is shown masked (host plus the last four characters of the secret). Buttons: "Sync now" and "Disconnect". A small "What we found" disclosure lists the next 30 days of events with an Away or Event badge, the housemates each away event was matched to, and the model's one-line reason as muted text, so a misclassified title can be spotted and renamed in Google Calendar. While any events are still pending a verdict (section 7.4) the card adds "{n} events not sorted yet. We'll try again within the hour."
 4. Failing: the same card shows the last error in plain words ("Google says this link no longer works. Paste a new secret address." or "Couldn't reach the calendar for the last 6 hours."). The dashboard warning list gains an entry (section 8).
 
 Validation on connect (HTTP 422 with a field error, no connection stored):
@@ -45,7 +45,7 @@ Validation on connect (HTTP 422 with a field error, no connection stored):
 Disconnect deletes the connection and every stored event. Re-connecting is a fresh start.
 
 API (admin, JWT-authenticated, inherits `Api::BaseController` and its tenancy scoping):
-- `GET /api/group` gains `calendar: null | { calendar_name, masked_url, events_count, last_synced_at, last_error, failing: boolean }` in `GroupSerializer`.
+- `GET /api/group` gains `calendar: null | { calendar_name, masked_url, events_count, unclassified_count, last_synced_at, last_error, failing: boolean }` in `GroupSerializer`.
 - `PUT /api/group/calendar` body `{ ical_url }`: validate, fetch, parse, upsert connection, first sync, respond with the `calendar` summary plus `events_preview` (next 30 days) for the disclosure.
 - `POST /api/group/calendar/sync`: run a sync now, respond with the summary. Throttled by rack-attack to 5 per minute per group.
 - `DELETE /api/group/calendar`: disconnect.
@@ -61,8 +61,8 @@ Two tables, not columns on `groups`. Sync bookkeeping is five or six columns tha
 - `has_many :calendar_events, dependent: :delete_all`. `Group has_one :calendar_connection, dependent: :destroy`.
 
 `calendar_events`
-- `calendar_connection_id` (FK), `uid` (string), `instance_key` (string; `"#{uid}##{occurrence start in ISO 8601}"`, unique per connection), `summary` (string, the title, truncated to 200 characters), `starts_on` and `ends_on` (dates, inclusive, in the group's calendar), `starts_at` and `ends_at` (datetimes, null for all-day events), `all_day` (boolean), `kind` (string: `event` or `away`), `synced_at` (datetime), timestamps.
-- Indexes: unique on `[calendar_connection_id, instance_key]`; `[calendar_connection_id, starts_on]`.
+- `calendar_connection_id` (FK), `uid` (string), `instance_key` (string; `"#{uid}##{occurrence start in ISO 8601}"`, unique per connection), `summary` (string, the title, truncated to 200 characters), `starts_on` and `ends_on` (dates, inclusive, in the group's calendar), `starts_at` and `ends_at` (datetimes, null for all-day events), `all_day` (boolean), `kind` (string: `event` or `away`), `fingerprint` (string, section 7.3), `reason` (string, nullable, the model's one-line explanation), `classified_at` (datetime, null while a verdict is pending), `synced_at` (datetime), timestamps.
+- Indexes: unique on `[calendar_connection_id, instance_key]`; `[calendar_connection_id, starts_on]`; `[calendar_connection_id, fingerprint]`.
 
 `calendar_event_members` (join table for away matches): `calendar_event_id`, `member_id`, unique pair; both FKs cascade. A join table rather than an integer array so that removing a member cleans up and the query "who is away on this date" is a plain join.
 
@@ -89,41 +89,78 @@ The secret URL. The app has no Active Record encryption configured and stores me
 `CalendarSync`
 1. Fetch. On 304, done.
 2. Parse into occurrence structs. A body that is not a calendar raises `CalendarParser::NotACalendar`.
-3. Classify each occurrence (section 7) against the group's active members.
+3. Fingerprint each occurrence, reuse stored verdicts, and send the rest to Claude in one batched call (section 7). A failed call leaves those occurrences pending; it never fails the sync.
 4. In one transaction: `upsert_all` the rows keyed on `instance_key` with `synced_at = now`; replace the join rows for away events; delete this connection's events with `synced_at < now` (instances no longer in the feed, cancelled, or now outside the window). Update `events_count`, `last_synced_at`, `etag`, `last_modified`, reset `consecutive_failures` and `last_error`.
 5. On any failure: increment `consecutive_failures`, set `last_error` to a short human sentence keyed on the exception class, keep the existing rows (stale beats empty). `Gone` sets `disabled_at` after three consecutive failures (the link was reset; retrying hourly forever is pointless). Any failure sets `disabled_at` after 48 consecutive failures (two days). A disabled connection is skipped by the job until the admin presses "Sync now" or saves a new link, both of which clear `disabled_at`.
 
 ## 7. Away inference
 
-The house already writes away dates as calendar titles; the rule formalises that habit rather than asking for a new one.
+The house already writes away dates as calendar titles ("Alfie away in Carlisle", "Ciara – France", "Bass and Eliza France"). Rather than encode that habit as a formula (name prefix, exclusion words, whole-word matching), each title is read by a small Claude model that is told who lives in the house and what "away" means, and returns a verdict. Decided by Bass on 2026-09-13, replacing the rule-based classifier: a formula is brittle against the next title nobody anticipated ("Raph off to Lisbon", "Ciara home for the weekend", "Alfie back Thursday"), and the model handles those without a code change.
 
-Normalise the title: lowercase, strip anything in brackets or parentheses, strip emoji and punctuation except `-`, `–`, `&`, `+`, `,`, `'`, collapse whitespace.
+### 7.1 Model and call shape
 
-An occurrence is `away` when all three hold:
-1. The title begins with one or more housemate names: the first word of each active member's name, or the full name, in any of the forms `Alfie`, `Bass and Eliza`, `Bass & Eliza`, `Bass, Eliza`. Matching is on whole words. A name followed by `'s` is possessive and never matches (so "Alfie's birthday" is an event, not Alfie away). If two housemates share a first name, only the full name matches.
-2. The occurrence is all-day, or spans at least one midnight in the group's zone. A timed slot on one day ("Raphael – Tummo retreat w Nico, 17:30–18:30") is an event, not an absence.
-3. The remainder of the title contains none of the exclusion words: `bin`, `bins`, `birthday`, `bday`, `b-day`, `dinner`, `party`, `meeting`, `clean`, `cleaning`, `rota`, `shift`, `pay`, `rent`.
-Additionally, a title that begins with the word `away` followed by housemate names is always `away` (an explicit marker for anyone who wants one).
+- Model: Claude Haiku 4.5, `claude-haiku-4-5`, through the official `anthropic` Ruby gem. No extended thinking; this is a short classification. Sonnet 5 (`claude-sonnet-5`) is the step up if Haiku proves unreliable on real titles (open question 2).
+- One request per sync for everything that needs a verdict, chunked at 50 events per request. `max_tokens` 4096 per chunk.
+- Structured output (`output_config.format` with a JSON schema, which Haiku 4.5 supports) so the reply is always valid JSON in a fixed shape; no free-text parsing.
+- System prompt (stable across calls, so it stays byte-identical): the app's purpose, the definition of away, the guidance below, and the roster of active housemates as `id: name` pairs.
+- User message: a JSON array of the events to classify, each `{ ref, title, all_day, starts_on, ends_on, nights }` where `ref` is the fingerprint (7.3) and `nights` is `ends_on - starts_on`.
+- Reply schema: `{ verdicts: [{ ref, kind: "event" | "away", member_ids: [integer], reason: string }] }`. `reason` is one short clause the admin sees ("Alfie, three nights in Carlisle"; "a birthday, not a trip"), capped at 120 characters on our side.
+- Client: `timeout` 20 seconds, SDK default retries (2) on 429 and 5xx. `ANTHROPIC_API_KEY` from the environment, required in production (the API refuses to boot without it, the same way it refuses to boot without Twilio credentials), optional in development and test.
 
-The matched members are attached through `calendar_event_members`. Everything else is `event`.
+Guidance given to the model, in plain words rather than a rule list. An event is `away` when a housemate is not sleeping at the house for at least one night: the title names one or more housemates (by first name or full name; a possessive like "Alfie's" is about them, not by them), and the event is all-day or spans a night. Everything else is `event`: chores and bins, birthdays and parties, dinners and meetings, a timed slot on one day even if it names a housemate, and anything about people who are not on the roster. When unsure, prefer `event`; a missed trip costs less than a housemate wrongly shown as away. Only return member ids from the roster.
 
-Worked examples from the house's own calendar (housemates Bass, Eliza, Raph, Ciara, Alfie, Mic):
+### 7.2 Validation of the reply
 
-| Title | Result |
+The reply is data, not trusted output. Each verdict is accepted only when its `ref` is one we sent, `kind` is one of the two values, and every `member_ids` entry is on the roster. An `away` verdict with no members becomes `event`. A ref with no valid verdict is left pending (7.4). Nothing in the reply is executed or interpolated anywhere except the `reason` string, which is stored truncated and rendered as text.
+
+### 7.3 Verdicts are cached per fingerprint
+
+A verdict depends only on the title, whether the event is all-day, whether it spans a night, and who is on the roster. So each occurrence gets a `fingerprint`: SHA-256 of the normalised title (lowercased, whitespace collapsed), `all_day`, `nights > 0`, and the sorted active roster (`id:name`). Before calling Claude, the sync looks for an existing event row of this connection with the same fingerprint and a verdict, and reuses it, members included. Only fingerprints with no stored verdict go to the model, de-duplicated.
+
+What this buys:
+- Recurring events (weekly bins, monthly house meeting) are classified once, not once per instance.
+- An hourly sync with nothing new makes no API call at all (and a 304 from Google skips even the parse).
+- The same title always gets the same verdict, so a member's feed never flips between "away" and "event" from one sync to the next because a sampled reply differed.
+- Renaming an event in Google Calendar, or renaming a member in the app, changes the fingerprint and triggers a fresh verdict within the hour. That is still how a wrong verdict is corrected (open question 3 is unchanged: no per-event override in the app).
+
+`calendar_events` therefore carries `fingerprint` (string, indexed with the connection), `reason` (string, nullable), and `classified_at` (datetime, null while pending).
+
+### 7.4 When the model call fails
+
+A failed or partial Claude call never fails the sync. The events are stored anyway with `kind: "event"`, empty members, and `classified_at: null`; the failure is logged with the exception class and status (never the titles) and reported through `Rails.error.report`. The next sync retries every pending fingerprint. The admin settings card shows "{n} events not sorted yet. We'll try again within the hour." while any are pending, and the serializer exposes `unclassified_count` for it. A missing key outside production behaves the same way, with one log line at boot.
+
+### 7.5 Worked examples
+
+The same titles as before, from the house's own calendar (housemates Bass, Eliza, Raph, Ciara, Alfie, Mic). These are the expected verdicts and double as the eval set (section 12); they are not unit-test assertions against the live model.
+
+| Title | Expected |
 |---|---|
 | Alfie away in Carlisle (Filming), 16–19 Sep all-day | away: Alfie |
 | Ciara – France, 17–19 Sep all-day | away: Ciara |
 | Bass and Eliza France, multi-day | away: Bass, Eliza |
 | Mic Ireland with fam, multi-day | away: Mic |
 | Alfie in Greece (Song Leader Retreat), 25 Sep–1 Oct | away: Alfie |
-| Raph Bins Out, all-day | event (exclusion word "bins") |
-| Alfie Bday, all-day | event (exclusion word "bday") |
-| Naomi's birthday | event (not a housemate, and possessive) |
+| Raph off to Lisbon, multi-day | away: Raph (no formula would have caught "off to") |
+| Raph Bins Out, all-day | event (a chore) |
+| Alfie Bday, all-day | event (a birthday) |
+| Naomi's birthday | event (not a housemate) |
 | Ester in London [ES4C], multi-day | event (Ester is not a housemate) |
 | House dinner @ home, 19:00 | event |
-| Raphael – Tummo retreat w Nico, 17:30–18:30 | event (timed, single day); note "Raphael" also fails to match "Raph" as a whole word |
+| Raphael – Tummo retreat w Nico, 17:30–18:30 | event (timed, single day) |
 
-The admin sees the outcome in the "What we found" disclosure (section 4). Classification is recomputed on every sync, so renaming a title in Google Calendar, or renaming a member in the app, corrects it within the hour.
+The admin sees the verdict and the reason in the "What we found" disclosure (section 4).
+
+### 7.6 Cost
+
+Haiku 4.5 is $1 per million input tokens and $5 per million output tokens. A busy house calendar is roughly:
+
+| Moment | Calls | Approx. tokens | Approx. cost |
+|---|---|---|---|
+| First connect, 60 occurrences, 35 unique titles | 1 | 2.5k in, 1.5k out | $0.01 |
+| Hourly sync, nothing new | 0 | 0 | $0 |
+| Hourly sync, one new title | 1 | 0.7k in, 0.05k out | $0.001 |
+
+Under a cent per house per month in steady state. The prompt is well under the minimum cacheable prefix for Haiku, so prompt caching is not used.
 
 ## 8. Surfacing failures
 
@@ -155,36 +192,41 @@ Not in this ticket. The week glance stays chores-only; the admin's calendar view
 ## 11. Gems and libraries
 
 - `icalendar` ~> 2.12 (parsing), `icalendar-recurrence` ~> 1.2 (expansion; brings `ice_cube`). Both pass bundler-audit today; the recurrence gem is lightly maintained, so the parser wraps it behind `CalendarParser` and the fixture suite is what protects against a future swap.
-- Net::HTTP, as the JWKS fetch already does. No Faraday: it is only present transitively through `twilio-ruby`.
-- WebMock (already in the test group) stubs the fetch in specs.
+- `anthropic` (the official Ruby SDK) for the classifier: `client.messages.create` with `output_config.format` for structured output. It is the only place the app talks to Anthropic; the client is built once in an initializer from `ANTHROPIC_API_KEY`.
+- Net::HTTP for the calendar fetch, as the JWKS fetch already does. No Faraday: it is only present transitively through `twilio-ruby`.
+- WebMock (already in the test group) stubs both the calendar fetch and `https://api.anthropic.com/v1/messages` in specs. No spec ever reaches the live model.
 
 ## 12. Testing
 
 - Fixtures in `spec/fixtures/ics/`: simple timed event; all-day single day; all-day multi-day (exclusive DTEND); weekly RRULE with EXDATE; RRULE with a RECURRENCE-ID override and a cancelled instance; floating time with `X-WR-TIMEZONE`; a Google export with `X-WR-CALNAME`; a non-calendar HTML body.
 - `CalendarParser` specs per fixture, asserting dates in a non-UTC group zone (Europe/London across the October clock change, and one Auckland case).
-- `AwayClassifier` specs for every row of the table in section 7 plus shared-first-name and possessive cases.
-- `CalendarSync` specs with WebMock: first sync, 304 no-op, changed feed (added, removed, retitled instance), `Gone` after reset, size cap, failure counting and disabling, member rename reclassification.
+- `CalendarClassifier` specs with WebMock: the request carries the model id, the JSON schema, the roster, and the titles (and nothing else from the feed); a valid reply becomes verdicts; a reply with an unknown ref, an off-roster member id, or an away verdict with no members is dropped or coerced (section 7.2); a 429, a 5xx, a timeout, and a missing key each raise `CalendarClassifier::Failed` without leaking titles into the message; chunking at 50.
+- Classifier eval, not a spec: `bin/classifier-eval` runs the section 7.5 table against the live model with the demo roster and prints a per-row pass or fail. Run by hand before PR 1 merges and whenever the prompt or model changes; expected 12 of 12. Not part of `bin/ci`.
+- `CalendarSync` specs with WebMock: first sync, 304 no-op, changed feed (added, removed, retitled instance), `Gone` after reset, size cap, failure counting and disabling; verdict reuse by fingerprint (a second sync with the same titles makes no Claude call); member rename changes fingerprints and triggers a fresh call; a failed Claude call stores the events pending and the sync still succeeds; the next sync retries only the pending fingerprints.
 - Request specs: connect happy path and each 422 message; masked URL and absent raw URL in every response; tenancy (one group cannot read or sync another's); throttle on sync; disconnect deletes events; schedule payload `events` shape and window.
 - Log redaction spec: a request carrying `ical_url` never writes the secret to the log (mirrors `token_privacy_spec`).
 - Web (Vitest): `collectDashboardWarnings` calendar case; `schedule-view` interleaving and away-today; `cover-ranking` Away group.
-- Manual: connect the real house calendar in development, read the "What we found" list against Google Calendar, then hand off a shift during a known trip.
+- Manual: connect the real house calendar in development, read the "What we found" list and reasons against Google Calendar, then hand off a shift during a known trip.
 
 ## 13. Privacy
 
-The calendar is already shared with the whole house, so showing its titles and dates to members widens nothing. The app stores only summary, dates, and the recurrence key; descriptions, locations, and attendees are not read. Members receive title, dates, kind, and matched member ids. Admins see the masked link and the classification. Disconnect removes every stored event.
+The calendar is already shared with the whole house, so showing its titles and dates to members widens nothing. The app stores only summary, dates, and the recurrence key; descriptions, locations, and attendees are not read. To classify, the event titles, their dates, and the housemates' names as entered in the app are sent to Anthropic's API and handled under Anthropic's commercial API data policy (not used to train models); the settings help text says so. Nothing else about the house leaves the server. Members receive title, dates, kind, and matched member ids. Admins see the masked link and the classification. Disconnect removes every stored event.
 
 ## 14. Rollout
 
 - Depends on BLO-1666 merging first (the schedule endpoint and the feed hooks).
 - Two PRs, both dark by default because nothing syncs until an admin pastes a link: PR 1 backend plus admin settings (migrations, models, fetch, parser, classifier, sync, job, endpoints, settings UI, dashboard warning); PR 2 member payload and feed integration. No feature flag exists in the app and none is added.
 - Migrations are additive. The recurring job entry ships with PR 1 and is a no-op until a connection exists.
-- Before merge of PR 1: connect the real calendar against a local API pointed at the seeded demo house and confirm the classification table.
+- `ANTHROPIC_API_KEY` must be set on Railway before PR 1 deploys; the API refuses to boot in production without it. Use a key from a dedicated Anthropic workspace so the spend shows up on its own line.
+- Before merge of PR 1: run `bin/classifier-eval` against the live model, then connect the real calendar against a local API pointed at the seeded demo house and read the verdicts and reasons.
 
 ## 15. Open questions for Bass (with the default this spec assumes)
 
 1. Encrypt the stored link? Default: no, plaintext with masking and log redaction, consistent with member tokens. Turning on Active Record encryption is a separate hardening ticket that adds three Railway env vars and would cover member tokens too.
-2. Away rule: name prefix plus all-day or overnight plus exclusion words (default), or a separate "Away" calendar whose every event counts as away? The default fits how the house already writes titles; a second calendar is the fallback if the rule proves noisy.
-3. Per-event override in the app when the rule gets a title wrong? Default: no; rename the event in Google Calendar, which the hourly sync picks up.
+2. Model: Haiku 4.5 (default) or Sonnet 5? Haiku is about a fifth of the price and should be plenty for one-line titles; the eval in section 12 is the evidence either way, and switching is one constant.
+3. Per-event override in the app when the model gets a title wrong? Default: no; rename the event in Google Calendar, which changes the fingerprint and gets a fresh verdict within the hour.
 4. Away housemates in the hand-off sheet: deprioritised but selectable (default), or hidden?
 5. Sync cadence: hourly (default). Google caches the feed for one to two hours, so more often buys nothing.
 6. Show timed events with their start time in the member feed: yes (default), in the group's zone.
+7. Classify inline on connect (default, five to fifteen seconds behind a "Connecting" button) or store the events unsorted, return immediately, and let a job classify them within a minute while the card shows "Sorting events"? Inline is less code; background is the nicer form submit.
+8. Show the model's one-line reason next to each verdict in "What we found": yes (default). It costs a few output tokens per title and is the fastest way to see why a title was read the way it was.
