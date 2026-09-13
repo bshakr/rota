@@ -74,8 +74,15 @@ Rails.application.routes.draw do
     # across every tenant is the whole point of this namespace, and the allowlist, not a scope, is
     # what stands in front of it. The nested log is the house's own delivery log with the magic
     # link redacted out of every body.
-    resources :groups, only: %i[index show] do
+    resources :groups, only: %i[index show update] do
       resources :sms_messages, only: :index
+
+      # Suspend and resume (BLO-1675). A singular resource rather than two member actions on the
+      # group, and its own controller, because "is this house paused" is one piece of state with one
+      # way in and one way out: POST sets it, DELETE clears it, and both are idempotent. Keeping it
+      # off SuperAdmin::GroupsController also keeps the controller that reads every house in the
+      # database separate from the one that writes to them.
+      resource :suspension, only: %i[create destroy], path: "suspend", controller: "suspensions"
     end
 
     # ?range=30d|90d|12m, and optional — a bare GET answers for the last 30 days, which is also what

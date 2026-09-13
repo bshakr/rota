@@ -55,7 +55,42 @@ module SuperAdmin
       }
     end
 
+    # Rename, set the timezone, and the operator's private note about the house (BLO-1675).
+    #
+    # The timezone carries exactly the semantics the house's own PATCH gives it (Api::GroupController):
+    # sending a `timezone` at all stamps `timezone_confirmed_at`, because the presence of the param is
+    # a human saying "I checked" — and a super admin setting it counts as a human confirming it. That
+    # is most of the point of the action: the commonest reason to reach for it is a house being texted
+    # on a UTC guess nobody ever corrected. The audit of *who* confirmed it is the Rails log line
+    # below, naming the operator's WorkOS `sub`; there is no row to point a foreign key at, because a
+    # super admin is an environment variable.
+    def update
+      # Unscoped on purpose; see #show for why, and SuperAdminAuthenticatable for the allowlist check
+      # that has already run by the time this line does.
+      group = Group.find(params[:id])
+
+      group.assign_attributes(group_params)
+      group.timezone_confirmed_at = Time.current if group_params.key?(:timezone)
+      # Bang, so a name the model rejects renders ApiErrorRendering's `validation_failed` with the
+      # offending fields rather than a silent 200 over an unsaved record.
+      group.save!
+
+      logger.info("Super admin #{Current.super_admin_workos_user_id} updated group #{group.id} " \
+                  "(#{group.slug}): #{group_params.keys.sort.join(', ')}")
+
+      render json: { group: GroupSerializer.solo(group, now: now) }
+    end
+
     private
+
+    # `notes` is operator-only and appears in no house-facing serializer — the two are separate
+    # classes precisely so that cannot drift. A cleared box is no note rather than an empty one, so
+    # the column goes back to NULL and "has this house got a note" stays one question and not two.
+    def group_params
+      permitted = params.permit(:name, :timezone, :notes)
+      permitted[:notes] = permitted[:notes].presence if permitted.key?(:notes)
+      permitted
+    end
 
     # The whole list is evaluated in one instant, so a house does not read as Live in its pill and
     # Quiet to the filter beside it because the clock moved between the two.

@@ -102,6 +102,92 @@ RSpec.describe Group do
     end
   end
 
+  # BLO-1675. The flag itself; what reading it does to the rest of the app is
+  # spec/requests/suspended_house_spec.rb and the three recurring job specs.
+  describe "suspension" do
+    let(:group) { create(:group) }
+
+    it "is live until somebody suspends it" do
+      expect(group.suspended?).to be(false)
+      expect(described_class.live).to include(group)
+    end
+
+    it "drops out of `live` once suspended, and comes back on resume" do
+      group.suspend!
+
+      expect(group.suspended?).to be(true)
+      expect(described_class.live).not_to include(group)
+
+      group.resume!
+
+      expect(group.reload.suspended_at).to be_nil
+      expect(described_class.live).to include(group)
+    end
+
+    # A second POST is a retry, a double-click or a second operator on the same button. Moving
+    # "paused since" would rewrite the one fact anyone asks about a paused house.
+    it "does not move the moment it was paused when suspended twice" do
+      paused_at = travel_to(3.days.ago) { group.suspend!; group.reload.suspended_at }
+
+      expect { group.suspend! }.not_to change { group.reload.suspended_at }
+      expect(group.reload.suspended_at).to be_within(1.second).of(paused_at)
+    end
+
+    it "answers whether it actually changed anything" do
+      expect(group.suspend!).to be(true)
+      expect(group.suspend!).to be(false)
+      expect(group.resume!).to be(true)
+      expect(group.resume!).to be(false)
+    end
+
+    # The audit trail for an operator action is a log line naming their verified WorkOS `sub`.
+    # There is no row for a super admin — the allowlist is an environment variable — so this line
+    # is the whole of it, and a suspension that did not say who did it would not be an audit.
+    describe "the line it writes to the log" do
+      # A `before`, not an `around`: the suite resets Current in a global before hook (see
+      # spec/support/workos_auth.rb), which an around hook would run before and be undone by.
+      before { Current.super_admin_workos_user_id = "user_01OPERATOR" }
+
+      it "names the operator, the house and what was done" do
+        allow(Rails.logger).to receive(:info)
+
+        group.suspend!
+
+        expect(Rails.logger).to have_received(:info)
+          .with(/user_01OPERATOR suspended: group #{group.id} \(#{group.slug}\)/)
+      end
+
+      it "names the operator on resume too" do
+        group.suspend!
+        allow(Rails.logger).to receive(:info)
+
+        group.resume!
+
+        expect(Rails.logger).to have_received(:info).with(/user_01OPERATOR resumed: group #{group.id}/)
+      end
+
+      # The no-op is written down as well. "Suspend this house" was asked for either way, and an
+      # operator who clicked twice should find both requests in the log rather than one of them
+      # silently missing.
+      it "records a request that changed nothing, and says so" do
+        group.suspend!
+        allow(Rails.logger).to receive(:info)
+
+        group.suspend!
+
+        expect(Rails.logger).to have_received(:info).with(/re-suspended a house that was already paused/)
+      end
+    end
+
+    it "says so plainly when nothing named the operator" do
+      allow(Rails.logger).to receive(:info)
+
+      group.suspend!
+
+      expect(Rails.logger).to have_received(:info).with(/an unidentified caller suspended/)
+    end
+  end
+
   describe "destroying" do
     # Members cannot be destroyed while a shift still names them, so the group has to clear its
     # rotas — and therefore their shifts — before it can clear its members. That ordering is

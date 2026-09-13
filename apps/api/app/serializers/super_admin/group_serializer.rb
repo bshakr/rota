@@ -18,6 +18,14 @@ module SuperAdmin
       group && new(group, stats: stats.for(group), now: now).as_json
     end
 
+    # One house counted for itself, for the endpoints that act on a single group and have no page of
+    # them to share a GroupStats with: PATCH, suspend and resume. It exists so those three answer the
+    # same shape the list and the detail answer, and the web merges one row into what it is already
+    # showing rather than learning a second shape per action.
+    def self.solo(group, now: Time.current)
+      one(group, stats: GroupStats.new([ group ], now: now), now: now)
+    end
+
     def initialize(record, stats:, now: Time.current)
       super(record)
       @stats = stats
@@ -36,6 +44,13 @@ module SuperAdmin
         timezone_confirmed: record.timezone_confirmed?,
         timezone_confirmed_at: record.timezone_confirmed_at,
         created_at: record.created_at,
+        # NULL means live. The moment rather than a boolean, because "paused since when" is the
+        # first thing asked about a paused house, and the status pill below already carries the
+        # boolean answer.
+        suspended_at: record.suspended_at,
+        # Operator-only, and structurally so: this is the only serializer in the app that says the
+        # word. spec/requests/api/house_payloads_spec.rb holds the house side of that line.
+        notes: record.notes,
         status: GroupStatus.of(record, stats, now: now),
         admins_count: stats.admins,
         active_members_count: stats.active_members,

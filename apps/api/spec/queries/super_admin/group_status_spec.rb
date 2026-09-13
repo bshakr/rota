@@ -48,32 +48,23 @@ RSpec.describe SuperAdmin::GroupStatus do
     end
   end
 
-  # BLO-1675 (https://linear.app/bloombase/issue/BLO-1675) adds `groups.suspended_at` and the
-  # actions that set it. There is no such column yet, so no real Group can answer this — the stand-in
-  # is a group that has the attribute, which is exactly what that migration will make every Group.
-  # When it lands, delete this double and suspend a real one; the rule itself needs no edit.
-  describe "the seam for suspension" do
-    let(:suspendable) do
-      Class.new(Group) do
-        def self.name = "SuspendableGroup"
-        attr_accessor :suspended_at
-      end
-    end
-
-    it "beats every other state once the column exists" do
-      group = suspendable.new(suspended_at: 1.day.ago)
+  describe "suspension" do
+    it "beats every other state, because it is the one somebody chose" do
+      group = build(:group, suspended_at: 1.day.ago)
 
       expect(described_class.of(group, stats(running_rotas: 0, last_activity_at: nil))).to eq("suspended")
     end
 
-    it "leaves a group that is not suspended alone" do
-      expect(described_class.of(suspendable.new(suspended_at: nil), stats)).to eq("live")
+    it "leaves a house that is not suspended alone" do
+      expect(described_class.of(build(:group, suspended_at: nil), stats)).to eq("live")
     end
 
-    # Today, with no column, nothing can be suspended — so the list never shows a pill nobody can
-    # have earned.
-    it "cannot be reached by any real group yet" do
-      expect(Group.new).not_to respond_to(:suspended_at)
+    # A paused house that has also gone silent is not Quiet. It is quiet BECAUSE it was paused, and
+    # an operator scanning the list for houses to chase should not find their own decision in there.
+    it "beats quiet for a house that went silent after it was paused" do
+      group = build(:group, created_at: 1.year.ago, suspended_at: 40.days.ago)
+
+      expect(described_class.of(group, stats(last_activity_at: 40.days.ago))).to eq("suspended")
     end
   end
 end

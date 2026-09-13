@@ -56,6 +56,67 @@ RSpec.describe ReminderSweepJob do
     end
   end
 
+  # A house an operator has paused (BLO-1675). The skip is INSIDE the loop, not around it, so the
+  # JobRun wrapper still writes a row — "the sweep ran and there was nothing to do" and "the sweep
+  # stopped running" are the two things the operator's system health tile exists to tell apart.
+  describe "a suspended house" do
+    let!(:rota) { create(:rota, group: group, send_hour: 9, reminder_offsets: [ 0 ]) }
+    let!(:shift) { create(:shift, rota: rota, due_on: Date.new(2026, 7, 15)) }
+
+    before { group.update!(suspended_at: 1.day.ago) }
+
+    it "is not texted, and not even claimed" do
+      travel_to(Time.utc(2026, 7, 15, 8, 0)) do
+        expect { described_class.perform_now }.not_to have_enqueued_job(SendSmsJob)
+      end
+
+      expect(reminder_for(shift, 0)).to be_nil
+    end
+
+    it "does not stop the sweep from running, or from writing down that it ran" do
+      live = create(:rota, group: create(:group, timezone: "Europe/London"), send_hour: 9, reminder_offsets: [ 0 ])
+      live_shift = create(:shift, rota: live, due_on: Date.new(2026, 7, 15))
+
+      travel_to(Time.utc(2026, 7, 15, 8, 0)) { described_class.perform_now }
+
+      expect(reminder_for(live_shift, 0)).to be_present
+      expect(JobRun.sole).to have_attributes(name: "reminder_sweep", succeeded: true)
+    end
+
+    # The reason suspension is safe to reach for: because no reminder was ever CLAIMED while the
+    # house was paused, resuming cannot fire a backlog. ReminderSweep's 24-hour staleness guard
+    # buries every send moment that passed in the meantime, exactly as it does after an outage — so
+    # a house paused for a couple of days does not text everybody about two days of chores the
+    # moment it comes back.
+    #
+    # A MULTI-DAY offset on purpose. A day-of reminder is retired at the group's midnight by the
+    # candidate window rather than by staleness, so it would pass this test for the wrong reason;
+    # offset 2 leaves the shift squarely inside the window on the day of the resume, which makes the
+    # 24-hour guard the only thing standing between it and a text.
+    it "fires no backlog when it is resumed two days later" do
+      advance = create(:rota, group: group, send_hour: 9, reminder_offsets: [ 2 ])
+      # Its "2 days to go" moment is 09:00 BST on 16 July — while the house is paused.
+      missed = create(:shift, rota: advance, due_on: Date.new(2026, 7, 18))
+      # And this one's is 09:00 BST on 18 July: the very moment the house comes back.
+      due_now = create(:shift, rota: advance, due_on: Date.new(2026, 7, 20))
+
+      travel_to(Time.utc(2026, 7, 16, 8, 0)) { described_class.perform_now }
+      expect(reminder_for(missed, 2)).to be_nil
+
+      travel_to(Time.utc(2026, 7, 18, 8, 0)) do
+        group.update!(suspended_at: nil)
+        described_class.perform_now
+      end
+
+      # Still inside the candidate window — the shift has not even come due yet — so staleness, and
+      # nothing else, is what keeps its 48-hour-overdue reminder buried.
+      expect(missed.due_on).to be >= Date.new(2026, 7, 18)
+      expect(reminder_for(missed, 2)).to be_nil
+      # Not a backlog: its moment is now, and the house is live again.
+      expect(reminder_for(due_now, 2)).to be_present
+    end
+  end
+
   # Every group's rota runs in one loop, so a single rota that raises must not starve the houses after
   # it — the same isolation TopUpShiftWindowsJob has, for the same reason.
   describe "when one rota's sweep blows up" do

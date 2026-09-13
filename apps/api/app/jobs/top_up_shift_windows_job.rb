@@ -17,8 +17,15 @@ class TopUpShiftWindowsJob < ApplicationJob
 
   private
 
+  # Inside the loop, not around it, for the same reason the reminder sweep puts it there: the
+  # JobRun wrapper in `perform` still has to write a row on a pass that generated nothing.
+  #
+  # `Group.live` leaves a paused house's shift window where it is (BLO-1675). Nothing is deleted and
+  # the existing shifts stay exactly as they were; the window simply stops being topped up, and the
+  # next daily run after a resume fills it back to ninety days in one pass, because this job asks
+  # only whether the window is full now.
   def top_up_every_active_rota
-    Rota.active.includes(:group).find_each do |rota|
+    Rota.active.joins(:group).merge(Group.live).includes(:group).find_each do |rota|
       ShiftGenerator.new(rota).call
     rescue StandardError => e
       # Every group's rota is generated in this one loop, so a single rota that raises must not be

@@ -15,6 +15,12 @@ module Api
 
     include MemberAuthenticatable
 
+    # After authentication, because until the token has resolved to a member there is no house to ask
+    # (BLO-1675). A housemate's link goes on working while an operator has the house paused — the
+    # link is not what was suspended — but there is nothing behind it to show, so the page gets a
+    # quiet notice instead of a rota.
+    before_action :answer_paused_house
+
     # A shift id that does not belong to this member's group is indistinguishable, to them, from an id
     # that never existed: 404, never 403, so the member path leaks nothing about other houses' shifts.
     rescue_from ActiveRecord::RecordNotFound do
@@ -22,6 +28,23 @@ module Api
     end
 
     private
+
+    def answer_paused_house
+      return unless current_member&.group&.suspended?
+
+      render_paused_house
+    end
+
+    # 200 and `{ paused: true }`, not an error. A housemate did nothing wrong and has no way to act
+    # on it, so the member path says what is true in the quietest shape that can be rendered as a
+    # notice: the key is absent unless the house is paused, and the house's name rides along because
+    # a page that cannot name the house it is telling you about reads like a broken link.
+    #
+    # Api::MemberCoversController overrides this. A cover is a WRITE, and a write that is refused has
+    # to be refused in a way the page can tell apart from one that succeeded.
+    def render_paused_house
+      render json: { paused: true, house: { name: current_member.group.name } }
+    end
 
     # The one JSON shape for a shift, shared by the list and by the cover actions so a shift reads the
     # same everywhere. `today` is passed in so a list of shifts resolves the group's "today" once

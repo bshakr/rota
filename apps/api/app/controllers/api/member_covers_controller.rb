@@ -41,6 +41,17 @@ module Api
 
     private
 
+    # The house is paused (BLO-1675). Its sibling read endpoints answer 200 with `{ paused: true }`,
+    # because there is simply nothing to show; this one is a WRITE, and a refused write has to be
+    # distinguishable from one that went through. So: 403, carrying the same `group_suspended` code
+    # the admin API uses, rather than a 200 the page could mistake for a hand-over that worked.
+    def render_paused_house
+      render json: {
+        error: "group_suspended",
+        message: "This house is paused, so shifts can't be handed over right now."
+      }, status: :forbidden
+    end
+
     # Everyone whose turn actually changed, minus the caller, who acted from the page and already sees
     # the result. Comparing responsibility before and after covers every case in one line: on assign
     # the new cover; on cancel the person who was covering; on a re-assignment the newcomer. Run INSIDE

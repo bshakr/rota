@@ -8,6 +8,11 @@ module Authenticatable
 
   included do
     before_action :authenticate!
+
+    # Runs after provisioning, because until the token has been turned into a group there is no
+    # house to ask whether it is paused. A controller that legitimately answers a paused house —
+    # today only Api::MeController — opts out with `skip_before_action :refuse_suspended_group`.
+    before_action :refuse_suspended_group
   end
 
   private
@@ -38,6 +43,22 @@ module Authenticatable
     # that logs every admin out of the app; 503 says what is true, and Next.js can retry.
     logger.error("WorkOS key set unavailable: #{e.message}")
     render json: { error: "service_unavailable" }, status: :service_unavailable
+  end
+
+  # The house's own admin API, while an operator has the house paused (BLO-1675).
+  #
+  # 403 and not 404, which is the opposite of the rule everywhere else on this API — and deliberately
+  # so. TenantScoped answers 404 because the caller is not entitled to know the record exists; here
+  # they are its admin, the house is theirs, and "this is paused" is the true and useful answer. The
+  # code is what the web app switches on to render the paused screen rather than a toast.
+  #
+  # The provisioning above has already run, which is intended: a paused house still keeps its admin
+  # rows in step with WorkOS, so resuming it does not leave a stale role behind. Nothing else about
+  # the request proceeds.
+  def refuse_suspended_group
+    return unless Current.group&.suspended?
+
+    render json: { error: "group_suspended" }, status: :forbidden
   end
 
   # Only the header. Never a query param — Rails' filter_parameters redacts params in logs but a
