@@ -41,10 +41,52 @@ RSpec.describe SuperAdmin::BaseController, type: :controller do
 
   it "refuses a caller who is not allowlisted before the action runs" do
     authenticate_as(sub: "user_01ALICE")
+    request.headers["Accept"] = "application/json"
 
     get :index
 
     expect(response).to have_http_status(:not_found)
-    expect(response.parsed_body).to eq("error" => "not_found")
+
+    # Rails' own unrouted-path body, not ours, and nothing from the action: the refusal has to be
+    # indistinguishable from a route that does not exist. The end-to-end comparison against a real
+    # unrouted path is in spec/requests/super_admin/authorization_spec.rb.
+    expect(response.parsed_body).to eq("status" => 404, "error" => "Not Found")
+  end
+end
+
+# The converse, and the reason Current carries two separate slots. An ordinary house admin request
+# must leave the operator slot empty, so nothing downstream — an audit line, a later ticket's
+# "who did this" — can mistake an admin of one house for the operator of all of them.
+#
+# Exercised through Api::BaseController, which is what /api/me and every other house endpoint
+# inherits: Rails resets Current at the end of a request, so the only honest place to look at it is
+# from inside the action.
+RSpec.describe Api::BaseController, type: :controller do
+  controller do
+    def index
+      render json: { operator: Current.super_admin_workos_user_id, group: Current.group&.workos_organization_id }
+    end
+  end
+
+  before do
+    routes.draw { get "me" => "anonymous#index" }
+    request.headers["Authorization"] = "Bearer #{workos_token(sub: 'user_01ALICE', org_id: 'org_01FLAT')}"
+  end
+
+  it "leaves the operator slot empty on an ordinary house admin request" do
+    get :index
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body).to eq("operator" => nil, "group" => "org_01FLAT")
+  end
+
+  # Even when the caller IS the operator: this is the house front door, and coming through it makes
+  # you an admin of your own house and nothing more.
+  it "leaves it empty for an allowlisted operator too" do
+    allowlist_super_admins("user_01ALICE")
+
+    get :index
+
+    expect(response.parsed_body).to eq("operator" => nil, "group" => "org_01FLAT")
   end
 end

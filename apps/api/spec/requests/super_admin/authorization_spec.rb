@@ -11,17 +11,28 @@ require "rails_helper"
 # `/api/super_admin/groups` inherits this spec without editing it, and cannot add a route that
 # nobody checked the allowlist on.
 RSpec.describe "Super admin authorization" do
-  # Every route mounted under the namespace, as [ :get, "/api/super_admin/..." ].
+  # Every route mounted under the namespace, as [ :get, "/api/super_admin/..." ] pairs ready to
+  # request. A route that names no verb (`match via: :all`) answers all of them, so it is walked
+  # with all of them rather than being skipped or turned into `public_send(:"")`.
   def super_admin_routes
-    Rails.application.routes.routes.filter_map do |route|
+    Rails.application.routes.routes.flat_map do |route|
       path = route.path.spec.to_s.delete_suffix("(.:format)")
-      next unless path.start_with?("/api/super_admin")
+      next [] unless path.start_with?("/api/super_admin")
 
-      # Any dynamic segment becomes a placeholder. The gate runs before the action, so nothing
-      # here ever has to resolve to a row — which is what keeps this list honest for future
-      # routes that take an id.
-      [ route.verb.downcase.to_sym, path.gsub(/:[a-z_]+/, "0") ]
+      verbs = route.verb.presence ? [ route.verb.downcase.to_sym ] : every_http_verb
+      verbs.map { |verb| [ verb, walkable(path) ] }
     end
+  end
+
+  def every_http_verb
+    %i[get post put patch delete]
+  end
+
+  # Dynamic segments become a placeholder: `:id`, and a `*glob` the same way. The gate runs before
+  # the action, so nothing here ever has to resolve to a row — which is what keeps this honest for
+  # the routes later tickets add.
+  def walkable(path)
+    path.gsub(/[:*][a-z_]+/, "0")
   end
 
   def walk_super_admin_routes(headers)
@@ -29,17 +40,25 @@ RSpec.describe "Super admin authorization" do
     expect(routes).to be_present
 
     routes.each do |verb, path|
+      route = "#{verb.upcase} #{path}"
+
+      # Named failures, because the ticket that trips these will be one that added a route, not
+      # one that touched this file.
+      raise "#{route}: this spec left a segment it could not fill in" if path.match?(/[:*]/)
+      raise "#{route}: no request helper for #{verb.inspect}" unless respond_to?(verb)
+
       public_send(verb, path, headers: headers)
-      yield "#{verb.upcase} #{path}"
+      yield route
     end
   end
 
-  # A real, valid, WorkOS-signed token from an admin of a real house — the credential that gets
-  # this caller everything on /api/*. Held in a let so every request in an example presents the
-  # same token, rather than minting a fresh one per call.
-  # The WorkOS user id this suite treats as the operator's. A let, not a constant: the allowlist
-  # is the only thing that makes an id special, and nothing about the id itself is.
+  # The WorkOS user id this suite treats as the operator's. A let, not a constant: the allowlist is
+  # the only thing that makes an id special, and nothing about the id itself is.
   let(:operator) { "user_01OPERATOR" }
+
+  # A real, valid, WorkOS-signed token from an admin of a real house — the credential that gets this
+  # caller everything on /api/*. Held in a let so every request in an example presents the same
+  # token, rather than minting a fresh one per call.
   let(:house_admin_headers) { workos_headers(sub: "user_01ALICE", org_id: "org_01FLAT", role: "admin") }
   let(:operator_headers) { workos_headers(sub: operator, org_id: "org_01FLAT", role: "admin") }
 
@@ -54,7 +73,6 @@ RSpec.describe "Super admin authorization" do
     it "is answered 404 on every super admin route" do
       walk_super_admin_routes(house_admin_headers) do |route|
         expect(response).to have_http_status(:not_found), "#{route} did not answer 404"
-        expect(response.parsed_body).to eq("error" => "not_found"), "#{route} did not answer not_found"
       end
     end
 
@@ -143,6 +161,53 @@ RSpec.describe "Super admin authorization" do
       get "/api/super_admin/overview"
 
       expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  # A 404 that does not look exactly like Rails' own would be the tell: answer the app's
+  # `{"error":"not_found"}` here and a house admin who probes the path learns that something is
+  # listening, even though they cannot use it. So the refusal is not our 404 at all — it is the one
+  # ActionDispatch::PublicExceptions serves for a path that does not route, which is what production
+  # returns (consider_all_requests_local is false there, and there is no public/404.html).
+  describe "the refusal, compared with a path that really does not exist" do
+    # Test boots with consider_all_requests_local on, so an unrouted path would raise in-process
+    # instead of being rendered. These two headers are what production has set, and they make the
+    # real middleware answer the way production answers.
+    around do |example|
+      env = Rails.application.env_config
+      original = env.values_at("action_dispatch.show_detailed_exceptions", "action_dispatch.show_exceptions")
+      env["action_dispatch.show_detailed_exceptions"] = false
+      env["action_dispatch.show_exceptions"] = :all
+      example.run
+      env["action_dispatch.show_detailed_exceptions"], env["action_dispatch.show_exceptions"] = original
+    end
+
+    before { allowlist_super_admins(operator) }
+
+    def response_signature
+      [ response.status, response.headers["Content-Type"], response.body ]
+    end
+
+    # Every Accept the prober might send, because matching on only the JSON one would leave the
+    # difference visible to a plain curl.
+    [ { "Accept" => "application/json" }, {}, { "Accept" => "*/*" } ].each do |accept|
+      it "is indistinguishable from an unrouted path, asked for as #{accept.fetch('Accept', 'no Accept header')}" do
+        get "/api/super_admin/overview", headers: house_admin_headers.merge(accept)
+        refused = response_signature
+
+        get "/api/super_admin/does-not-exist", headers: house_admin_headers.merge(accept)
+
+        expect(refused).to eq(response_signature)
+      end
+    end
+
+    # Pinned literally as well as by comparison, so a Rails upgrade that changes the shape is a
+    # failure here rather than a silent divergence between the two 404s.
+    it "answers what Rails answers: a status and a reason, and nothing about an allowlist" do
+      get "/api/super_admin/overview", headers: house_admin_headers.merge("Accept" => "application/json")
+
+      expect(response).to have_http_status(:not_found)
+      expect(response.parsed_body).to eq("status" => 404, "error" => "Not Found")
     end
   end
 

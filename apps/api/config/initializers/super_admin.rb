@@ -6,8 +6,10 @@
 # themselves. Unset or empty means nobody — in production, and in development too — so the deploy
 # that ships this area is inert until somebody sets the variable.
 #
-# Resolved once, here, rather than read from ENV per request: a value the app re-reads is a value
-# that can change under it, and this one is the whole of the authorization decision.
+# ENV is read exactly once, here, and the Set it produces is frozen, so the list cannot be widened
+# at runtime by anything in this app. `allows?` does look that Set up through config on every call,
+# but only ever follows the pointer: the one thing that swaps it is the spec helper in
+# spec/support/super_admin_allowlist.rb, which puts the booted list back after each example.
 #
 # The rules live in the SuperAdminAllowlist module so they can be tested without booting a
 # production environment, the same shape as SmsBoot in config/initializers/sms.rb. It is a

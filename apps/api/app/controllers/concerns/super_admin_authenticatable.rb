@@ -51,9 +51,29 @@ module SuperAdminAuthenticatable
   # not allowed to use should be indistinguishable from one that does not exist. A 403 would
   # confirm to any house admin who guessed the path that there is an operator console here and
   # that they are simply not on the list — an invitation to go looking for whoever is.
+  #
+  # And "indistinguishable" is meant literally, so this does not render a 404 of our own — the
+  # app's `{"error":"not_found"}` body would itself be the tell, since a path that does not route
+  # answers with Rails' own `{"status":404,"error":"Not Found"}`. It hands the request to the very
+  # code that serves an unrouted path in production instead, so the status, the content type and
+  # the bytes all match whatever the prober put in their Accept header — including the empty
+  # text/html body curl gets by default. If a public/404.html is ever added, this follows it.
   def refuse_super_admin(workos_user_id)
     logger.info("Refused super admin: #{workos_user_id.inspect} is not in SUPER_ADMIN_WORKOS_USER_IDS")
-    render json: { error: "not_found" }, status: :not_found
+
+    # PATH_INFO is how ActionDispatch::PublicExceptions is told which status to serve; it is the
+    # same call ActionDispatch::ShowExceptions makes.
+    status, headers, body = ActionDispatch::PublicExceptions.new(Rails.public_path)
+      .call(request.env.merge("PATH_INFO" => "/404"))
+
+    self.response_body = body.to_a.join
+    self.status = status
+
+    # The header is copied verbatim rather than handed to `render content_type:`, which re-derives
+    # the charset and spells it differently. No content type at all means PublicExceptions found no
+    # public/404.html and returned an empty body, which Rails answers as text/html.
+    response.headers["Content-Type"] =
+      headers["content-type"] || "text/html; charset=#{ActionDispatch::Response.default_charset}"
   end
 
   # Only the header, and only the bearer scheme — the same rule, and the same reason, as the other
