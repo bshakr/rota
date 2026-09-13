@@ -4,6 +4,7 @@ import { Fredoka, Outfit, Space_Mono } from "next/font/google";
 import { ThemeColorMeta } from "@/components/theme-color-meta";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { SITE_DESCRIPTION, SITE_NAME, siteOrigin, TITLE_TEMPLATE } from "@/lib/site";
 
 import "./globals.css";
 
@@ -39,12 +40,31 @@ const spaceMono = Space_Mono({
   subsets: ["latin"],
   weight: ["400", "700"],
   display: "swap",
+  // Not preloaded. It is declared in the ROOT layout so `--font-space-mono` exists
+  // everywhere, but the only surfaces that set it are admin ones — the magic-link
+  // token, Twilio SIDs. Preloading pushed two <link rel="preload"> tags onto the
+  // landing page, which is the page that has to be fast and never renders a
+  // machine string. `display: "swap"` means the admin pages that do use it paint
+  // in the fallback and swap, costing nothing visible.
+  preload: false,
   fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
 });
 
 export const metadata: Metadata = {
-  title: { default: "Rota Monster", template: "%s · Rota Monster" },
-  description: "Whose turn? Sorted.",
+  // Every relative URL in metadata — the canonical, og:url, the generated
+  // og:image — is resolved against this into the absolute form crawlers and link
+  // scrapers require. Next warns at build without it and emits relative og tags,
+  // which Slack and Facebook simply drop. `siteOrigin()` reads APP_URL and falls
+  // back to the production domain so a .env-less CI build still resolves.
+  metadataBase: new URL(siteOrigin()),
+  // The template covers every route BELOW this layout. It does NOT cover `/`,
+  // which is this layout's own segment; page.tsx applies the same constant by
+  // hand. See TITLE_TEMPLATE in lib/site.ts.
+  title: { default: SITE_NAME, template: TITLE_TEMPLATE },
+  // The default for every route. Only `/` is reachable without a session, so in
+  // practice this is the homepage's description and is overridden nowhere; it
+  // lives here rather than only in page.tsx so no future public route ships blank.
+  description: SITE_DESCRIPTION,
 };
 
 export const viewport: Viewport = {
@@ -70,8 +90,11 @@ export default function RootLayout({
     // suppressHydrationWarning is required by next-themes: it stamps the theme
     // class onto <html> before React hydrates, so server and client markup
     // legitimately differ on this one element.
+    //
+    // en-GB, not en: the copy is British throughout and the JSON-LD graph claims
+    // `inLanguage: "en-GB"`, so the document element has to agree with it.
     <html
-      lang="en"
+      lang="en-GB"
       className={`${fredoka.variable} ${outfit.variable} ${spaceMono.variable} h-full`}
       suppressHydrationWarning
     >
