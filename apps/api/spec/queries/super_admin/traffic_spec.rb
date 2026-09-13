@@ -68,6 +68,13 @@ RSpec.describe SuperAdmin::Traffic do
     it "refuses a range nobody defined rather than quietly answering for another one" do
       expect { described_class.call(range: "6m") }.to raise_error(described_class::UnknownRange, /6m/)
     end
+
+    # A query parameter can only ever be a string, so anything else arrived from code. Naming it
+    # would put whatever it was into an error message the web app renders and the logs keep.
+    it "does not echo a range that is not a string back into the error" do
+      expect { described_class.call(range: { evil: "6m" }) }
+        .to raise_error(described_class::UnknownRange, /unrecognised/)
+    end
   end
 
   describe "the funnel" do
@@ -123,6 +130,13 @@ RSpec.describe SuperAdmin::Traffic do
 
       expect(funnel_step("signed_in")[:count]).to eq(0)
       expect(funnel_step("made_house")[:rate_from_previous]).to be_nil
+    end
+
+    # Two surfaces, one onboarding ladder. SuperAdmin::Overview reads it per house ("how far did
+    # this one get") and this reads it across all of them, so a rung renamed in one place and not the
+    # other would be two dashboards quietly disagreeing about what a step is.
+    it "names its last six steps exactly as the overview names the rungs of its ladder" do
+      expect(described_class::STEPS.map(&:first).last(6)).to eq(SuperAdmin::Overview::FUNNEL_STEPS)
     end
 
     it "numbers and orders the eight steps the plan names" do
@@ -295,8 +309,8 @@ RSpec.describe SuperAdmin::Traffic do
       expect(quiet[:texts_by_kind]).to eq({ reminder: 0, cover_notice: 0, member_login: 0 })
       expect(quiet[:covers]).to eq(0)
       expect(quiet[:active_houses]).to eq(0)
-      expect(quiet[:active_admins]).to eq(0)
-      expect(quiet[:members_seen]).to eq(0)
+      expect(quiet[:active_users]).to eq(0)
+      expect(quiet[:members_last_seen]).to eq(0)
       expect(quiet[:new_houses]).to eq(0)
       expect(quiet[:delivery_rate]).to be_nil
     end
@@ -329,7 +343,7 @@ RSpec.describe SuperAdmin::Traffic do
       create(:member, group: group, last_seen_at: Time.utc(2026, 9, 15, 9, 0))
       create(:member, group: group, last_seen_at: nil)
 
-      expect(week("2026-09-14")[:members_seen]).to eq(2)
+      expect(week("2026-09-14")[:members_last_seen]).to eq(2)
     end
   end
 
@@ -361,28 +375,38 @@ RSpec.describe SuperAdmin::Traffic do
     end
   end
 
-  describe "active admins" do
-    it "counts an admin once in a week they both signed in and were seen" do
+  describe "active users" do
+    it "counts somebody once in a week they both signed in and were seen" do
       user = create(:user, last_seen_at: Time.utc(2026, 9, 15, 10, 0))
       create(:sign_in, user: user, created_at: Time.utc(2026, 9, 14, 10, 0))
 
-      expect(week("2026-09-14")[:active_admins]).to eq(1)
+      expect(week("2026-09-14")[:active_users]).to eq(1)
     end
 
-    it "counts an admin who only signed in, and one who was only seen" do
+    it "counts somebody who only signed in, and somebody who was only seen" do
       create(:sign_in, user: create(:user), created_at: Time.utc(2026, 9, 15, 10, 0))
       create(:user, last_seen_at: Time.utc(2026, 9, 15, 11, 0))
 
-      expect(week("2026-09-14")[:active_admins]).to eq(2)
+      expect(week("2026-09-14")[:active_users]).to eq(2)
     end
 
-    it "counts the same admin in each week they signed in" do
+    it "counts the same person in each week they signed in" do
       user = create(:user, last_seen_at: nil)
       create(:sign_in, user: user, created_at: Time.utc(2026, 9, 1, 10, 0))
       create(:sign_in, user: user, created_at: Time.utc(2026, 9, 15, 10, 0))
 
-      expect(week("2026-08-31")[:active_admins]).to eq(1)
-      expect(week("2026-09-14")[:active_admins]).to eq(1)
+      expect(week("2026-08-31")[:active_users]).to eq(1)
+      expect(week("2026-09-14")[:active_users]).to eq(1)
+    end
+
+    # The overlap with `signed_in_without_house` is deliberate, and asserted so nobody "fixes" it by
+    # joining group_admins: somebody who signs in and never makes a house is both an active user and
+    # the leak the funnel is there to expose.
+    it "counts somebody who has no house, who is also counted as the leak beside the funnel" do
+      create(:sign_in, user: create(:user), created_at: Time.utc(2026, 9, 15, 10, 0))
+
+      expect(week("2026-09-14")[:active_users]).to eq(1)
+      expect(result[:signed_in_without_house]).to eq(1)
     end
   end
 

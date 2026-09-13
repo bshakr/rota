@@ -101,10 +101,16 @@ module SuperAdmin
     # takes the house's earliest event over ALL of time and then asks whether that moment lands in
     # the window.
     #
-    # (Steps 3 and 4 are the same idea read off a column: a house is created once, and
-    # `timezone_confirmed_at` records the confirmation. Step 2 is deliberately NOT a cohort — it is
-    # distinct users with a sign-in in the window, which is the "who turned up" figure the plan's
-    # own wording asks for and the denominator the steps below it are rated against.)
+    # Three steps sit outside that cohort, each for its own reason. Step 3 is the same idea read off
+    # a column: a house is created once, so its `created_at` is the event and the first of it. Step 4
+    # is NOT a cohort — `timezone_confirmed_at` is re-stamped every time an admin saves the house
+    # settings with a timezone in the request (Api::GroupController#update: sending the param IS the
+    # confirmation, even when the value has not moved), so a two-year-old house that opened its
+    # settings page this morning walks straight into step 4's bar. Counting genuinely first
+    # confirmations needs a column nothing writes today, so this step counts confirmations inside the
+    # window and must be read that way. And step 2 is deliberately not a cohort either: distinct
+    # users with a sign-in in the window, which is the "who turned up" figure the plan's own wording
+    # asks for and the denominator the steps below it are rated against.
     FUNNEL_SQL = <<~SQL.freeze
       SELECT 'added_member' AS step, COUNT(*) AS count FROM (
         SELECT members.group_id
@@ -151,6 +157,12 @@ module SuperAdmin
     # that started here, how long did the product take" — and letting either end wander outside it
     # would mix a January onboarding into a March median. The cost is that a short range reports on
     # few houses, or none, which is why the sample size is published beside the figure.
+    #
+    # It is also survivorship-biased towards the fast, structurally and unavoidably: a house can only
+    # appear here once it has actually sent its first text, so the houses still stuck in onboarding
+    # at the trailing edge of the window are missing from the median rather than dragging it up. The
+    # shorter the range the worse that gets — a 7d median is close to meaningless, because only the
+    # houses that converted inside a week can be in it at all.
     #
     # Three more deliberate choices. The sign-in is the admin's FIRST ever, so signing in again
     # tomorrow does not restart their clock. An admin who sits in two houses is measured to
@@ -217,15 +229,22 @@ module SuperAdmin
       GROUP BY 1
     SQL
 
-    # Admins who were around in the week: a sign-in OR a `last_seen_at` inside it, counted once.
+    # Signed-in people who were around in the week: a sign-in OR a `last_seen_at` inside it, counted
+    # once.
+    #
+    # Users, not admins, and the payload says `active_users` for that reason. Every row in `users` is
+    # somebody who signed in, whether or not they ever made a house, so this number and
+    # `signed_in_without_house` deliberately overlap: a person who signs in every day and never makes
+    # a house is active here AND a leak there. Narrowing this to people with a `group_admins` row
+    # would make the series quietly disagree with the funnel above it about who exists.
     #
     # Two signals because each is blind on its own. `sign_ins` is the history, but an admin who
     # stays signed in for a month signs in once; `users.last_seen_at` is the throttled touch from
     # the authenticated read path, but it is a single moving column, so it can only ever light up
     # the most recent week a person was seen. Together they answer "was this person using the
     # product that week" better than either does alone.
-    ACTIVE_ADMINS_SQL = <<~SQL.freeze
-      SELECT week_start, COUNT(DISTINCT user_id) AS active_admins
+    ACTIVE_USERS_SQL = <<~SQL.freeze
+      SELECT week_start, COUNT(DISTINCT user_id) AS active_users
       FROM (
         SELECT DATE_TRUNC('week', sign_ins.created_at) AS week_start, sign_ins.user_id AS user_id
         FROM sign_ins
@@ -238,11 +257,19 @@ module SuperAdmin
       GROUP BY week_start
     SQL
 
-    # The two weekly counts that are plain counts, in one round trip. `members_seen` is housemates
-    # who opened their magic link — the only signal that the link ever arrived — and `new_houses` is
-    # the top of the funnel drawn week by week.
+    # The two weekly counts that are plain counts, in one round trip. `members_last_seen` is
+    # housemates who opened their magic link — the only signal that the link ever arrived — and
+    # `new_houses` is the top of the funnel drawn week by week.
+    #
+    # `members.last_seen_at` carries the same caveat as `users.last_seen_at` above, and it is worse
+    # here because there is no second signal to make up for it: members have no `sign_ins` table. It
+    # is one moving column, so each member can only ever light up the week they were LAST seen. A
+    # housemate who has opened their link every week for a year appears once, in this week. The
+    # series therefore rises towards the present by construction — it is "members most recently seen
+    # in this week", never "members who opened their link that week" — which is why the payload key
+    # says `members_last_seen` and why the page must label it that way.
     COUNTS_SQL = <<~SQL.freeze
-      SELECT 'members_seen' AS series,
+      SELECT 'members_last_seen' AS series,
              DATE_TRUNC('week', members.last_seen_at) AS week_start,
              COUNT(*) AS count
       FROM members
@@ -274,7 +301,15 @@ module SuperAdmin
 
       def window_for(range)
         key = range.presence || DEFAULT_RANGE
-        raise UnknownRange, "#{key.inspect} is not a known range (#{RANGES.join(', ')})" unless RANGE_DAYS.key?(key)
+
+        unless RANGE_DAYS.key?(key)
+          # The caller's own value is echoed back only when it is a string, which is all a query
+          # parameter can be. Anything else reached this method from code rather than from a URL, and
+          # inspecting it would put whatever it was — a hash of parameters, say — into an error
+          # message that the web app shows and the logs keep.
+          named = key.is_a?(String) ? key.inspect : "unrecognised"
+          raise UnknownRange, "#{named} is not a known range (#{RANGES.join(', ')})"
+        end
 
         ends_at = Time.current
 
@@ -356,9 +391,14 @@ module SuperAdmin
     # never renders coarser than it was computed).
     #
     # Null when there is no denominator: the step above is untracked, or nothing reached it. And
-    # deliberately NOT capped at 100. Each step counts arrivals inside one window, so a house made
-    # by somebody who signed in last month can carry step 3 above step 2 — which is worth seeing,
+    # deliberately NOT capped at 100. Each step counts arrivals inside one window, so a house made by
+    # somebody who signed in last month can carry step 3 above step 2 — which is worth seeing,
     # because it says the window is too short to explain itself, not that the maths is broken.
+    #
+    # Step 4 is the one that will do it most often, and for a different reason: as the FUNNEL_SQL
+    # comment says, `timezone_confirmed_at` is re-stamped on every settings save, so an established
+    # house re-confirming its timezone lands in step 4 without ever having been in step 3's count.
+    # A rate over 100% there is re-confirmation, not conversion.
     def rate(count, previous)
       return nil if count.nil? || previous.nil? || previous.zero?
 
@@ -405,7 +445,7 @@ module SuperAdmin
     def weeks
       texts = texts_by_week
       active_houses = single_series(ACTIVE_HOUSES_SQL, "SuperAdmin::Traffic active houses", "active_houses")
-      active_admins = single_series(ACTIVE_ADMINS_SQL, "SuperAdmin::Traffic active admins", "active_admins")
+      active_users = single_series(ACTIVE_USERS_SQL, "SuperAdmin::Traffic active users", "active_users")
       counts = labelled_series(COUNTS_SQL, "SuperAdmin::Traffic weekly counts")
 
       weeks_in_window.map do |week|
@@ -426,8 +466,8 @@ module SuperAdmin
           # product's one real engagement signal (plan, Traffic dashboard).
           covers: row[:by_kind][:cover_notice],
           active_houses: active_houses.fetch(week, 0),
-          active_admins: active_admins.fetch(week, 0),
-          members_seen: counts.dig("members_seen", week) || 0,
+          active_users: active_users.fetch(week, 0),
+          members_last_seen: counts.dig("members_last_seen", week) || 0,
           new_houses: counts.dig("new_houses", week) || 0
         }
       end
