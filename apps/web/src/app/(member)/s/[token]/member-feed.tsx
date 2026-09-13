@@ -57,8 +57,19 @@ export function MemberFeed({
   const [rotaFilter, setRotaFilter] = React.useState<RotaFilter>(ALL_SHIFTS.rota);
   const [personId, setPersonId] = React.useState<number | null>(null);
   const [expanded, setExpanded] = React.useState(false);
-  const [handingOff, setHandingOff] = React.useState<MemberShift | null>(null);
   const [takingBack, setTakingBack] = React.useState<MemberShift | null>(null);
+
+  // The hand-off sheet's open state is SEPARATE from the shift it is about. Nulling
+  // the shift to close it would unmount the Radix root in the same commit: no exit
+  // animation, no onCloseAutoFocus, and focus dumped on <body>. So the sheet closes
+  // with open=false and keeps its shift until the close has finished.
+  const [handingOff, setHandingOff] = React.useState<MemberShift | null>(null);
+  const [sheetOpen, setSheetOpen] = React.useState(false);
+  // The row to hand focus back to once the sheet is gone, set only when a hand-off
+  // actually landed. After one, the "Hand off" button that opened the sheet no longer
+  // exists — the same row now offers "Take it back" — so Radix's own focus restore
+  // has nothing to return to and we point it at the replacement instead.
+  const restoreFocusTo = React.useRef<number | null>(null);
 
   const filter = React.useMemo(() => ({ rota: rotaFilter, personId }), [rotaFilter, personId]);
   const weeks = React.useMemo(() => buildFeed(live, filter), [live, filter]);
@@ -71,6 +82,31 @@ export function MemberFeed({
   function clearFilters() {
     setRotaFilter(ALL_SHIFTS.rota);
     setPersonId(null);
+  }
+
+  function openHandOff(shift: MemberShift) {
+    restoreFocusTo.current = null;
+    setHandingOff(shift);
+    setSheetOpen(true);
+  }
+
+  function handedOff(updated: MemberShift) {
+    applyUpdate(updated);
+    restoreFocusTo.current = updated.id;
+  }
+
+  /** Runs once the sheet has finished closing. True means we moved focus ourselves. */
+  function focusAfterHandOff(): boolean {
+    const shiftId = restoreFocusTo.current;
+    restoreFocusTo.current = null;
+    setHandingOff(null);
+    if (shiftId === null) return false;
+
+    // The row has already re-rendered from the server's authoritative shift, so this
+    // finds the control that replaced the trigger rather than the trigger itself.
+    const action = document.querySelector<HTMLElement>(`[data-shift-action="${shiftId}"]`);
+    action?.focus();
+    return action !== null;
   }
 
   async function takeBack(shift: MemberShift) {
@@ -116,7 +152,7 @@ export function MemberFeed({
               week={week}
               today={schedule.today}
               viewerId={schedule.member.id}
-              onHandOff={setHandingOff}
+              onHandOff={openHandOff}
               onTakeBack={setTakingBack}
             />
           ))}
@@ -139,7 +175,7 @@ export function MemberFeed({
               shifts={mine}
               viewerId={schedule.member.id}
               today={schedule.today}
-              onHandOff={setHandingOff}
+              onHandOff={openHandOff}
             />
           </div>
 
@@ -162,7 +198,7 @@ export function MemberFeed({
             shifts={mine.slice(0, 3)}
             viewerId={schedule.member.id}
             today={schedule.today}
-            onHandOff={setHandingOff}
+            onHandOff={openHandOff}
           />
           <PeopleCard
             members={schedule.members}
@@ -177,10 +213,11 @@ export function MemberFeed({
       <HandOffSheet
         shift={handingOff}
         schedule={live}
-        open={handingOff !== null}
-        onOpenChange={(open) => setHandingOff(open ? handingOff : null)}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
         assignAction={assignAction}
-        onUpdated={applyUpdate}
+        onUpdated={handedOff}
+        onCloseAutoFocus={focusAfterHandOff}
       />
 
       {takingBack && takingBack.covering_member ? (

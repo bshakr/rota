@@ -2,7 +2,7 @@
 
 import { ArrowRightLeft } from "lucide-react";
 
-import { shiftStateFor } from "@/app/(member)/s/[token]/shift-view";
+import { shiftInvolves } from "@/app/(member)/s/[token]/schedule-view";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,8 +33,10 @@ export function ShiftRow({
   onHandOff: (shift: MemberShift) => void;
   onTakeBack: (shift: MemberShift) => void;
 }) {
-  const state = shiftStateFor(shift, viewerId);
-  const mine = state !== null;
+  // Only nullity is wanted here — the row says "yours" with a tag and a tint, not
+  // with the three-way vocabulary — so ask the predicate rather than building a
+  // ShiftState and throwing it away.
+  const mine = shiftInvolves(shift, viewerId);
   const person = shift.responsible_member;
 
   return (
@@ -82,11 +84,15 @@ export function ShiftRow({
           member, and a shift too soon to touch (today's turn) shows neither.
           `size="sm"` sets the TYPE; the height is forced back to 44px because this
           is a phone-first surface and 32px is below the comfortable touch floor. */}
+      {/* data-shift-action marks whichever control this row currently offers, so the
+          hand-off sheet can hand focus back to the row it came from — by then the
+          "Hand off" it was opened from has been replaced by "Take it back". */}
       {shift.can_assign_cover ? (
         <Button
           variant="link"
           size="sm"
           className="h-11 shrink-0 px-0"
+          data-shift-action={shift.id}
           onClick={() => onHandOff(shift)}
         >
           Hand off
@@ -98,6 +104,7 @@ export function ShiftRow({
           variant="link"
           size="sm"
           className="h-11 shrink-0 px-0"
+          data-shift-action={shift.id}
           onClick={() => onTakeBack(shift)}
         >
           Take it back

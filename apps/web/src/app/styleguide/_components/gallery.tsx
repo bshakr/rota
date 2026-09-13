@@ -102,12 +102,11 @@ const MEMBERS = ["Bass", "Eliza", "Raph", "Ciara"] as const;
 // Fixed dates, never `new Date()`: a styleguide that renders a different thing
 // every day is a styleguide you cannot diff, and "today" evaluated on the server
 // and the client can differ by a day across midnight.
-const TODAY = new Date(2026, 6, 2);
-
+//
 // The member vocabulary is no longer a presentational card with loose props: the
 // feed renders whole `MemberShift` records straight from the API, so the gallery
-// exercises that real shape rather than a mock of it. Same 2 July 2026 as TODAY,
-// as a CIVIL date, which is the only kind the member page deals in.
+// exercises that real shape rather than a mock of it. Its "today" is a CIVIL date,
+// which is the only kind the member page deals in.
 const MEMBER_TODAY = "2026-07-02";
 const CIARA = { id: 1, name: "Ciara" };
 const BASS = { id: 2, name: "Bass" };
