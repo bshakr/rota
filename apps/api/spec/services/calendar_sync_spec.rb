@@ -43,7 +43,7 @@ RSpec.describe CalendarSync do
     expect(connection.last_synced_at).to eq(Time.current)
   end
 
-  it "does nothing on 304 except stamp the fetch" do
+  it "parses nothing on 304, leaving the stored events and last_synced_at alone" do
     connection.update!(etag: "\"v1\"", last_synced_at: 1.hour.ago)
     stub_feed("", status: 304)
 
@@ -51,6 +51,24 @@ RSpec.describe CalendarSync do
 
     expect(connection.reload.last_fetched_at).to eq(Time.current)
     expect(connection.last_synced_at).to eq(1.hour.ago)
+  end
+
+  # A 304 means Google answered and the calendar has not changed, which is a healthy connection.
+  # Leaving the counter alone would keep the dashboard saying "House calendar isn't syncing" every
+  # hour until somebody happened to edit the calendar.
+  it "clears a run of failures on 304, because the fetch succeeded" do
+    event = create(:calendar_event, calendar_connection: connection)
+    connection.update!(etag: "\"v1\"", consecutive_failures: 3, last_error: "Couldn't reach the calendar.",
+                       disabled_at: 2.days.ago)
+    stub_feed("", status: 304)
+
+    described_class.new(connection).call
+
+    expect(connection.reload).to have_attributes(consecutive_failures: 0, last_error: nil, last_fetched_at: Time.current)
+    # Still disabled: only "Sync now" and a new link lift that, and neither is a 304.
+    expect(connection.disabled_at).to eq(2.days.ago)
+    expect(connection.calendar_events.pluck(:id)).to eq([ event.id ])
+    expect(a_request(:post, AnthropicStubs::MESSAGES_URL)).not_to have_been_made
   end
 
   it "syncs a body the caller already downloaded, without fetching again" do
@@ -150,6 +168,12 @@ RSpec.describe CalendarSync do
         { status: 500, body: "{}" }
       end
     end
+
+    expect(Rails.error).to receive(:report)
+      .with(an_instance_of(CalendarClassifier::Failed),
+            context: { calendar_connection_id: connection.id },
+            source: "rotamonster.calendar_classifier")
+      .and_call_original
 
     described_class.new(connection).call
 

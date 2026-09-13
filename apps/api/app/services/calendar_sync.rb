@@ -36,9 +36,15 @@ class CalendarSync
   def call(fetched: nil)
     result = fetched || CalendarFetch.call(connection.ical_url, etag: connection.etag, last_modified: connection.last_modified)
     if result.status == :not_modified
-      # Deliberately not record_success!: that stamps last_synced_at, and nothing was synced. The
-      # feed was merely confirmed unchanged, which is what last_fetched_at means.
-      connection.update!(last_fetched_at: Time.current)
+      # A 304 is a successful fetch: Google answered, and the calendar has not changed. So it ends a
+      # run of failures too. record_failure! leaves the stored ETag in place, so a connection that
+      # has failed three times keeps asking conditionally and keeps getting 304s, and leaving the
+      # counter alone would have the dashboard say the calendar isn't syncing every hour until
+      # somebody happened to edit an event.
+      #
+      # Deliberately not record_success!, which would also stamp last_synced_at for a pass that
+      # synced nothing, and lift disabled_at, which only "Sync now" and a new link may do.
+      connection.update!(last_fetched_at: Time.current, consecutive_failures: 0, last_error: nil)
       return connection
     end
 
