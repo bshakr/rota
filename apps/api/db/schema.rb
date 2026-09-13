@@ -10,9 +10,58 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_12_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_14_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "calendar_connections", force: :cascade do |t|
+    t.string "calendar_name"
+    t.integer "consecutive_failures", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "disabled_at"
+    t.string "etag"
+    t.integer "events_count", default: 0, null: false
+    t.bigint "group_id", null: false
+    t.string "ical_url", null: false
+    t.string "last_error"
+    t.datetime "last_fetched_at"
+    t.string "last_modified"
+    t.datetime "last_synced_at"
+    t.datetime "updated_at", null: false
+    t.index ["group_id"], name: "index_calendar_connections_on_group_id", unique: true
+  end
+
+  create_table "calendar_event_members", force: :cascade do |t|
+    t.bigint "calendar_event_id", null: false
+    t.bigint "member_id", null: false
+    t.index ["calendar_event_id", "member_id"], name: "idx_on_calendar_event_id_member_id_9a492082f1", unique: true
+    t.index ["calendar_event_id"], name: "index_calendar_event_members_on_calendar_event_id"
+    t.index ["member_id"], name: "index_calendar_event_members_on_member_id"
+  end
+
+  create_table "calendar_events", force: :cascade do |t|
+    t.boolean "all_day", default: false, null: false
+    t.bigint "calendar_connection_id", null: false
+    t.datetime "classified_at"
+    t.datetime "created_at", null: false
+    t.datetime "ends_at"
+    t.date "ends_on", null: false
+    t.string "fingerprint", null: false
+    t.string "instance_key", null: false
+    t.string "kind", default: "event", null: false
+    t.string "reason"
+    t.datetime "starts_at"
+    t.date "starts_on", null: false
+    t.string "summary", null: false
+    t.datetime "synced_at", null: false
+    t.string "uid", null: false
+    t.datetime "updated_at", null: false
+    t.index ["calendar_connection_id", "fingerprint"], name: "idx_on_calendar_connection_id_fingerprint_058b0951e8"
+    t.index ["calendar_connection_id", "instance_key"], name: "idx_on_calendar_connection_id_instance_key_0a4048655b", unique: true
+    t.index ["calendar_connection_id", "starts_on"], name: "index_calendar_events_on_calendar_connection_id_and_starts_on"
+    t.index ["calendar_connection_id"], name: "index_calendar_events_on_calendar_connection_id"
+    t.check_constraint "kind::text = ANY (ARRAY['event'::character varying, 'away'::character varying]::text[])", name: "calendar_events_kind_known"
+  end
 
   create_table "group_admins", force: :cascade do |t|
     t.datetime "created_at", null: false
@@ -126,6 +175,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_12_160000) do
     t.index ["workos_user_id"], name: "index_users_on_workos_user_id", unique: true
   end
 
+  add_foreign_key "calendar_connections", "groups"
+  add_foreign_key "calendar_event_members", "calendar_events", on_delete: :cascade
+  add_foreign_key "calendar_event_members", "members", on_delete: :cascade
+  add_foreign_key "calendar_events", "calendar_connections", on_delete: :cascade
   add_foreign_key "group_admins", "groups"
   add_foreign_key "group_admins", "users"
   add_foreign_key "members", "groups"

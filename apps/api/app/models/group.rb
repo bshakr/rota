@@ -17,6 +17,10 @@ class Group < ApplicationRecord
   # cleanly through members — a group only ever sees its own house's texts.
   has_many :sms_messages, through: :members
 
+  # The house's shared calendar, if an admin connected one (BLO-1667). Destroying the group takes the
+  # link and every synced event with it.
+  has_one :calendar_connection, dependent: :destroy
+
   validates :workos_organization_id, presence: true, uniqueness: true
   validates :name, presence: true
   before_validation :assign_slug, on: :create
