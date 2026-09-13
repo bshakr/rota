@@ -7,6 +7,7 @@ import {
   buildFeed,
   matchesFilter,
   nextShiftByMember,
+  nextUp,
   responsibleShifts,
   shiftInvolves,
   weekLabel,
@@ -286,5 +287,96 @@ describe("nextShiftByMember", () => {
 
     expect(next.get(2)?.id).toBe(covered.id);
     expect(next.has(3)).toBe(false);
+  });
+});
+
+describe("nextUp", () => {
+  it("leads with the viewer's own next turn and names the two after it", () => {
+    const first = shift({ due_on: "2026-09-16" });
+    const second = shift({ due_on: "2026-09-17" });
+    const third = shift({ due_on: "2026-09-18" });
+    const fourth = shift({ due_on: "2026-09-19" });
+
+    const card = nextUp(
+      schedule({ today: "2026-09-14", shifts: [fourth, second, first, third] }),
+    );
+
+    expect(card).toEqual({ kind: "shift", shift: first, then: [second, third] });
+  });
+
+  it("names the person holding a shift the viewer handed away, when nothing is left on their plate", () => {
+    const handed = shift({
+      due_on: "2026-11-14",
+      rota_name: "Kitchen deep clean",
+      covering_member: { id: 2, name: "Eliza" },
+      can_cancel_cover: true,
+    });
+
+    expect(nextUp(schedule({ today: "2026-09-14", shifts: [handed] }))).toEqual({
+      kind: "handed-off",
+      shift: handed,
+      to: "Eliza",
+    });
+  });
+
+  it("picks the soonest handed-off shift when there are several", () => {
+    const later = shift({ due_on: "2026-11-14", covering_member: { id: 2, name: "Eliza" } });
+    const sooner = shift({ due_on: "2026-10-03", covering_member: { id: 3, name: "Raph" } });
+
+    const card = nextUp(schedule({ today: "2026-09-14", shifts: [later, sooner] }));
+
+    expect(card).toEqual({ kind: "handed-off", shift: sooner, to: "Raph" });
+  });
+
+  it("prefers a turn the viewer is responsible for over one they handed away", () => {
+    // The handed-off shift is SOONER, and still loses: it is somebody else's to do.
+    const handed = shift({ due_on: "2026-09-15", covering_member: { id: 2, name: "Eliza" } });
+    const own = shift({ due_on: "2026-09-20" });
+
+    const card = nextUp(schedule({ today: "2026-09-14", shifts: [handed, own] }));
+
+    expect(card).toEqual({ kind: "shift", shift: own, then: [] });
+  });
+
+  it("ignores a shift the viewer handed away that has already passed", () => {
+    const handed = shift({ due_on: "2026-09-10", covering_member: { id: 2, name: "Eliza" } });
+
+    expect(nextUp(schedule({ today: "2026-09-14", shifts: [handed] }))).toEqual({
+      kind: "nothing",
+    });
+  });
+
+  it("ignores someone else's covered shift, which the viewer never had", () => {
+    const theirs = shift({
+      due_on: "2026-09-16",
+      assigned_member: { id: 2, name: "Bob" },
+      covering_member: { id: 3, name: "Cara" },
+    });
+
+    expect(nextUp(schedule({ today: "2026-09-14", shifts: [theirs] }))).toEqual({
+      kind: "nothing",
+    });
+  });
+
+  it("says nothing at all when the viewer has no shifts either way", () => {
+    const theirs = shift({ due_on: "2026-09-16", assigned_member: { id: 2, name: "Bob" } });
+
+    expect(nextUp(schedule({ today: "2026-09-14", shifts: [theirs] }))).toEqual({
+      kind: "nothing",
+    });
+  });
+
+  it("can answer for any housemate, not just the viewer", () => {
+    const bobs = shift({
+      due_on: "2026-09-16",
+      assigned_member: { id: 2, name: "Bob" },
+      covering_member: { id: 3, name: "Cara" },
+    });
+
+    expect(nextUp(schedule({ today: "2026-09-14", shifts: [bobs] }), 2)).toEqual({
+      kind: "handed-off",
+      shift: bobs,
+      to: "Cara",
+    });
   });
 });

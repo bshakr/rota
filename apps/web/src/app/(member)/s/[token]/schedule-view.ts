@@ -171,3 +171,48 @@ export function nextShiftByMember(schedule: MemberScheduleResponse): Map<number,
   }
   return next;
 }
+
+/**
+ * What the next-shift card leads with. Three cases, decided here rather than inside
+ * the card, because the phone and the desktop sidebar render the same card twice and
+ * the third case is easy to get wrong:
+ *
+ *   shift       their own next turn, with the two after it named underneath.
+ *   handed-off  they are down for nothing, but a turn they gave away is still coming.
+ *               "Nothing on your plate" alone would be a lie by omission the moment
+ *               they hand off the only thing they had, and it is the only confirmation
+ *               they get when that shift sits past the weeks the feed renders.
+ *   nothing     genuinely nothing, which is a reassurance and not an error.
+ */
+export type NextUp =
+  | { kind: "shift"; shift: MemberShift; then: MemberShift[] }
+  | { kind: "handed-off"; shift: MemberShift; to: string }
+  | { kind: "nothing" };
+
+/** How many further turns the card names in its "Then …" line. */
+const THEN_LIMIT = 2;
+
+/**
+ * Which of the three the card shows, for the viewer or for any member.
+ *
+ * A turn they are responsible for always wins: a handed-off shift is somebody else's
+ * problem now, so it can only be the lead when there is nothing else to lead with.
+ */
+export function nextUp(
+  schedule: MemberScheduleResponse,
+  memberId: number = schedule.member.id,
+): NextUp {
+  const [next, ...rest] = responsibleShifts(schedule, memberId);
+  if (next) return { kind: "shift", shift: next, then: rest.slice(0, THEN_LIMIT) };
+
+  // Soonest first, because `upcoming` is already ordered — the one they will be asked
+  // about is the one arriving next.
+  for (const shift of upcoming(schedule)) {
+    const to = shift.covering_member;
+    if (to && shift.assigned_member.id === memberId) {
+      return { kind: "handed-off", shift, to: to.name };
+    }
+  }
+
+  return { kind: "nothing" };
+}

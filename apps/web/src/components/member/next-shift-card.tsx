@@ -2,6 +2,7 @@
 
 import { ArrowRightLeft, CalendarCheck } from "lucide-react";
 
+import type { NextUp } from "@/app/(member)/s/[token]/schedule-view";
 import { shiftStateFor } from "@/app/(member)/s/[token]/shift-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,45 +18,70 @@ import { cn } from "@/lib/utils";
  * underneath, because "and then?" is the second question and a second card would
  * compete with the feed.
  *
- * `shifts` is the viewer's own upcoming turns in order (schedule-view's
- * `responsibleShifts`). A shift they have handed away is NOT among them; it is in the
- * feed with its "Take it back".
+ * Which of the three things it says is decided in `schedule-view`'s `nextUp`, not
+ * here: this card is rendered twice (phone lead, desktop sidebar) and the decision
+ * must not be able to differ between the two.
  */
 export function NextShiftCard({
-  shifts,
+  next,
   viewerId,
   today,
   onHandOff,
+  onTakeBack,
   className,
 }: {
-  shifts: MemberShift[];
+  next: NextUp;
   viewerId: number;
   /** The group's today as a civil date (YYYY-MM-DD). */
   today: string;
   onHandOff: (shift: MemberShift) => void;
+  onTakeBack: (shift: MemberShift) => void;
   className?: string;
 }) {
   const todayDate = civilDate(today);
-  const [next, ...rest] = shifts;
 
-  if (!next) {
+  if (next.kind !== "shift") {
     return (
       <Card className={cn("items-center gap-3 py-8 text-center", className)}>
         <CalendarCheck className="text-muted-foreground size-7" aria-hidden />
         <div className="space-y-1">
           <h2 className="font-heading text-lg font-semibold">Nothing on your plate</h2>
-          <p className="text-muted-foreground text-sm text-pretty">
-            You are not down for anything right now. Here is what the rest of the house is up to.
-          </p>
+          {next.kind === "handed-off" ? (
+            // The whole confirmation, in one sentence. A member who hands off a shift
+            // in six weeks' time sees nothing else change on the screen, so this line
+            // is the receipt.
+            <p className="text-muted-foreground text-sm text-pretty">
+              You handed{" "}
+              <span className="text-foreground font-medium">{next.shift.rota_name}</span> on{" "}
+              {formatShiftDate(civilDate(next.shift.due_on))} to {next.to}.
+            </p>
+          ) : (
+            <p className="text-muted-foreground text-sm text-pretty">
+              You are not down for anything right now. Here is what the rest of the house is up
+              to.
+            </p>
+          )}
         </div>
+
+        {next.kind === "handed-off" && next.shift.can_cancel_cover ? (
+          <Button
+            variant="link"
+            size="sm"
+            className="h-11"
+            onClick={() => onTakeBack(next.shift)}
+          >
+            Take it back
+          </Button>
+        ) : null}
       </Card>
     );
   }
 
-  const date = civilDate(next.due_on);
+  const shift = next.shift;
+  const date = civilDate(shift.due_on);
   const when = relativeDay(date, todayDate);
   const soon = when === "today" || when === "tomorrow";
-  const state = shiftStateFor(next, viewerId);
+  const state = shiftStateFor(shift, viewerId);
 
   return (
     <Card className={className}>
@@ -74,7 +100,7 @@ export function NextShiftCard({
 
         <div className="min-w-0 flex-1 space-y-1.5">
           <h2 className="font-heading text-lg leading-snug font-semibold text-pretty">
-            {next.rota_name}
+            {shift.rota_name}
           </h2>
           <p className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
             <time>{formatShiftDate(date)}</time>
@@ -99,20 +125,20 @@ export function NextShiftCard({
           </Badge>
         ) : null}
 
-        {next.can_assign_cover ? (
-          <Button size="lg" className="w-full" onClick={() => onHandOff(next)}>
+        {shift.can_assign_cover ? (
+          <Button size="lg" className="w-full" onClick={() => onHandOff(shift)}>
             Hand off
           </Button>
         ) : null}
 
-        {rest.length > 0 ? (
+        {next.then.length > 0 ? (
           <p className="text-muted-foreground text-sm text-pretty">
             Then{" "}
-            {rest.slice(0, 2).map((shift, index) => (
-              <span key={shift.id}>
+            {next.then.map((other, index) => (
+              <span key={other.id}>
                 {index > 0 ? ", " : ""}
-                <span className="text-foreground font-medium">{shift.rota_name}</span>{" "}
-                {formatShiftDate(civilDate(shift.due_on))}
+                <span className="text-foreground font-medium">{other.rota_name}</span>{" "}
+                {formatShiftDate(civilDate(other.due_on))}
               </span>
             ))}
             .

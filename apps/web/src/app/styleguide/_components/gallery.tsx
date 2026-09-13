@@ -946,10 +946,11 @@ export function Gallery() {
               Your next turn, with the offer to hand it on
             </p>
             <NextShiftCard
-              shifts={[MY_TURN, MY_NEXT_ONE]}
+              next={{ kind: "shift", shift: MY_TURN, then: [MY_NEXT_ONE] }}
               viewerId={CIARA.id}
               today={MEMBER_TODAY}
               onHandOff={(shift) => toast(`Hand off ${shift.rota_name}`)}
+              onTakeBack={(shift) => toast(`Take back ${shift.rota_name}`)}
             />
           </div>
 
@@ -958,10 +959,24 @@ export function Gallery() {
               Nothing on your plate, which is a reassurance and not an error
             </p>
             <NextShiftCard
-              shifts={[]}
+              next={{ kind: "nothing" }}
               viewerId={CIARA.id}
               today={MEMBER_TODAY}
               onHandOff={(shift) => toast(`Hand off ${shift.rota_name}`)}
+              onTakeBack={(shift) => toast(`Take back ${shift.rota_name}`)}
+            />
+          </div>
+
+          <div>
+            <p className="text-muted-foreground mb-2 text-xs font-medium">
+              Nothing on your plate because you gave it away, which still needs saying
+            </p>
+            <NextShiftCard
+              next={{ kind: "handed-off", shift: HANDED_OFF, to: BASS.name }}
+              viewerId={CIARA.id}
+              today={MEMBER_TODAY}
+              onHandOff={(shift) => toast(`Hand off ${shift.rota_name}`)}
+              onTakeBack={(shift) => toast(`Take back ${shift.rota_name}`)}
             />
           </div>
 

@@ -41,49 +41,63 @@ export function ShiftRow({
 
   return (
     <li
+      // The feed scrolls this row into view after a cover lands, which can be six
+      // weeks down the page. An id on the row is what makes that findable.
+      data-shift-row={shift.id}
       className={cn(
-        "flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3",
+        "flex flex-wrap items-start gap-x-3 gap-y-2 px-4 py-3",
         // The lemon "now" wash at a quarter strength, like every other tint in the
         // system, with the grape outline inset so it never shifts the row's height.
         mine && "bg-lemon/25 outline-2 -outline-offset-2 outline-primary/40",
       )}
     >
-      <Avatar size="sm">
+      <Avatar size="sm" className="mt-0.5">
         <AvatarFallback className={cn(avatarTint(person.name), "text-foreground text-[10px]")}>
           {initials(person.name)}
         </AvatarFallback>
       </Avatar>
 
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium">{shift.rota_name}</span>
-        <span className="text-muted-foreground block truncate text-sm">
-          {shift.covered && shift.covering_member ? (
-            <>
-              {shift.covering_member.name} covering {shift.assigned_member.name}
-            </>
-          ) : (
-            person.name
-          )}
+      {/* NOTHING here truncates except a person's name, and only when that one name is
+          genuinely wider than the column. The rota name wraps, the cover sentence
+          wraps, and the tags wrap under it — a phone is 390px and "Kitche…" / "Eliza
+          c…" told the member nothing at all. `basis-48` is what buys the column that
+          room: it is the width the row asks for BEFORE the action button is placed, so
+          the button takes what is left over rather than squeezing the words. */}
+      <span className="min-w-0 grow basis-48">
+        <span className="block font-medium text-pretty">{shift.rota_name}</span>
+
+        {/* The tags belong to this line, not to the row's right edge: "Eliza covering
+            Ciara" and the COVER tag are one fact, and on a phone they have to be able
+            to fall onto a line of their own together. */}
+        <span className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <span className="min-w-0">
+            {shift.covered && shift.covering_member ? (
+              <>
+                <PersonName name={shift.covering_member.name} /> covering{" "}
+                <PersonName name={shift.assigned_member.name} />
+              </>
+            ) : (
+              <PersonName name={person.name} />
+            )}
+          </span>
+
+          {mine ? <Badge variant="warning">You</Badge> : null}
+
+          {shift.covered ? (
+            <Badge variant="info">
+              <ArrowRightLeft aria-hidden />
+              Cover
+            </Badge>
+          ) : null}
         </span>
       </span>
-
-      {mine ? (
-        <Badge variant="warning" className="shrink-0">
-          You
-        </Badge>
-      ) : null}
-
-      {shift.covered ? (
-        <Badge variant="info" className="shrink-0">
-          <ArrowRightLeft aria-hidden />
-          Cover
-        </Badge>
-      ) : null}
 
       {/* The two controls are mutually exclusive: the API resolves them for this
           member, and a shift too soon to touch (today's turn) shows neither.
           `size="sm"` sets the TYPE; the height is forced back to 44px because this
-          is a phone-first surface and 32px is below the comfortable touch floor. */}
+          is a phone-first surface and 32px is below the comfortable touch floor.
+          `ml-auto` keeps it at the row's right edge whether it sits beside the words
+          or wraps onto its own line beneath them. */}
       {/* data-shift-action marks whichever control this row currently offers, so the
           hand-off sheet can hand focus back to the row it came from — by then the
           "Hand off" it was opened from has been replaced by "Take it back". */}
@@ -91,7 +105,7 @@ export function ShiftRow({
         <Button
           variant="link"
           size="sm"
-          className="h-11 shrink-0 px-0"
+          className="ml-auto h-11 shrink-0 px-0"
           data-shift-action={shift.id}
           onClick={() => onHandOff(shift)}
         >
@@ -103,7 +117,7 @@ export function ShiftRow({
         <Button
           variant="link"
           size="sm"
-          className="h-11 shrink-0 px-0"
+          className="ml-auto h-11 shrink-0 px-0"
           data-shift-action={shift.id}
           onClick={() => onTakeBack(shift)}
         >
@@ -112,4 +126,13 @@ export function ShiftRow({
       ) : null}
     </li>
   );
+}
+
+/**
+ * A person's name, and the ONE thing on this row allowed to end in an ellipsis. It is
+ * an inline-block so the sentence around it still wraps at its spaces; the truncation
+ * only ever bites when a single name is wider than the whole column.
+ */
+function PersonName({ name }: { name: string }) {
+  return <span className="inline-block max-w-full truncate align-bottom">{name}</span>;
 }

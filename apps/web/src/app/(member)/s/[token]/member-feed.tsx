@@ -19,7 +19,7 @@ import { formatShiftDate, relativeDay } from "@/lib/date";
 import { civilDate } from "@/lib/group-dates";
 
 import type { RotaFilter } from "./schedule-view";
-import { ALL_SHIFTS, buildFeed, nextShiftByMember, responsibleShifts } from "./schedule-view";
+import { ALL_SHIFTS, buildFeed, nextShiftByMember, nextUp, weekStart } from "./schedule-view";
 import type { AssignAction, CancelAction } from "./use-shift-updates";
 import { runAction, useShiftUpdates } from "./use-shift-updates";
 
@@ -70,14 +70,35 @@ export function MemberFeed({
   // exists — the same row now offers "Take it back" — so Radix's own focus restore
   // has nothing to return to and we point it at the replacement instead.
   const restoreFocusTo = React.useRef<number | null>(null);
+  // The row a mutation just changed has to be VISIBLE, not merely updated: it can sit
+  // in week six, past the four weeks the feed renders up front, and a confirmation
+  // nobody can see is not a confirmation. `reveal` opens the feed that far and marks
+  // the row; the effect below scrolls to it on the commit that follows, by which time
+  // it exists.
+  const scrollToShift = React.useRef<number | null>(null);
 
   const filter = React.useMemo(() => ({ rota: rotaFilter, personId }), [rotaFilter, personId]);
   const weeks = React.useMemo(() => buildFeed(live, filter), [live, filter]);
-  const mine = React.useMemo(() => responsibleShifts(live), [live]);
+  const upNext = React.useMemo(() => nextUp(live), [live]);
   const nextByMember = React.useMemo(() => nextShiftByMember(live), [live]);
 
   const filtered = rotaFilter.kind !== "everyone" || personId !== null;
   const visible = expanded ? weeks : weeks.slice(0, INITIAL_WEEKS);
+
+  React.useEffect(() => {
+    const shiftId = scrollToShift.current;
+    if (shiftId === null) return;
+    scrollToShift.current = null;
+    scrollRowIntoView(shiftId);
+  });
+
+  /** Put the row for a just-changed shift on screen, expanding the feed if it is past
+      the fourth week. Called after every cover that lands, in either direction. */
+  function reveal(shift: MemberShift) {
+    const start = weekStart(shift.due_on);
+    if (weeks.findIndex((week) => week.weekStart === start) >= INITIAL_WEEKS) setExpanded(true);
+    scrollToShift.current = shift.id;
+  }
 
   function clearFilters() {
     setRotaFilter(ALL_SHIFTS.rota);
@@ -93,6 +114,7 @@ export function MemberFeed({
   function handedOff(updated: MemberShift) {
     applyUpdate(updated);
     restoreFocusTo.current = updated.id;
+    reveal(updated);
   }
 
   /** Runs once the sheet has finished closing. True means we moved focus ourselves. */
@@ -106,6 +128,10 @@ export function MemberFeed({
     // finds the control that replaced the trigger rather than the trigger itself.
     const action = document.querySelector<HTMLElement>(`[data-shift-action="${shiftId}"]`);
     action?.focus();
+    // Focusing scrolls the control into view on its own, but while the sheet was still
+    // closing the page was scroll-locked, so the reveal effect could not move it. Now
+    // the lock is gone, put the whole row on screen rather than just the button.
+    scrollRowIntoView(shiftId);
     return action !== null;
   }
 
@@ -119,6 +145,7 @@ export function MemberFeed({
       throw new Error("cancel-cover-failed");
     }
     applyUpdate(result.shift);
+    reveal(result.shift);
     setTakingBack(null);
     toast.success("Got it. You're back down for this one.");
   }
@@ -172,10 +199,11 @@ export function MemberFeed({
           {/* Phone lead card. On desktop the same card is the sidebar's "You" card. */}
           <div className="lg:hidden">
             <NextShiftCard
-              shifts={mine}
+              next={upNext}
               viewerId={schedule.member.id}
               today={schedule.today}
               onHandOff={openHandOff}
+              onTakeBack={setTakingBack}
             />
           </div>
 
@@ -195,10 +223,11 @@ export function MemberFeed({
 
         <aside className="hidden w-[360px] shrink-0 space-y-4 lg:block">
           <NextShiftCard
-            shifts={mine.slice(0, 3)}
+            next={upNext}
             viewerId={schedule.member.id}
             today={schedule.today}
             onHandOff={openHandOff}
+            onTakeBack={setTakingBack}
           />
           <PeopleCard
             members={schedule.members}
@@ -234,4 +263,9 @@ export function MemberFeed({
       ) : null}
     </>
   );
+}
+
+/** Bring a feed row onto the screen without yanking the page around it. */
+function scrollRowIntoView(shiftId: number) {
+  document.querySelector(`[data-shift-row="${shiftId}"]`)?.scrollIntoView({ block: "nearest" });
 }
