@@ -1,3 +1,25 @@
+# Argument parsing for twilio:backfill_prices, kept in a module so a .rake file does not leak a
+# name as generic as MINIMUM_SLEEP onto every object in the app.
+module TwilioBackfillArgs
+  # The floor a typo cannot get under. This task is run by hand against production, and the sleep
+  # is the only thing pacing it — "0" or "half" must stop the run, not remove the politeness.
+  MINIMUM_SLEEP = 0.1
+
+  module_function
+
+  def seconds(raw, name)
+    Float(raw)
+  rescue ArgumentError, TypeError
+    abort "#{name} must be a number of seconds; got #{raw.inspect}."
+  end
+
+  def whole_number(raw, name)
+    Integer(raw)
+  rescue ArgumentError, TypeError
+    abort "#{name} must be a whole number; got #{raw.inspect}."
+  end
+end
+
 namespace :twilio do
   # The one-off that recovers the spend history (plan, Rollout step 4).
   #
@@ -10,17 +32,29 @@ namespace :twilio do
   #   BACKFILL_LIMIT=5000 bin/rails twilio:backfill_prices
   #
   # It READS Twilio and cannot send: the only call it makes is a GET on a message that has already
-  # gone out (Sms::PriceBackfill -> Sms.fetch_price -> the adapter's fetch_price). That is what makes
-  # it safe to point at production, and spec/lib/tasks/twilio_rake_spec.rb asserts it.
+  # gone out (Sms::PriceBackfill -> the adapter's fetch_price). That is what makes it safe to point
+  # at production, and spec/lib/tasks/twilio_rake_spec.rb asserts it.
+  #
+  # Run it against the account that OWNS these messages. Twilio puts the Account SID in the request
+  # path, so a test credential 404s every production message; the walk stops itself rather than
+  # marking a history it cannot see as asked, but the run is wasted either way.
   #
   # Interruptible. Eligibility is "has a SID and has never been asked about", so a run that is
   # stopped, rate limited, or capped by BACKFILL_LIMIT simply picks up where it left off next time.
   desc "Ask Twilio what it charged for every text it has a record of and record it. Reads only, never sends."
   task :backfill_prices, [ :sleep_between ] => :environment do |_task, args|
-    # A quarter of a second is polite by default: Twilio would tolerate far more, but this task is
-    # run by hand against production and has all night if it needs it.
-    sleep_between = (args[:sleep_between] || ENV["BACKFILL_SLEEP"] || 0.25).to_f
-    limit = (ENV["BACKFILL_LIMIT"] || 5_000).to_i
+    # Parsed strictly, because `.to_f` reads "half" as 0.0 and would silently take the pacing out of
+    # a run against production. A quarter of a second is polite by default: Twilio would tolerate
+    # far more, but this is run by hand and has all night if it needs it.
+    sleep_between = TwilioBackfillArgs.seconds(
+      args[:sleep_between] || ENV["BACKFILL_SLEEP"] || "0.25", "The sleep between calls"
+    )
+    if sleep_between < TwilioBackfillArgs::MINIMUM_SLEEP
+      abort "A #{sleep_between}s gap would hammer Twilio. The floor is #{TwilioBackfillArgs::MINIMUM_SLEEP}s."
+    end
+
+    limit = TwilioBackfillArgs.whole_number(ENV["BACKFILL_LIMIT"] || "5000", "BACKFILL_LIMIT")
+    abort "BACKFILL_LIMIT must be at least 1; got #{limit}." if limit < 1
 
     $stdout.sync = true
     # Development's null adapter answers "no price" to everything, which would look exactly like a
@@ -43,7 +77,8 @@ namespace :twilio do
 
     puts ""
     puts "Asked #{outcome.asked}: #{outcome.priced} priced, #{outcome.pending} not priced by Twilio yet, " \
-         "#{outcome.no_record} with no Twilio record, #{outcome.errored} refused."
+         "#{outcome.aged_out} too old for Twilio to remember, #{outcome.unmatched} not recognised by this " \
+         "Twilio account, #{outcome.errored} refused."
     puts "Stopped early: #{outcome.halted}" if outcome.halted
     remaining = SmsMessage.awaiting_price.count
     puts "#{remaining} rows still unpriced — run this again to continue." if remaining.positive?

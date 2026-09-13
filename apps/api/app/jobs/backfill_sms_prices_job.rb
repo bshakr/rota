@@ -23,7 +23,8 @@ class BackfillSmsPricesJob < ApplicationJob
     # before the spend page starts showing estimates where settled prices should be.
     Rails.logger.info(
       "BackfillSmsPricesJob asked=#{outcome.asked} priced=#{outcome.priced} pending=#{outcome.pending} " \
-      "no_record=#{outcome.no_record} errored=#{outcome.errored} halted=#{outcome.halted.inspect}"
+      "aged_out=#{outcome.aged_out} unmatched=#{outcome.unmatched} errored=#{outcome.errored} " \
+      "halted=#{outcome.halted.inspect}"
     )
   end
 end

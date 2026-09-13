@@ -80,6 +80,20 @@ RSpec.describe Sms::TwilioAdapter do
 
       expect { adapter.fetch_price(sid) }.to raise_error(Sms::PermanentFailure)
     end
+
+    # Sms::PriceBackfill holds one adapter for a whole walk precisely so this happens once. A client
+    # per message means a TLS handshake per message across a thirteen-month history.
+    it "builds one Twilio client however many messages it is asked about" do
+      second_sid = "SM00000000000000000000000000000008"
+      allow(::Twilio::REST::Client).to receive(:new).and_call_original
+      stub_twilio_fetch(sid: sid)
+      stub_twilio_fetch(sid: second_sid)
+
+      adapter.fetch_price(sid)
+      adapter.fetch_price(second_sid)
+
+      expect(::Twilio::REST::Client).to have_received(:new).once
+    end
   end
 
   # The classification is the whole job of this class: everything downstream — retry or fail, once

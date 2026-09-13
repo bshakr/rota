@@ -2,8 +2,9 @@
 #
 # Nothing else in the app talks to Twilio. SendSmsJob calls `Sms.deliver`; which adapter that
 # reaches is config (see config/initializers/sms.rb), which is what lets development log a message
-# instead of sending it and lets the specs stub the wire. `Sms.fetch_price` goes through the same
-# seam in the other direction — a read, never a send — so that stays true of the money side too.
+# instead of sending it and lets the specs stub the wire. The money side goes through the same
+# seam in the other direction: Sms::PriceBackfill takes one adapter from `Sms.adapter` and asks it
+# what Twilio charged — a read, never a send — so "nothing else talks to Twilio" stays true.
 module Sms
   # A text that did not go out, carrying whatever the carrier said about why. The distinction
   # between the two subclasses is the only thing SendSmsJob needs in order to decide between
@@ -53,13 +54,6 @@ module Sms
   class << self
     def deliver(to:, body:)
       adapter.deliver(to: to, body: body, status_callback: status_callback_url)
-    end
-
-    # What Twilio charged for a text that has already gone out, or nil while the charge has not
-    # settled yet. A GET on a message, and the only way that figure can be had: it does not exist
-    # when the create response comes back. See Sms::PriceBackfill for who asks, and when.
-    def fetch_price(sid)
-      adapter.fetch_price(sid)
     end
 
     # The URL Twilio posts delivery receipts to — and, because Twilio signs the exact URL it was

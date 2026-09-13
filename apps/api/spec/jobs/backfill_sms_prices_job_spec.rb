@@ -68,15 +68,17 @@ RSpec.describe BackfillSmsPricesJob do
     end
   end
 
-  # No price is ever coming for a message Twilio has forgotten, so the row is marked asked rather
-  # than carried forever. The price stays null: "no figure", not "free".
-  it "marks a row Twilio has no record of as asked, with no price" do
+  # Everything this job looks at was sent in the last seven days, so a 404 here is never a message
+  # Twilio has forgotten — it is one Twilio does not recognise, which points at the account being
+  # asked rather than at the row. Leave it exactly as it was. Sms::PriceBackfill's own spec covers
+  # the far side of that horizon, which only the history backfill can reach.
+  it "leaves a row Twilio does not recognise untouched, rather than writing it off" do
     message = sent_message(sid: "SM00000000000000000000000000000005")
     stub_twilio_fetch_missing(sid: message.twilio_sid)
 
     expect { described_class.perform_now }.not_to raise_error
 
-    expect(message.reload).to have_attributes(price: nil, price_fetched_at: be_present)
+    expect(message.reload).to have_attributes(price: nil, price_fetched_at: nil)
   end
 
   describe "when Twilio pushes back" do

@@ -58,8 +58,12 @@ module Sms
       retryable ? TransientFailure : PermanentFailure
     end
 
+    # Memoised per adapter instance, so anything holding one adapter across many calls — the price
+    # backfill walking a long history — reuses a single client and its connection rather than
+    # paying for a new TLS handshake on every message. A send builds one adapter per text and is
+    # unaffected either way.
     def client
-      ::Twilio::REST::Client.new(
+      @client ||= ::Twilio::REST::Client.new(
         Rails.configuration.x.twilio.account_sid,
         Rails.configuration.x.twilio.auth_token
       )
