@@ -16,7 +16,16 @@ vi.mock("next/navigation", () => ({
 import { getSignInUrl, withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
 
-import { createMember, getMe, listSmsMessages, updateRota } from "./admin";
+import {
+  connectCalendar,
+  createMember,
+  disconnectCalendar,
+  getMe,
+  listCalendarEvents,
+  listSmsMessages,
+  syncCalendar,
+  updateRota,
+} from "./admin";
 import { ApiError } from "./errors";
 
 const redirectMock = redirect as unknown as ReturnType<typeof vi.fn>;
@@ -27,6 +36,16 @@ function respond(status: number, body: unknown) {
     status,
     json: async () => body,
     text: async () => JSON.stringify(body),
+  } as unknown as Response;
+}
+
+/** A 204: no body at all, which is what DELETE /api/group/calendar answers with. */
+function respondNoContent() {
+  return {
+    ok: true,
+    status: 204,
+    json: async () => null,
+    text: async () => "",
   } as unknown as Response;
 }
 
@@ -85,6 +104,54 @@ describe("admin API client", () => {
     expect(init.method).toBe("PATCH");
     expect(url).toBe("http://rails.test/api/rotas/5");
     expect(JSON.parse(init.body as string)).toEqual({ starts_on: "2026-08-01", confirm: true });
+  });
+
+  it("sends the pasted iCal link to PUT /api/group/calendar, in the body and nowhere else", async () => {
+    const icalUrl = "https://calendar.example.test/private-abc123/basic.ics";
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      respond(200, { calendar: {}, events_preview: [] }),
+    );
+    await connectCalendar(icalUrl);
+    const { url, init } = lastFetchCall();
+
+    expect(init.method).toBe("PUT");
+    expect(url).toBe("http://rails.test/api/group/calendar");
+    expect(JSON.parse(init.body as string)).toEqual({ ical_url: icalUrl });
+    // The link is a credential: it must never ride in the path or a query string,
+    // where proxies and access logs would keep a copy of it.
+    expect(url).not.toContain("private-abc123");
+  });
+
+  it("re-syncs through POST /api/group/calendar/sync", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      respond(200, { calendar: {} }),
+    );
+    await syncCalendar();
+    const { url, init } = lastFetchCall();
+
+    expect(init.method).toBe("POST");
+    expect(url).toBe("http://rails.test/api/group/calendar/sync");
+    expect(init.body).toBeUndefined();
+  });
+
+  it("disconnects through DELETE /api/group/calendar and tolerates the empty 204", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(respondNoContent());
+
+    await expect(disconnectCalendar()).resolves.toBeUndefined();
+    const { url, init } = lastFetchCall();
+
+    expect(init.method).toBe("DELETE");
+    expect(url).toBe("http://rails.test/api/group/calendar");
+  });
+
+  it("asks for a window of calendar events, defaulting to 30 days", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(respond(200, { events: [] }));
+
+    await listCalendarEvents();
+    expect(lastFetchCall().url).toBe("http://rails.test/api/group/calendar/events?days=30");
+
+    await listCalendarEvents(7);
+    expect(lastFetchCall().url).toBe("http://rails.test/api/group/calendar/events?days=7");
   });
 
   it("builds a query string for the SMS log filters", async () => {

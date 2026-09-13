@@ -67,6 +67,8 @@ export interface Group {
   timezone: string;
   timezone_confirmed: boolean;
   timezone_confirmed_at: string | null;
+  /** The house calendar link, when an admin has connected one (BLO-1667). Never the link itself. */
+  calendar: CalendarSummary | null;
 }
 
 /** PATCH /api/group carries a warning (not a block) when the timezone actually moves. */
@@ -85,6 +87,62 @@ export interface GroupUpdateParams {
   name?: string;
   /** Sending `timezone` at all is the human confirming it, even if unchanged — Rails stamps the flag. */
   timezone?: string;
+}
+
+// ---------------------------------------------------------------------------
+// House calendar: /api/group/calendar (BLO-1667)
+// ---------------------------------------------------------------------------
+
+/**
+ * What the admin sees of a connected calendar. `masked_url` is the only form of
+ * the link that ever leaves Rails; the raw iCal URL is a credential and stays
+ * server-side. `failing` is the flag the card's warning state hangs off.
+ */
+export interface CalendarSummary {
+  calendar_name: string | null;
+  masked_url: string;
+  events_count: number;
+  /** Events still waiting on a verdict from the model; the card says so while this is above zero. */
+  unclassified_count: number;
+  last_synced_at: string | null;
+  last_error: string | null;
+  failing: boolean;
+}
+
+export type CalendarEventKind = "event" | "away";
+
+export interface CalendarEventItem {
+  id: number;
+  title: string;
+  /** Civil dates in the group's calendar, inclusive. */
+  starts_on: string;
+  ends_on: string;
+  all_day: boolean;
+  /** "HH:MM" wall-clock start in the group's zone; null for all-day entries. */
+  start_time: string | null;
+  kind: CalendarEventKind;
+  member_ids: number[];
+}
+
+/**
+ * What the admin surfaces return: an event plus the model's one-line reason for its verdict. Members
+ * get `CalendarEventItem` without it, which is the shape spec section 13 pins.
+ */
+export interface CalendarEventPreviewItem extends CalendarEventItem {
+  reason: string | null;
+}
+
+export interface CalendarConnectResponse {
+  calendar: CalendarSummary;
+  events_preview: CalendarEventPreviewItem[];
+}
+
+export interface CalendarSyncResponse {
+  calendar: CalendarSummary;
+}
+
+export interface CalendarEventsResponse {
+  events: CalendarEventPreviewItem[];
 }
 
 // ---------------------------------------------------------------------------
