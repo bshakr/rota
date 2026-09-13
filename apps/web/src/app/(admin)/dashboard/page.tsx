@@ -13,6 +13,7 @@ import { compareCivil, groupToday, isThisWeek } from "@/lib/group-dates";
 import { DashboardHero } from "./_components/dashboard-hero";
 import { DashboardWarnings } from "./_components/dashboard-warnings";
 import { GroupSettings } from "./_components/group-settings";
+import { HouseholdEntryLink } from "./_components/household-entry-link";
 import { WeekGlance, type WeekShift } from "./_components/week-glance";
 
 export const metadata: Metadata = { title: "Dashboard" };
@@ -91,6 +92,8 @@ export default async function DashboardPage() {
         coveredCount={weekShifts.filter((shift) => shift.covered).length}
         memberCount={members.filter((member) => member.active).length}
       />
+
+      <HouseholdEntryLink slug={group.slug} />
 
       <DashboardWarnings warnings={warnings} />
 
