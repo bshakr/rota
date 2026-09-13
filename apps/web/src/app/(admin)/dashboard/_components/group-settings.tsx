@@ -55,15 +55,15 @@ export function GroupSettings({
   group,
   calendarEvents,
   memberNames,
-  today,
+  now,
 }: {
   group: Group;
   /** The next 30 days of house-calendar events, for the "What we found" disclosure. */
   calendarEvents: CalendarEventPreviewItem[];
   /** Member id → name, so an away event can name the housemates it matched. */
   memberNames: Record<number, string>;
-  /** The group's own "today" as a civil date, for the calendar's "last checked" line. */
-  today: string;
+  /** The instant the server rendered at, ISO, for the calendar's "last checked" line. */
+  now: string;
 }) {
   const zones = React.useMemo(() => timezoneOptions(group.timezone), [group.timezone]);
   const form = useForm<Values>({
@@ -155,7 +155,7 @@ export function GroupSettings({
           calendar={group.calendar}
           initialEvents={calendarEvents}
           memberNames={memberNames}
-          today={today}
+          now={now}
         />
       </CardContent>
     </Card>

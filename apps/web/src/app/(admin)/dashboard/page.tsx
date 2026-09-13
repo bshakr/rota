@@ -41,7 +41,13 @@ export default async function DashboardPage() {
     listMembers(),
   ]);
 
-  const today = groupToday(new Date(), group.timezone);
+  // One instant for the whole render: `today` is the group's own calendar day, and
+  // `now` is what the calendar card measures "last checked" against. Reading the
+  // clock once means the two cannot disagree, and passing the instant to the client
+  // rather than letting it call Date.now() is what keeps the rendered string
+  // identical on both sides of hydration.
+  const now = new Date();
+  const today = groupToday(now, group.timezone);
 
   // Only running rotas have shifts; a draft has no roster to generate them from.
   const runningRotas = rotas.filter((rota) => rota.active && !rota.draft);
@@ -157,7 +163,7 @@ export default async function DashboardPage() {
           group={group}
           calendarEvents={calendarEvents}
           memberNames={memberNames}
-          today={today}
+          now={now.toISOString()}
         />
       </div>
     </>

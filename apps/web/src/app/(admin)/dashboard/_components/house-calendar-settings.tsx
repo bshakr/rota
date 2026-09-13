@@ -4,7 +4,7 @@ import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { TriangleAlert } from "lucide-react";
+import { OctagonAlert, TriangleAlert } from "lucide-react";
 import { z } from "zod";
 
 import { Alert, AlertTitle } from "@/components/ui/alert";
@@ -20,7 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { toastApiError } from "@/lib/api/toast";
 import type { CalendarEventPreviewItem, CalendarSummary } from "@/lib/api/types";
-import { formatShiftDate, relativeDay } from "@/lib/date";
+import { formatShiftDate, relativeTime } from "@/lib/date";
 import { civilDate } from "@/lib/group-dates";
 
 import { connectHouseCalendar, disconnectHouseCalendar, syncHouseCalendar } from "../actions";
@@ -37,6 +37,10 @@ const schema = z.object({
 });
 type Values = z.infer<typeof schema>;
 
+// The same pairing the dashboard's warning list uses, so a failing calendar wears
+// the stop sign here and one card up rather than two different faces.
+const ALERT_ICON = { warning: TriangleAlert, destructive: OctagonAlert } as const;
+
 /**
  * The house calendar link (BLO-1667). Lives inside the group-settings card because the dashboard's
  * "House calendar isn't syncing" warning links here (anchor `#house-calendar`). The pasted link is
@@ -47,32 +51,34 @@ export function HouseCalendarSettings({
   calendar,
   initialEvents,
   memberNames,
-  today,
+  now,
 }: {
   calendar: CalendarSummary | null;
   initialEvents: CalendarEventPreviewItem[];
   /** Member id → name, for naming the housemates an away event was matched to. */
   memberNames: Record<number, string>;
-  /** The group's own "today" as a civil date, so "last checked" reads the same on the server and the client. */
-  today: string;
+  /** The instant the server rendered at, ISO. Explicit so "last checked" is the same string in both runtimes. */
+  now: string;
 }) {
   const [connection, setConnection] = React.useState(calendar);
   const [events, setEvents] = React.useState(initialEvents);
   const [busy, setBusy] = React.useState<"sync" | "disconnect" | null>(null);
-
-  // Every calendar action revalidates /dashboard, so a freshly fetched preview
-  // arrives as a new `initialEvents` prop while this component keeps its state.
-  // Take it: without this, "Sync now" would move the counts above and leave the
-  // list below showing what the page loaded with. This is React's documented way
-  // to reset state when a prop changes, and it costs no effect and no extra
-  // render pass.
-  const [serverEvents, setServerEvents] = React.useState(initialEvents);
-  if (serverEvents !== initialEvents) {
-    setServerEvents(initialEvents);
-    setEvents(initialEvents);
-  }
   const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { ical_url: "" } });
   const { errors, isSubmitting } = form.formState;
+
+  // Every calendar action revalidates /dashboard, and so does saving the group
+  // settings form directly above, so a fresh summary and preview arrive as new
+  // props while this component keeps its state. Take both together: adopting only
+  // the events would let the list below show an hourly sweep's new entries while
+  // the counts, "last checked" and the failing alert above stayed frozen at
+  // whatever the last button press returned. This is React's documented way to
+  // reset state when a prop changes, and it costs no effect and no extra render.
+  const [fromServer, setFromServer] = React.useState({ calendar, initialEvents });
+  if (fromServer.calendar !== calendar || fromServer.initialEvents !== initialEvents) {
+    setFromServer({ calendar, initialEvents });
+    setConnection(calendar);
+    setEvents(initialEvents);
+  }
 
   const onConnect = form.handleSubmit(async (values) => {
     const result = await connectHouseCalendar(values.ical_url);
@@ -92,24 +98,38 @@ export function HouseCalendarSettings({
 
   async function onSync() {
     setBusy("sync");
-    const result = await syncHouseCalendar();
-    setBusy(null);
-    if (!result.ok) return toastApiError(result.error, "Couldn't sync the calendar.");
-    setConnection(result.calendar);
-    // A sync that answers 200 can still have failed against Google; the stored
-    // error is the honest thing to show, and it is not a success.
-    if (result.calendar.last_error) toast.error(result.calendar.last_error);
-    else toast.success("Calendar synced.");
+    try {
+      const result = await syncHouseCalendar();
+      if (!result.ok) return toastApiError(result.error, "Couldn't sync the calendar.");
+      setConnection(result.calendar);
+      // A sync that answers 200 can still have failed against Google; the stored
+      // error is the honest thing to show, and it is not a success.
+      if (result.calendar.last_error) toast.error(result.calendar.last_error);
+      else toast.success("Calendar synced.");
+    } catch (error) {
+      // A non-ApiError failure (the API host unreachable, say) is re-thrown by the
+      // action; catch it so the card stays put with a toast rather than surfacing
+      // an unhandled rejection. `finally` is what guarantees the button comes back
+      // out of its spinner, which is the longest wait on this surface.
+      toastApiError(error, "Couldn't sync the calendar.");
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function onDisconnect() {
     setBusy("disconnect");
-    const result = await disconnectHouseCalendar();
-    setBusy(null);
-    if (!result.ok) return toastApiError(result.error, "Couldn't disconnect the calendar.");
-    setConnection(null);
-    setEvents([]);
-    toast.success("Calendar disconnected.");
+    try {
+      const result = await disconnectHouseCalendar();
+      if (!result.ok) return toastApiError(result.error, "Couldn't disconnect the calendar.");
+      setConnection(null);
+      setEvents([]);
+      toast.success("Calendar disconnected.");
+    } catch (error) {
+      toastApiError(error, "Couldn't disconnect the calendar.");
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
@@ -156,16 +176,13 @@ export function HouseCalendarSettings({
             {connection.events_count} {connection.events_count === 1 ? "event" : "events"} in the
             next 90 days · last checked{" "}
             {connection.last_synced_at
-              ? relativeDay(new Date(connection.last_synced_at), civilDate(today))
+              ? relativeTime(new Date(connection.last_synced_at), new Date(now))
               : "never"}
             <span className="text-muted-foreground block break-all">{connection.masked_url}</span>
           </p>
 
           {connection.last_error ? (
-            <Alert variant={connection.failing ? "destructive" : "warning"}>
-              <TriangleAlert aria-hidden />
-              <AlertTitle className="text-pretty">{connection.last_error}</AlertTitle>
-            </Alert>
+            <CalendarError message={connection.last_error} failing={connection.failing} />
           ) : null}
 
           {connection.unclassified_count > 0 ? (
@@ -176,8 +193,18 @@ export function HouseCalendarSettings({
             </p>
           ) : null}
 
+          {/* Both buttons go inert while either is in flight. Without that, a
+              disconnect and a sync can overlap: the disconnect resolves first and
+              clears the card, then the sync's reply puts a calendar the server has
+              already deleted back on screen with every control pointing at a 404. */}
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" onClick={onSync} loading={busy === "sync"}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onSync}
+              loading={busy === "sync"}
+              disabled={busy !== null}
+            >
               Sync now
             </Button>
             <Button
@@ -185,6 +212,7 @@ export function HouseCalendarSettings({
               variant="ghost"
               onClick={onDisconnect}
               loading={busy === "disconnect"}
+              disabled={busy !== null}
             >
               Disconnect
             </Button>
@@ -224,6 +252,18 @@ export function HouseCalendarSettings({
   );
 }
 
+/** Spec state 4: the last error in plain words, wearing the same face as the dashboard's own warning. */
+function CalendarError({ message, failing }: { message: string; failing: boolean }) {
+  const variant = failing ? "destructive" : "warning";
+  const Icon = ALERT_ICON[variant];
+  return (
+    <Alert variant={variant}>
+      <Icon aria-hidden />
+      <AlertTitle className="text-pretty">{message}</AlertTitle>
+    </Alert>
+  );
+}
+
 /**
  * The one muted line under an event's title: when it runs, what time it starts, and
  * for an away event which housemates it was matched to. Dates go through
@@ -238,9 +278,12 @@ function eventMeta(event: CalendarEventPreviewItem, memberNames: Record<number, 
       : `${formatShiftDate(civilDate(event.starts_on))} to ${formatShiftDate(civilDate(event.ends_on))}`,
   ];
   if (event.start_time) parts.push(event.start_time);
-  // A member deactivated since the verdict is no longer in the roster; name the
-  // ones we can rather than rendering "undefined".
-  const names = event.member_ids.map((id) => memberNames[id]).filter(Boolean);
-  if (names.length > 0) parts.push(names.join(", "));
+  if (event.kind === "away") {
+    // A member deactivated since the verdict is no longer in the roster; name the
+    // ones we can rather than rendering "undefined". The lead-in matters: a bare
+    // list of names reads as who organised the thing, not who is out of the house.
+    const names = event.member_ids.map((id) => memberNames[id]).filter(Boolean);
+    if (names.length > 0) parts.push(`Away: ${names.join(", ")}`);
+  }
   return parts.join(" · ");
 }
