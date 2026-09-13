@@ -343,15 +343,39 @@ RSpec.describe CalendarClassifier do
                 stop_reason: "end_turn", stop_sequence: nil, usage: usage }.to_json
       )
 
-      # `classify` flattens every cause into one Failed for CalendarSync, which is the whole point of
-      # that class. The distinction between "rate limited" and "answered in the wrong shape" survives
-      # on the row, which is where an operator goes looking for it.
+      # `classify` flattens every cause into one PLAIN Failed for CalendarSync, which is the whole
+      # point of that class: a subclass reaching CalendarSync would slip past a rescue written for
+      # Failed exactly. The exact class is asserted rather than the ancestry, because `raise_error`
+      # on Failed is satisfied by any subclass and would pin nothing. The distinction between "rate
+      # limited" and "answered in the wrong shape" survives on the row, which is where an operator
+      # goes looking for it.
       expect { classifier.classify([ carlisle ]) }
-        .to raise_error(described_class::Failed, /not the JSON the schema asked for/)
+        .to raise_error(described_class::Failed, /not the JSON the schema asked for/) { |e|
+          expect(e.class).to eq(described_class::Failed)
+        }
 
       expect(AiCall.sole).to have_attributes(
         succeeded: false, error_class: "CalendarClassifier::Malformed",
         input_tokens: 2_150, output_tokens: 640, cost_usd: "0.005350".to_d
+      )
+      expect(AiCall.sole.cost_usd).not_to be_nil
+    end
+
+    # The expensive failure: the whole 8192-token output budget spent on an answer that was cut off
+    # mid-sentence, roughly eight times what a chunk that answers normally costs. The row names it,
+    # so a house doing this every hour is legible on the spend page instead of just looking busy.
+    it "records a truncated reply under its own name, priced at what it burned" do
+      stub_claude_verdicts([], stop_reason: "max_tokens",
+                               usage: { input_tokens: 2_150, output_tokens: 8_192 })
+
+      expect { classifier.classify([ carlisle ]) }
+        .to raise_error(described_class::Failed, /max_tokens/) { |e|
+          expect(e.class).to eq(described_class::Failed)
+        }
+
+      expect(AiCall.sole).to have_attributes(
+        succeeded: false, error_class: "CalendarClassifier::Truncated",
+        input_tokens: 2_150, output_tokens: 8_192, cost_usd: "0.043110".to_d
       )
     end
 
@@ -368,6 +392,34 @@ RSpec.describe CalendarClassifier do
 
       expect(AiCall.order(:id).pluck(:succeeded, :error_class, :items_count)).to eq(
         [ [ true, nil, 50 ], [ false, "Anthropic::Errors::InternalServerError", 1 ] ]
+      )
+    end
+
+    # The failure the row would otherwise lie about. Anthropic answered and billed for it, and then
+    # reading the reply blew up, so the tokens exist but the local holding them is discarded by the
+    # rescue. They ride out on the Failed instead. Mocked at the SDK boundary because there is no
+    # body that reaches it: `messages.create` walks the content eagerly today, so this is the
+    # promise that the row stays honest if it ever stops.
+    it "prices a reply that was billed and then turned out to be unreadable" do
+      stub_claude_key
+      reply = instance_double(Anthropic::Models::Message,
+                              usage: instance_double(Anthropic::Models::Usage,
+                                                     input_tokens: 2_150, output_tokens: 640,
+                                                     cache_creation_input_tokens: nil,
+                                                     cache_read_input_tokens: nil))
+      allow(reply).to receive(:content).and_raise(
+        Anthropic::Errors::ConversionError.new(on: Anthropic::Models::Message, method: :content,
+                                               target: Anthropic::Internal::Type::Unknown,
+                                               value: "not an array")
+      )
+      allow(client).to receive(:messages)
+        .and_return(instance_double(Anthropic::Resources::Messages, create: reply))
+
+      expect { classifier.classify([ carlisle ]) }.to raise_error(described_class::Failed)
+
+      expect(AiCall.sole).to have_attributes(
+        succeeded: false, error_class: "Anthropic::Errors::ConversionError",
+        input_tokens: 2_150, output_tokens: 640, cost_usd: "0.005350".to_d
       )
     end
 
@@ -388,9 +440,17 @@ RSpec.describe CalendarClassifier do
       stub_claude_verdicts([ { ref: "1", kind: "away", member_ids: [ alfie.id ], reason: "Alfie away" } ])
       allow(AiCall).to receive(:create!).and_raise(ActiveRecord::StatementInvalid, "no such table")
       allow(Rails.logger).to receive(:warn)
+      allow(Rails.error).to receive(:report)
 
       expect(classifier.classify([ carlisle ])["fp1"]).to have_attributes(kind: "away")
       expect(Rails.logger).to have_received(:warn).with(/could not record spend/)
+      # Reported too. A break here zeroes every house's Claude spend at once, and a warn in a log
+      # nobody reads is how that goes unnoticed for a month.
+      expect(Rails.error).to have_received(:report).with(
+        an_instance_of(ActiveRecord::StatementInvalid),
+        context: { group_id: group.id, calendar_connection_id: connection.id },
+        source: "rotamonster.ai_call"
+      )
     end
   end
 

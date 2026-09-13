@@ -39,8 +39,14 @@ class AiCall < ApplicationRecord
   end
 
   # Dollars for one call, or nil when the model is not priced. Deliberately never raises: this runs
-  # inside a request that has already been paid for, and a model id we do not recognise is a reason
+  # inside a request that has already been paid for, and a rate table that cannot answer is a reason
   # to leave the cost blank and keep the tokens, not to fail a house's calendar sync.
+  #
+  # There are two ways it cannot answer, and both end the same way. The model id is not in the table
+  # at all, which is what switching models without touching the rates looks like. Or its entry is
+  # there and missing a column, which is what happens the day a token column is added and priced
+  # nowhere. A blank cost beside real token counts can be priced by hand later; a wrong one cannot
+  # be told apart from a right one.
   def self.cost_usd_for(model, tokens)
     rates = Rails.configuration.x.calendar_classifier.rates[model]
     if rates.nil?
@@ -50,5 +56,9 @@ class AiCall < ApplicationRecord
 
     total = TOKEN_COLUMNS.sum { |column| rates.fetch(column) * tokens.fetch(column, 0) }
     (total / PER_MILLION).round(CENTS_PRECISION)
+  rescue KeyError => e
+    Rails.logger.warn("AiCall rate table for model #{model} is incomplete (#{e.message}); " \
+                      "storing tokens with no cost")
+    nil
   end
 end

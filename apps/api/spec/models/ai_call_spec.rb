@@ -74,6 +74,18 @@ RSpec.describe AiCall do
       expect(described_class.cost_usd_for("claude-sonnet-5", tokens(input: 10, output: 10))).to be_nil
       expect(Rails.logger).to have_received(:warn).with(/claude-sonnet-5/)
     end
+
+    # The other way a rate table can fail to answer, and the likelier one: the model is priced, but
+    # its entry is missing a column — what the day a fifth token column is added looks like. Same
+    # outcome, because a cost that is quietly short by one column cannot be told from a right one.
+    it "prices a model whose rate entry is missing a column at nil rather than raising" do
+      allow(Rails.logger).to receive(:warn)
+      allow(Rails.configuration.x.calendar_classifier).to receive(:rates)
+        .and_return({ "claude-haiku-4-5" => { input_tokens: "1.0".to_d } })
+
+      expect(described_class.cost_usd_for("claude-haiku-4-5", tokens(input: 10, output: 10))).to be_nil
+      expect(Rails.logger).to have_received(:warn).with(/incomplete/)
+    end
   end
 
   it "keeps the spend when the connection that spent it is deleted" do

@@ -28,13 +28,20 @@ class CalendarClassifier
   # boundary so a 429 is recorded as Anthropic's own RateLimitError rather than as a word of ours.
   # A string rather than a class: it is written to a column and read on a spend page long after the
   # gem that named it has moved on.
+  #
+  # `usage` is what the reply said it spent, when there was a reply at all. A failure that happened
+  # after Anthropic answered was still billed, and the tokens would otherwise be lost with the local
+  # that held them, leaving the spend page reading a call that cost real money as costing nothing.
+  # Nil for a failure that never got an answer — a 429, a dropped connection — which is recorded at
+  # zero because zero is what it spent.
   class Failed < StandardError
-    attr_reader :verdicts, :error_class
+    attr_reader :verdicts, :error_class, :usage
 
-    def initialize(message, verdicts: {}, error_class: nil)
+    def initialize(message, verdicts: {}, error_class: nil, usage: nil)
       super(message)
       @verdicts = verdicts
       @error_class = error_class || self.class.name
+      @usage = usage
     end
   end
 
@@ -43,6 +50,11 @@ class CalendarClassifier
   # house" and "the model keeps answering in the wrong shape" are different problems that cost the
   # same. Still a Failed, so CalendarSync's single rescue keeps catching both.
   class Malformed < Failed; end
+
+  # The model filled its whole output budget and was cut off mid-answer. Its own class because it is
+  # the expensive failure: a truncated chunk burns all of MAX_TOKENS, roughly eight times what a
+  # chunk that answers normally spends, so it is the one the spend page most needs to name.
+  class Truncated < Failed; end
 
   BATCH_SIZE = 50
   MAX_TOKENS = 8192
@@ -188,23 +200,23 @@ class CalendarClassifier
     end
   end
 
-  # One request, and one ai_calls row for it either way. `usage` is declared out here so that it
-  # survives into the rescue: a reply that arrived and then failed a check still spent the tokens it
-  # reports, and a failure the request never got past (a 429, a dropped connection) has none to
-  # report and is recorded at zero. Multiple assignment leaves it nil when read_reply raises, which
-  # is exactly the second case.
+  # One request, and one ai_calls row for it either way. The tokens reach that row by two routes,
+  # because a reply can fail either of two checks. When read_reply returns, the usage comes back with
+  # it and the local below holds it. When read_reply raises, the local is never assigned and the
+  # usage rides out on the exception instead — nil when the request never produced an answer.
   def classify_chunk(chunk)
     refs = wire_refs(chunk)
     usage = nil
 
     verdicts = begin
       stop_reason, text, usage = read_reply(JSON.generate(payload_for(chunk, refs.keys)))
+      raise Truncated, "the model stopped on #{stop_reason}" if stop_reason == :max_tokens
       raise Failed, "the model stopped on #{stop_reason}" unless stop_reason == :end_turn
       raise Malformed, "the reply carried no text block" if text.nil?
 
       accept(verdicts_in(text), refs)
     rescue Failed => e
-      record_spend(chunk.size, usage, succeeded: false, error_class: e.error_class)
+      record_spend(chunk.size, e.usage || usage, succeeded: false, error_class: e.error_class)
       raise
     end
 
@@ -232,6 +244,11 @@ class CalendarClassifier
   rescue StandardError => e
     Rails.logger.warn("CalendarClassifier could not record spend for connection " \
                       "#{connection.id}: #{e.class}: #{e.message}")
+    # Reported as well as logged, for the same reason CalendarSync reports a failed classification:
+    # swallowing this quietly is how a schema drift or a mistyped rate would zero out every house's
+    # Claude spend for a month with nothing to show that it had happened.
+    Rails.error.report(e, context: { group_id: connection.group_id, calendar_connection_id: connection.id },
+                          source: "rotamonster.ai_call")
   end
 
   # Spec 7.4 is absolute, so the shape of the reply is checked rather than assumed. Structured
@@ -260,8 +277,12 @@ class CalendarClassifier
   # last: whatever class the gem throws over the wall, it means the call did not produce an answer.
   #
   # The usage rides back with the reply so the chunk can be billed, and is read before the content
-  # is walked, so a reply that turns out to be unreadable is still priced at what it spent.
+  # is walked so that it is already in hand if walking the content is what fails. It goes out on the
+  # Failed in that case, because a local would be discarded by the rescue and the call would be
+  # recorded as free. It stays nil when the request itself never produced a reply, which is the one
+  # case where the house really was charged nothing.
   def read_reply(user_message)
+    usage = nil
     message = request(user_message)
     usage = message.usage
     block = message.content.find { |candidate| candidate.type == :text }
@@ -272,9 +293,10 @@ class CalendarClassifier
     # and `.type` adds the API's own label when the body carried one. A bodyless 429 carries none,
     # so do not trail an empty pair of brackets. The class alone, without the label, is what the
     # spend row records: it is the part that stays the same across two 429s worded differently.
-    raise Failed.new(e.type.present? ? "#{e.class} (#{e.type})" : e.class.to_s, error_class: e.class.to_s)
+    raise Failed.new(e.type.present? ? "#{e.class} (#{e.type})" : e.class.to_s,
+                     error_class: e.class.to_s, usage: usage)
   rescue StandardError => e
-    raise Failed.new(e.class.to_s, error_class: e.class.to_s)
+    raise Failed.new(e.class.to_s, error_class: e.class.to_s, usage: usage)
   end
 
   def request(user_message)
