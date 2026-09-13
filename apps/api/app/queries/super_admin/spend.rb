@@ -232,6 +232,12 @@ module SuperAdmin
         currency: CURRENCY,
         starts_at: window.starts_at.iso8601,
         ends_at: window.ends_at.iso8601,
+        # NOT `months.length`, and the two disagree on purpose. This is the elapsed months the range
+        # covers — the divisor for every "per month" figure and the multiplier for the fixed cost —
+        # so a 30-day range is 1. `months` below is the calendar series, and a 30-day window that
+        # straddles a month boundary has two entries in it, the older of them a partial month.
+        # Anything dividing by "how many months am I looking at" wants this; anything drawing bars
+        # wants that.
         months_in_range: window.months,
         fixed_monthly_cost_usd: money(fixed_monthly_cost),
         sms_estimated_segment_cost_usd: unit_price(segment_cost),

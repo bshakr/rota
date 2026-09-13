@@ -493,6 +493,16 @@ RSpec.describe SuperAdmin::Spend do
       expect(months["2026-09"][:sms_cost_settled]).to eq(0.0)
     end
 
+    # months_in_range and months.length are different numbers on purpose, and this is the range
+    # where they visibly disagree: 30 days is one elapsed month of spend, spread over two calendar
+    # months. Dividing per-month figures by months.length here would halve every one of them.
+    it "counts a 30-day range as one month even though it draws two calendar bars" do
+      answer = result
+
+      expect(answer[:months_in_range]).to eq(1)
+      expect(answer[:months].map { |month| month[:month] }).to eq(%w[2026-08 2026-09])
+    end
+
     it "buckets by UTC month, which is the clock a cross-house total has to use" do
       settled_text(group, amount: "0.0500", at: Time.utc(2026, 9, 1, 0, 30))
 
