@@ -1,7 +1,7 @@
 module Api
   # The house calendar link (BLO-1667): connect, sync now, preview what was found, disconnect.
   # Singular and scoped to the token's group like GroupController, so a house with no link is a 404
-  # on sync, events and disconnect — never a glimpse of anyone else's.
+  # on sync, events and disconnect, never a glimpse of anyone else's.
   #
   # The one rule that runs through every action: the pasted URL is a credential (spec section 5). It
   # goes in as a parameter, is stored, and comes back only as `masked_url`. No response, no error
@@ -25,7 +25,7 @@ module Api
     # "Sync now" is also "try again": pressing it clears `disabled_at`, so a house that gave up on a
     # link after a run of failures is syncing again from this request on (spec section 6 step 5).
     # CalendarSync records its own failures rather than raising, so a calendar that is still broken
-    # comes back as a 200 carrying `last_error` — the card says what happened instead of a toast
+    # comes back as a 200 carrying `last_error`: the card says what happened instead of a toast
     # saying something went wrong.
     def sync
       connection = find_connection
@@ -36,9 +36,7 @@ module Api
     end
 
     def events
-      days = params.fetch(:days, PREVIEW_DAYS).to_i.clamp(1, PREVIEW_DAYS_MAX)
-
-      render json: { events: preview(find_connection, days) }
+      render json: { events: preview(find_connection, preview_days) }
     end
 
     # Disconnect is a fresh start, not a pause: the connection goes, and `dependent: :delete_all`
@@ -49,6 +47,17 @@ module Api
     end
 
     private
+
+    # `days` arrives off a query string, so it is whatever the caller typed: a number, a word, an
+    # array (`days[]=1`), a nested hash, nothing at all. An Array does not answer `to_i` at all, so
+    # reaching straight for it turned a malformed query into a 500 on a read-only endpoint. Anything
+    # that is not a whole number falls back to the default rather than to `to_i`'s silent 0, which
+    # the clamp would have turned into a one-day window and called it the caller's intent.
+    def preview_days
+      raw = params[:days]
+      days = Integer(raw, exception: false) if raw.is_a?(String) || raw.is_a?(Numeric)
+      (days || PREVIEW_DAYS).clamp(1, PREVIEW_DAYS_MAX)
+    end
 
     # `current_group` is the group the token named, so this is the whole tenancy boundary: there is
     # no id to send, and another house's connection is indistinguishable from no connection at all.

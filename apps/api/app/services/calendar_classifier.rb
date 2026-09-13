@@ -37,6 +37,9 @@ class CalendarClassifier
   TIMEOUT_SECONDS = 20
   MAX_RETRIES = 2
   KINDS = %w[event away].freeze
+  # What every "the model did not answer in the shape it was asked for" failure says. One sentence,
+  # because the admin can do nothing with the difference and the next sync asks again anyway.
+  MALFORMED = "the reply was not the JSON the schema asked for"
 
   # Structured output, so the reply is always this shape and there is no free text to parse. Every
   # object needs additionalProperties false and a required list; length and range constraints are
@@ -170,9 +173,20 @@ class CalendarClassifier
     raise Failed, "the model stopped on #{stop_reason}" unless stop_reason == :end_turn
     raise Failed, "the reply carried no text block" if text.nil?
 
-    accept(JSON.parse(text)["verdicts"], refs)
+    accept(verdicts_in(text), refs)
+  end
+
+  # Spec 7.4 is absolute, so the shape of the reply is checked rather than assumed. Structured
+  # output makes anything but an object near-unreachable, but "near" is not the promise: a reply
+  # that parses to an array or a number would make `parsed["verdicts"]` raise TypeError, which is
+  # not Failed, and a 500 would reach the admin in place of the pending state 7.4 guarantees.
+  def verdicts_in(text)
+    parsed = JSON.parse(text)
+    raise Failed, MALFORMED unless parsed.is_a?(Hash)
+
+    parsed["verdicts"]
   rescue JSON::ParserError
-    raise Failed, "the reply was not the JSON the schema asked for"
+    raise Failed, MALFORMED
   end
 
   # The whole of the SDK boundary: making the call and reading the reply's fields. Everything of
@@ -236,6 +250,11 @@ class CalendarClassifier
   # again, which is cheaper than a repair path nobody will ever read.
   def accept(verdicts, refs)
     Array(verdicts).each_with_object({}) do |raw, accepted|
+      # A verdict that is not an object at all is dropped rather than read: `Array` turns a hash
+      # into pairs and a string into one string, and `raw["ref"]` on either would raise out of a
+      # method whose contract is that a bad reply costs verdicts, never the sync.
+      next unless raw.is_a?(Hash)
+
       # refs maps the positional ref the model was given back to the caller's ref. A ref we never
       # sent has no entry, so an invented one is dropped here.
       ref = refs[raw["ref"].to_s]

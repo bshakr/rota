@@ -183,6 +183,56 @@ RSpec.describe CalendarClassifier do
       .to raise_error(described_class::Failed, /ConversionError/)
   end
 
+  # Spec 7.4 is absolute, so every shape of bad reply has to arrive as Failed and not as whatever
+  # Ruby raises next. A reply that parses to an ARRAY was the hole: `parsed["verdicts"]` on an Array
+  # raises TypeError, which escaped classify, escaped CalendarSync's rescue, and reached the admin
+  # as a 500 on connect and on "Sync now" instead of the pending state.
+  it "raises Failed when the reply is JSON but not an object" do
+    stub_claude_key
+    [ "[]", "\"just a string\"", "42", "null" ].each do |text|
+      stub_request(:post, AnthropicStubs::MESSAGES_URL).to_return(
+        status: 200, headers: { "Content-Type" => "application/json" },
+        body: { id: "msg_01Stub", type: "message", role: "assistant", model: "claude-haiku-4-5",
+                content: [ { type: "text", text: text } ], stop_reason: "end_turn", stop_sequence: nil,
+                usage: { input_tokens: 1, output_tokens: 1 } }.to_json
+      )
+
+      expect { classifier.classify([ carlisle ]) }
+        .to raise_error(described_class::Failed, /not the JSON the schema asked for/), "for #{text}"
+    end
+  end
+
+  it "raises Failed when the reply is not JSON at all" do
+    stub_claude_key
+    stub_request(:post, AnthropicStubs::MESSAGES_URL).to_return(
+      status: 200, headers: { "Content-Type" => "application/json" },
+      body: { id: "msg_01Stub", type: "message", role: "assistant", model: "claude-haiku-4-5",
+              content: [ { type: "text", text: "Sorry, I cannot help with that." } ],
+              stop_reason: "end_turn", stop_sequence: nil,
+              usage: { input_tokens: 1, output_tokens: 1 } }.to_json
+    )
+
+    expect { classifier.classify([ carlisle ]) }
+      .to raise_error(described_class::Failed, /not the JSON the schema asked for/)
+  end
+
+  # `Array` turns a hash into pairs and a bare string into one string, so a verdicts value of the
+  # wrong shape used to reach `raw["ref"]` as an Array and raise TypeError from inside accept.
+  it "drops verdicts that are not objects rather than raising" do
+    stub_claude_key
+    [ { "a" => 1 }, "just a string", [ [ 1, 2 ] ] ].each do |verdicts|
+      stub_request(:post, AnthropicStubs::MESSAGES_URL).to_return(
+        status: 200, headers: { "Content-Type" => "application/json" },
+        body: { id: "msg_01Stub", type: "message", role: "assistant", model: "claude-haiku-4-5",
+                content: [ { type: "text", text: JSON.generate(verdicts: verdicts) } ],
+                stop_reason: "end_turn", stop_sequence: nil,
+                usage: { input_tokens: 1, output_tokens: 1 } }.to_json
+      )
+
+      expect(classifier.classify([ carlisle ])).to eq({}), "for #{verdicts.inspect}"
+    end
+  end
+
   it "raises Failed when the model runs out of tokens or refuses" do
     stub_claude_verdicts([], stop_reason: "max_tokens")
     expect { classifier.classify([ carlisle ]) }.to raise_error(described_class::Failed, /max_tokens/)

@@ -222,6 +222,30 @@ RSpec.describe "Api::GroupCalendar" do
       expect(response.parsed_body["events"]).to eq([])
     end
 
+    # `days` is a query parameter, so it is whatever the caller typed. `days[]=1` arrives as an
+    # Array, which does not answer to_i at all, and the action used to raise NoMethodError: a 500
+    # for a malformed query string on a read-only endpoint.
+    it "falls back to the default window when days is not a scalar" do
+      connection = create(:calendar_connection, group: group)
+      create(:calendar_event, calendar_connection: connection, summary: "Soon", starts_on: Date.new(2026, 9, 20), ends_on: Date.new(2026, 9, 20))
+      create(:calendar_event, calendar_connection: connection, summary: "Later", starts_on: Date.new(2026, 11, 20), ends_on: Date.new(2026, 11, 20))
+
+      get "/api/group/calendar/events", params: { days: [ "1" ] }, headers: headers
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["events"].map { |event| event["title"] }).to eq([ "Soon" ])
+    end
+
+    it "falls back to the default window when days is a word" do
+      connection = create(:calendar_connection, group: group)
+      create(:calendar_event, calendar_connection: connection, summary: "Soon", starts_on: Date.new(2026, 9, 20), ends_on: Date.new(2026, 9, 20))
+
+      get "/api/group/calendar/events", params: { days: "soon" }, headers: headers
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["events"].map { |event| event["title"] }).to eq([ "Soon" ])
+    end
+
     it "is 404 when nothing is connected" do
       get "/api/group/calendar/events", headers: headers
 
@@ -291,8 +315,8 @@ RSpec.describe "Api::GroupCalendar" do
     end
   end
 
-  # Mirrors spec/requests/api/member/token_privacy_spec.rb. The point is not that the log is empty —
-  # it is that the request WAS logged, in full, and the secret came out as [FILTERED].
+  # Mirrors spec/requests/api/member/token_privacy_spec.rb. The point is not that the log is empty.
+  # It is that the request WAS logged, in full, and the secret came out as [FILTERED].
   describe "log redaction" do
     it "writes the request and redacts the link" do
       stub_request(:get, url).to_return(status: 200, body: feed)
