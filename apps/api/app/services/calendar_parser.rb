@@ -5,6 +5,10 @@ require "icalendar/recurrence"
 # calendar, and every timed instant is a Time in the group's zone, so nothing downstream touches
 # iCal's rules again: DTEND is exclusive, all-day values are dates not midnights, recurring events
 # are many rows, and an override VEVENT (RECURRENCE-ID) replaces the instance it names.
+#
+# Both readers parse on first use, so `calendar_name` raises NotACalendar on a bad body just as
+# `occurrences` does. A corrupt single event is survivable and is skipped with a warning; a body
+# that cannot be parsed at all is not, and raises.
 class CalendarParser
   class NotACalendar < StandardError; end
 
@@ -12,6 +16,12 @@ class CalendarParser
 
   SUMMARY_LIMIT = 200
   UNTITLED = "(untitled)"
+
+  # icalendar-recurrence reads the Date bounds of an expansion in the process's own zone rather than
+  # the event's, so a host far enough east of the feed clips instances late on the window's last day.
+  # Expanding two days wide covers the widest spread two zones can have, 26 hours from UTC+14 to
+  # UTC-12, and everything the extra slack generates is dropped again by the window overlap below.
+  EXPANSION_CUSHION = 2
 
   def initialize(body, zone:, from:, to:)
     @body = body.to_s
@@ -36,8 +46,17 @@ class CalendarParser
     @calendar ||= begin
       raise NotACalendar, "no VCALENDAR" unless @body.include?("BEGIN:VCALENDAR")
 
-      Icalendar::Calendar.parse(@body).first or raise NotACalendar, "empty calendar"
+      parse_calendar or raise NotACalendar, "empty calendar"
     end
+  end
+
+  # The body is remote input, so a malformed one must not reach the caller under a library error
+  # class. Everything the parse step can fail on becomes the single error class the sync step knows
+  # how to turn into a sentence for the admin.
+  def parse_calendar
+    Icalendar::Calendar.parse(@body).first
+  rescue StandardError => e
+    raise NotACalendar, "unparseable calendar: #{e.class}"
   end
 
   # icalendar files every unrecognised property under a downcased, underscored key, so the
@@ -60,17 +79,31 @@ class CalendarParser
 
   def occurrences_for(uid, events)
     masters, overrides = events.partition { |event| event.recurrence_id.nil? }
-    override_by_key = overrides.to_h { |event| [ instance_key(uid, event.recurrence_id), event ] }
+    # RFC 5545 pins a RECURRENCE-ID to the value type of DTSTART but not to its zone, so a UTC stamp
+    # may legally name an instance of a TZID master. Matching on the rendered key would miss that,
+    # leaving the house looking at the event twice and at a cancelled one that never went away, so
+    # the match is on the zone-independent instant instead.
+    override_by_instant = overrides.index_by { |event| value_instant(event.recurrence_id) }
 
-    instances = masters.flat_map { |master| expand(uid, master) }
-    instances = instances.map { |occurrence| override_by_key.delete(occurrence.instance_key) || occurrence }
-    # An override with no surviving master instance (the master's rule was edited, say) still counts.
-    instances += override_by_key.values
-    instances.filter_map do |instance|
-      next instance if instance.is_a?(Occurrence)
+    replaced = masters.flat_map { |master| expand(uid, master) }.map do |occurrence|
+      override = override_by_instant.delete(occurrence_instant(occurrence))
+      next occurrence if override.nil?
 
-      occurrence_from_event(uid, instance, key: instance_key(uid, instance.recurrence_id))
+      # The winner keeps the master instance's rendered key, so a row's identity does not depend on
+      # how the feed happened to stamp the override that replaced it.
+      occurrence_from_event(uid, override, key: occurrence.instance_key)
     end
+    # An override with no surviving master instance (the master's rule was edited, say) still counts.
+    orphans = override_by_instant.each_value.map do |event|
+      occurrence_from_event(uid, event, key: instance_key(uid, event.recurrence_id))
+    end
+
+    (replaced + orphans).compact
+  rescue StandardError => e
+    # One corrupt VEVENT must not sink the whole house calendar. The UID identifies it for support;
+    # the title is somebody's private calendar entry and never goes into a log.
+    Rails.logger.warn("CalendarParser skipped event #{uid}: #{e.class}")
+    []
   end
 
   def expand(uid, event)
@@ -81,10 +114,12 @@ class CalendarParser
     event_zone = source_zone(event.dtstart)
     duration = duration_of(event)
 
-    event.occurrences_between(from - 1, to + 1).map do |occurrence|
-      # icalendar-recurrence hands every instance back as a plain UTC Time, so each one is put
-      # back into the event's own zone before it is stamped into a key.
-      start_value = all_day ? occurrence.start_time.to_date : occurrence.start_time.in_time_zone(event_zone)
+    event.occurrences_between(from - EXPANSION_CUSHION, to + EXPANSION_CUSHION).map do |occurrence|
+      # icalendar-recurrence hands every instance back as a plain UTC Time. A DATE-valued instance
+      # was built as local midnight, so `getlocal` undoes exactly that before the civil date is
+      # read: taking the UTC date instead puts every instance a day early anywhere east of
+      # Greenwich. A timed instance is a true instant, so it goes into the event's own zone.
+      start_value = all_day ? occurrence.start_time.getlocal.to_date : occurrence.start_time.in_time_zone(event_zone)
       build(uid: uid, key: instance_key(uid, start_value), summary: event.summary,
             start_value: start_value, end_value: start_value + duration, all_day: all_day)
     end
@@ -148,11 +183,23 @@ class CalendarParser
     source_zone(value).local(value.year, value.month, value.day, value.hour, value.min, value.sec)
   end
 
-  # The identity of one instance: its UID plus its own start, stamped in the event's own zone so
-  # that a RECURRENCE-ID override lines up with the master instance it replaces no matter which
-  # group is reading the feed.
+  # The identity of one instance as the rest of the app stores it: its UID plus its own start,
+  # stamped in the event's own zone so the key does not move when a group's zone is corrected. Two
+  # cases do fall back to the group's zone and so are not proof against that, an unknown TZID and a
+  # floating value in a feed that declares no X-WR-TIMEZONE; both cost one churned sync at most.
   def instance_key(uid, value)
     "#{uid}##{instance_stamp(value)}"
+  end
+
+  # Matching an override to the instance it replaces uses this instead of the rendered key, because
+  # the two sides may be stamped in different zones: the civil date for an all-day value, the
+  # absolute instant for a timed one, neither of which depends on how it was written.
+  def value_instant(value)
+    value.is_a?(Icalendar::Values::Date) ? value.to_date : local_time(value).to_i
+  end
+
+  def occurrence_instant(occurrence)
+    occurrence.all_day ? occurrence.starts_on : occurrence.starts_at.to_i
   end
 
   def instance_stamp(value)

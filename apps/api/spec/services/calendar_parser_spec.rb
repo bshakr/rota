@@ -63,6 +63,42 @@ RSpec.describe CalendarParser do
     expect(occurrences.map(&:summary)).to include("House meeting (moved)")
   end
 
+  # The recurrence library reads the Date bounds of an expansion in the process's own zone, so an
+  # evening instance on the last day of the window is clipped on a host east of the feed's zone.
+  # Like the all-day example below, this one only fails on such a host.
+  it "keeps a recurring instance that falls on the first and last day of the window" do
+    dates = parse("weekly_with_exdate.ics", from: Date.new(2026, 9, 29), to: Date.new(2026, 10, 6)).occurrences.map(&:starts_on)
+
+    expect(dates).to eq([ Date.new(2026, 9, 29), Date.new(2026, 10, 6) ])
+  end
+
+  # icalendar-recurrence builds a DATE-valued instance as local midnight and hands it back as a UTC
+  # Time, so reading its UTC date puts every instance a day early on any host east of Greenwich.
+  # This example only fails on such a host, which is why the suite is also run under TZ=UTC.
+  it "expands a recurring all-day event on its civil dates whatever zone the process runs in" do
+    occurrences = parse("weekly_all_day.ics").occurrences
+
+    expect(occurrences.map(&:starts_on)).to eq([ Date.new(2026, 9, 16), Date.new(2026, 9, 23), Date.new(2026, 9, 30) ])
+    expect(occurrences.map(&:ends_on)).to eq([ Date.new(2026, 9, 17), Date.new(2026, 9, 24), Date.new(2026, 10, 1) ])
+    expect(occurrences.map(&:instance_key)).to eq([ "bins@google.com#2026-09-16", "bins@google.com#2026-09-23",
+                                                    "bins@google.com#2026-09-30" ])
+    expect(occurrences).to all(have_attributes(all_day: true, starts_at: nil, ends_at: nil))
+  end
+
+  # RFC 5545 pins a RECURRENCE-ID to the value type of DTSTART but not to its zone, so a feed may
+  # name an instance of a TZID master with the same instant written as UTC.
+  it "matches a RECURRENCE-ID stamped in UTC against a master stamped with a TZID" do
+    occurrences = parse("override_in_utc.ics").occurrences.sort_by(&:starts_on)
+
+    expect(occurrences.map(&:starts_on)).to eq([ Date.new(2026, 9, 14), Date.new(2026, 9, 21), Date.new(2026, 10, 5) ])
+    moved = occurrences.find { |o| o.starts_on == Date.new(2026, 9, 21) }
+    expect(moved.summary).to eq("House meeting (moved)")
+    expect(moved.starts_at.in_time_zone(london).hour).to eq(20)
+    # The winning record keeps the master instance's key, so a row's identity does not depend on how
+    # the feed happened to stamp the override that replaced it.
+    expect(moved.instance_key).to eq("meeting@google.com#2026-09-21T19:30:00+01:00")
+  end
+
   it "reads floating times in X-WR-TIMEZONE and Z times as UTC" do
     auckland_group = ActiveSupport::TimeZone["Pacific/Auckland"]
     floating, utc = parse("floating_with_wr_timezone.ics", zone: auckland_group).occurrences.sort_by(&:uid)
@@ -92,7 +128,31 @@ RSpec.describe CalendarParser do
     expect { described_class.new("", zone: london, from: from, to: to).occurrences }.to raise_error(described_class::NotACalendar)
   end
 
+  # The sync step maps one error class to one sentence for the admin, so a library exception from
+  # remote input must never reach it under its own name.
+  it "raises NotACalendar for a calendar body the library cannot parse" do
+    expect { parse("unparseable.ics").occurrences }.to raise_error(described_class::NotACalendar)
+    expect { parse("unparseable.ics").calendar_name }.to raise_error(described_class::NotACalendar)
+  end
+
+  it "skips an event whose rule cannot be expanded, logging its UID but never its title" do
+    log = StringIO.new
+    occurrences = logging_to(log) { parse("bad_rrule.ics").occurrences }
+
+    expect(occurrences.map(&:uid)).to eq([ "good@google.com" ])
+    expect(log.string).to include("broken@google.com", "ArgumentError")
+    expect(log.string).not_to include("Broken rule")
+  end
+
   def parse_body(body)
     described_class.new(body, zone: london, from: from, to: to)
+  end
+
+  def logging_to(io)
+    original = Rails.logger
+    Rails.logger = ActiveSupport::Logger.new(io)
+    yield
+  ensure
+    Rails.logger = original
   end
 end
