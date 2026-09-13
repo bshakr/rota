@@ -5,11 +5,18 @@ require "rails_helper"
 # IP. Authenticated members are keyed per member; only unauthenticated (enumeration) traffic is keyed
 # per IP. The test env cache is null (so the throttle never interferes with any other spec); here we
 # swap in a real store so the limits can actually be reached.
+#
+# Time is frozen for every example on purpose. Rack::Attack counts in a FIXED 60-second window
+# keyed on `Time.now.to_i / 60`, so a burst that happens to straddle a minute boundary starts a
+# fresh counter and the request these specs expect to be refused is legitimately allowed. That is
+# a real property of a fixed window rather than a bug in the throttle, but it made these examples
+# fail for the clock's reasons instead of the code's. Freezing the clock inside the window
+# measures what they are actually about. (Drive-by fix; the flake predates BLO-1671.)
 RSpec.describe "Rate limiting the member magic-link path" do
   around do |example|
     original = Rack::Attack.cache.store
     Rack::Attack.cache.store = ActiveSupport::Cache::MemoryStore.new
-    example.run
+    freeze_time { example.run }
   ensure
     Rack::Attack.cache.store = original
     Rack::Attack.reset!
