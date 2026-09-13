@@ -7,7 +7,17 @@
 class TopUpShiftWindowsJob < ApplicationJob
   queue_as :default
 
+  # Wrapped in a JobRun so the operator dashboard can answer "when did the top-up last finish?".
+  # It runs daily, so a failure nobody notices has a whole day to shrink every house's shift window
+  # before it could show up anywhere, and Solid Queue's own record of the run is deleted hourly by
+  # `clear_solid_queue_finished_jobs`. See JobRun.
   def perform
+    JobRun.record(JobRun::TOP_UP_SHIFT_WINDOWS) { top_up_every_active_rota }
+  end
+
+  private
+
+  def top_up_every_active_rota
     Rota.active.includes(:group).find_each do |rota|
       ShiftGenerator.new(rota).call
     rescue StandardError => e

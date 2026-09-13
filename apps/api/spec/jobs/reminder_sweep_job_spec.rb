@@ -102,6 +102,42 @@ RSpec.describe ReminderSweepJob do
     end
   end
 
+  # The heartbeat the operator dashboard reads (BLO-1677). Solid Queue's own record of this run is
+  # deleted hourly by `clear_solid_queue_finished_jobs`, so this row is the only lasting evidence
+  # that the sweep ran at all.
+  describe "the run it writes down" do
+    it "records a finished run" do
+      travel_to(Time.utc(2026, 7, 15, 8, 0)) { described_class.perform_now }
+
+      expect(JobRun.sole).to have_attributes(
+        name: "reminder_sweep", succeeded: true, error_class: nil
+      )
+    end
+
+    # A per-rota failure is rescued inside the loop and never reaches here. This is the sweep itself
+    # falling over, which must be written down AND still fail the job.
+    it "records the failure and still raises when the sweep itself falls over" do
+      allow(Rota).to receive(:active).and_raise(ActiveRecord::StatementInvalid, "connection lost")
+
+      expect { described_class.perform_now }.to raise_error(ActiveRecord::StatementInvalid)
+
+      expect(JobRun.sole).to have_attributes(
+        name: "reminder_sweep", succeeded: false, error_class: "ActiveRecord::StatementInvalid"
+      )
+    end
+
+    it "still counts as a successful run when one rota was rescued inside the loop" do
+      allow(Rails.logger).to receive(:error)
+      allow(Rails.error).to receive(:report)
+      allow(ReminderSweep).to receive(:new).and_raise(RuntimeError, "no")
+      create(:rota, group: group, send_hour: 9, reminder_offsets: [ 0 ])
+
+      travel_to(Time.utc(2026, 7, 15, 8, 0)) { described_class.perform_now }
+
+      expect(JobRun.sole).to have_attributes(name: "reminder_sweep", succeeded: true)
+    end
+  end
+
   # The sweep is only self-healing if it actually runs every hour. Guard the recurring entry so it
   # cannot be dropped without a spec turning red.
   describe "recurring schedule" do
