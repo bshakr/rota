@@ -149,10 +149,10 @@ module SuperAdmin
     #
     # TODO(https://linear.app/bloombase/issue/BLO-1675): fold in `users.last_seen_at` and
     # `members.last_seen_at`. The plan's definition is the latest of the last text, the last admin
-    # seen and the last member seen, and only the first of those three exists yet. BLO-1671
-    # (https://linear.app/bloombase/issue/BLO-1671) adds the two columns but does not touch this
-    # class; BLO-1675 is the next ticket to edit these endpoints, so it is the one that wires them
-    # in once BLO-1671 is on main.
+    # seen and the last member seen; only the last text is folded in here. BLO-1671
+    # (https://linear.app/bloombase/issue/BLO-1671) added the two columns but deliberately does not
+    # touch this class; BLO-1675 is the next ticket to edit these endpoints, so it is the one that
+    # wires them in.
     def last_activity
       SmsMessage.joins(:member)
         .where(members: { group_id: group_ids })

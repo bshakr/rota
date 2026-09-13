@@ -13,7 +13,7 @@ module SuperAdmin
         name: user.name,
         # An AuthKit access token carries no email unless the WorkOS JWT template has been
         # configured to add one, so a first sighting is provisioned with a placeholder at an
-        # .invalid domain (see GroupAdmin.user_defaults). Serving that placeholder would put an
+        # .invalid domain (see User.defaults_from). Serving that placeholder would put an
         # address on screen that looks deliverable and is not; `null` is what the console renders
         # as "not provided".
         email: user.email_placeholder? ? nil : user.email,
