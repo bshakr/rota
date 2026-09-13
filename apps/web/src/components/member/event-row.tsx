@@ -1,8 +1,8 @@
 "use client";
 
-import type { FeedEvent } from "@/app/(member)/s/[token]/calendar-view";
-import { eventMetaLabel, eventRowLabel } from "@/app/(member)/s/[token]/calendar-view";
 import { Badge } from "@/components/ui/badge";
+import type { FeedEvent } from "@/lib/calendar-view";
+import { eventMetaLabel, eventRowLabel } from "@/lib/calendar-view";
 
 /**
  * One house calendar entry on one day of the feed: a trip someone is on, or a thing

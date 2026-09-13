@@ -1,9 +1,8 @@
 import type { MemberScheduleResponse, MemberShift } from "@/lib/api/types";
-import { formatDayNumber, formatMonthShort } from "@/lib/date";
+import type { FeedEvent } from "@/lib/calendar-view";
+import type { DayRow as LibDayRow } from "@/lib/day-rows";
+import { buildDayRows, dateRangeLabel, eventsByDay } from "@/lib/day-rows";
 import { addCivilDays, civilDate, compareCivil } from "@/lib/group-dates";
-
-import type { FeedEvent } from "./calendar-view";
-import { toFeedEvent } from "./calendar-view";
 
 // The member feed's view model, as pure functions. Everything the page decides about
 // WHICH shifts appear and HOW they are grouped lives here, alone and tested, because
@@ -35,16 +34,12 @@ export interface FeedFilter {
 /** The default: the whole house, every rota. */
 export const ALL_SHIFTS: FeedFilter = { rota: { kind: "everyone" }, personId: null };
 
-/** One calendar day inside a week section, with everything due that day. */
-export interface DayRow {
-  due_on: string;
-  shifts: MemberShift[];
-  /**
-   * House calendar entries the feed shows on this day: a trip, a dinner. Always present
-   * and often empty, so a row never has to ask whether a calendar is connected.
-   */
-  events: FeedEvent[];
-}
+/**
+ * One calendar day inside a week section: the turns due that day and the house
+ * calendar entries around them. The shape and the assembly are shared with the admin
+ * dashboard's week glance (`lib/day-rows.ts`); only the grouping into weeks is ours.
+ */
+export type DayRow = LibDayRow<MemberShift>;
 
 /** One week of the feed: a Monday, a human label, and the days that have shifts. */
 export interface WeekSection {
@@ -68,27 +63,14 @@ export function weekStart(civil: string): string {
 /**
  * What a week section is called. The week containing today is "This week" even when
  * today is a Sunday — in which case the section holds only today, since nothing
- * earlier is ever rendered.
+ * earlier is ever rendered. Any week past next is dated, in the same words the
+ * dashboard's Next week section uses.
  */
 export function weekLabel(start: string, today: string): string {
   const current = weekStart(today);
   if (start === current) return "This week";
   if (start === addCivilDays(current, 7)) return "Next week";
-  return weekRangeLabel(start);
-}
-
-// "5-11 Oct" when the week sits inside one month, "28 Sep - 4 Oct" when it straddles
-// two (a new year included: "28 Dec - 3 Jan"). The dashes are en dashes, spaced only
-// in the straddling form, which is how the spec writes them.
-function weekRangeLabel(start: string): string {
-  const from = civilDate(start);
-  const to = civilDate(addCivilDays(start, 6));
-  const fromMonth = formatMonthShort(from);
-  const toMonth = formatMonthShort(to);
-
-  return fromMonth === toMonth
-    ? `${formatDayNumber(from)}–${formatDayNumber(to)} ${toMonth}`
-    : `${formatDayNumber(from)} ${fromMonth} – ${formatDayNumber(to)} ${toMonth}`;
+  return dateRangeLabel(start, addCivilDays(start, 6));
 }
 
 /**
@@ -139,34 +121,6 @@ function showsEvents(filter: FeedFilter): boolean {
 }
 
 /**
- * House calendar entries that have not finished, as feed rows keyed by their day.
- *
- * An entry that is already UNDER WAY lands on today rather than on the day it began.
- * The API sends these deliberately (`ends_on >= today`): a housemate who flew out last
- * Friday and is back on Thursday is away today, and that is the fact the hand-off
- * screen exists to show. The feed only ever renders forwards, so the row cannot sit
- * above today where the trip actually started, and the "until {weekday}" label already
- * carries how much of it is left. A plain multi-day entry (guests staying, building
- * work) reaches no other surface at all, so dropping it lost it entirely.
- *
- * An entry that ENDED before today is gone, the same as a past shift.
- */
-function eventsByDay(schedule: MemberScheduleResponse): Map<string, FeedEvent[]> {
-  const days = new Map<string, FeedEvent[]>();
-
-  for (const event of schedule.events) {
-    if (compareCivil(event.ends_on, schedule.today) < 0) continue;
-    const starts = compareCivil(event.starts_on, schedule.today) < 0 ? schedule.today : event.starts_on;
-    const day = days.get(starts);
-    const feedEvent = toFeedEvent(event, schedule.members);
-    if (day) day.push(feedEvent);
-    else days.set(starts, [feedEvent]);
-  }
-
-  return days;
-}
-
-/**
  * The whole feed: week sections, each holding the days that have shifts or house
  * calendar entries.
  *
@@ -178,30 +132,22 @@ function eventsByDay(schedule: MemberScheduleResponse): Map<string, FeedEvent[]>
  * payload after midnight cannot render yesterday.
  */
 export function buildFeed(schedule: MemberScheduleResponse, filter: FeedFilter): WeekSection[] {
-  const shiftDays = new Map<string, MemberShift[]>();
-  for (const shift of upcoming(schedule)) {
-    if (!matchesFilter(shift, filter, schedule.member.id)) continue;
-    const day = shiftDays.get(shift.due_on);
-    if (day) day.push(shift);
-    else shiftDays.set(shift.due_on, [shift]);
-  }
-
-  const eventDays = showsEvents(filter) ? eventsByDay(schedule) : new Map<string, FeedEvent[]>();
-  const dates = [...new Set([...shiftDays.keys(), ...eventDays.keys()])].sort(compareCivil);
+  const shifts = upcoming(schedule).filter((shift) =>
+    matchesFilter(shift, filter, schedule.member.id),
+  );
+  const eventDays = showsEvents(filter)
+    ? eventsByDay(schedule.events, schedule.today, schedule.members)
+    : new Map<string, FeedEvent[]>();
 
   const weeks: WeekSection[] = [];
-  for (const due_on of dates) {
-    const start = weekStart(due_on);
+  for (const day of buildDayRows(shifts, eventDays)) {
+    const start = weekStart(day.due_on);
     let week = weeks.at(-1);
     if (!week || week.weekStart !== start) {
       week = { weekStart: start, label: weekLabel(start, schedule.today), days: [] };
       weeks.push(week);
     }
-    week.days.push({
-      due_on,
-      shifts: shiftDays.get(due_on) ?? [],
-      events: eventDays.get(due_on) ?? [],
-    });
+    week.days.push(day);
   }
 
   return weeks;

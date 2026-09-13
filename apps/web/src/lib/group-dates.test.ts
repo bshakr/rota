@@ -7,6 +7,7 @@ import {
   compareCivil,
   groupToday,
   isFutureOrToday,
+  isNextWeek,
   isThisWeek,
 } from "./group-dates";
 
@@ -83,6 +84,30 @@ describe("isThisWeek", () => {
   it("excludes yesterday and next week", () => {
     expect(isThisWeek("2026-07-12", today)).toBe(false);
     expect(isThisWeek("2026-07-20", today)).toBe(false); // today + 7
+  });
+});
+
+describe("isNextWeek", () => {
+  const today = "2026-07-13";
+
+  it("is the seven days that begin a week after today", () => {
+    expect(isNextWeek("2026-07-20", today)).toBe(true); // today + 7
+    expect(isNextWeek("2026-07-26", today)).toBe(true); // today + 13
+  });
+
+  it("excludes this week and the week after next", () => {
+    expect(isNextWeek("2026-07-19", today)).toBe(false); // today + 6, this week
+    expect(isNextWeek("2026-07-27", today)).toBe(false); // today + 14
+    expect(isNextWeek(today, today)).toBe(false);
+  });
+
+  it("never overlaps this week, whatever the day", () => {
+    // The two windows are rolling, not Monday-based, so they tile exactly: every
+    // date belongs to at most one of them and the glance can never render a day twice.
+    for (let offset = -2; offset <= 15; offset += 1) {
+      const date = addCivilDays(today, offset);
+      expect(isThisWeek(date, today) && isNextWeek(date, today)).toBe(false);
+    }
   });
 });
 
