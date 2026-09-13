@@ -93,6 +93,42 @@ RSpec.describe WorkosAccessToken do
     end
   end
 
+  # There is no "global" request on the admin API: without an org_id there is no tenant to scope
+  # a caller to, so the default stays strict. The super admin path (BLO-1669) is the one caller
+  # that asks for the exception, because an operator may belong to no house at all.
+  describe ".verify! organization policy" do
+    it "refuses a token that names no organization" do
+      expect { verify(org_id: nil) }.to raise_error(described_class::InvalidToken, /names no organization/)
+    end
+
+    it "accepts one when the caller allows a missing organization" do
+      claims = described_class.verify!(workos_token(sub: "user_01OPERATOR", org_id: nil),
+        allow_missing_organization: true)
+
+      expect(claims).to have_attributes(workos_user_id: "user_01OPERATOR", workos_organization_id: nil)
+    end
+
+    it "still reports the organization when the token names one" do
+      claims = described_class.verify!(workos_token(org_id: "org_01FLAT"), allow_missing_organization: true)
+
+      expect(claims.workos_organization_id).to eq("org_01FLAT")
+    end
+
+    # The subject is the one claim the allowlist is checked against, so it is never optional —
+    # whatever the organization rule says.
+    it "still refuses a token that names no subject" do
+      expect { described_class.verify!(workos_token(sub: nil, org_id: nil), allow_missing_organization: true) }
+        .to raise_error(described_class::InvalidToken, /names no subject/)
+    end
+
+    # Nothing else in the app may drift into passing this by accident: every other caller gets the
+    # strict rule without asking for it.
+    it "is strict unless the caller asks otherwise" do
+      expect { described_class.verify!(workos_token(org_id: nil)) }
+        .to raise_error(described_class::InvalidToken, /names no organization/)
+    end
+  end
+
   describe ".verify! expiry" do
     # Rails' clock and WorkOS's are never perfectly aligned, so a small leeway keeps a token that is
     # a second or two past expiry from being refused over skew alone.

@@ -57,7 +57,11 @@ class WorkosAccessToken
 
   class << self
     # Returns the verified Claims, or raises. This is the only entry point on the request path.
-    def verify!(token)
+    # `allow_missing_organization` is the one concession to the operator path (BLO-1669), where a
+    # super admin may belong to no house at all and there is no tenant to scope them to anyway. The
+    # default stays strict, so every existing caller keeps the rule it already had without asking
+    # for it, and a caller that opts in is visible at the call site.
+    def verify!(token, allow_missing_organization: false)
       raise InvalidToken, "no bearer token" if token.blank?
 
       payload, = JWT.decode(token, nil, true,
@@ -66,7 +70,7 @@ class WorkosAccessToken
       verify_issuer!(payload["iss"])
       verify_audience!(payload["aud"])
 
-      claims(payload)
+      claims(payload, allow_missing_organization: allow_missing_organization)
     rescue JWT::DecodeError => e
       # Covers a bad signature, an expired token, an unknown kid, `alg: none`, and a token that is
       # not a JWT at all.
@@ -98,11 +102,14 @@ class WorkosAccessToken
 
     private
 
-    def claims(payload)
+    def claims(payload, allow_missing_organization:)
       # No org_id means the admin has not selected an organization, so there is no tenant to scope
-      # them to and nothing they could be allowed to do. There is no "global" request in this API.
+      # them to and nothing they could be allowed to do. There is no "global" request on the admin
+      # API. The super admin path is the exception, and it asks for it explicitly: its controllers
+      # are not TenantScoped and never provision, so a nil organization there reaches nothing that
+      # would try to resolve a group from it.
       organization_id = payload["org_id"].presence
-      raise InvalidToken, "token names no organization" if organization_id.nil?
+      raise InvalidToken, "token names no organization" if organization_id.nil? && !allow_missing_organization
 
       Claims.new(
         workos_user_id: payload.fetch("sub").presence || raise(InvalidToken, "token names no subject"),

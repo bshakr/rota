@@ -54,6 +54,16 @@ Rails.application.routes.draw do
     delete "member/shifts/:id/cover", to: "member_covers#destroy"
   end
 
+  # The operator API (BLO-1669). Mounted under /api/super_admin, but deliberately OUTSIDE the `api`
+  # namespace above: these are SuperAdmin::* controllers inheriting SuperAdmin::BaseController, not
+  # Api::BaseController, so nothing here is TenantScoped and everything here is gated on the
+  # SUPER_ADMIN_WORKOS_USER_IDS allowlist instead. Later tickets hang groups, traffic and spend off
+  # this same block; spec/requests/super_admin/authorization_spec.rb walks whatever is in it and
+  # asserts every route answers 404 to a caller who is not on the allowlist.
+  namespace :super_admin, path: "api/super_admin" do
+    get "overview", to: "overview#show"
+  end
+
   # Defines the root path route ("/")
   # root "posts#index"
 end
