@@ -67,6 +67,12 @@ group :development, :test do
   gem "factory_bot_rails"
 end
 
+# BLO-1667 house calendar sync: parse the Google iCal feed and expand recurrences, and ask Claude
+# which titles mean a housemate is away (spec section 7).
+gem "icalendar", "~> 2.12"
+gem "icalendar-recurrence", "~> 1.2"
+gem "anthropic"
+
 group :test do
   # No test ever talks to Twilio (or anything else) over the network.
   gem "webmock"
