@@ -14,10 +14,17 @@ Rails.application.routes.draw do
   # Webhooks::TwilioStatusController.
   post "webhooks/twilio/status" => "webhooks/twilio_status#create", as: :twilio_status_webhook
 
-  # The admin API. Everything under it inherits Api::BaseController, so every route here is
-  # authenticated by a WorkOS-signed JWT and scoped to the group that token names.
+  # The admin API. Everything under it inherits Api::BaseController — so every route here is
+  # authenticated by a WorkOS-signed JWT and scoped to the group that token names — with one
+  # deliberate exception, marked below.
   namespace :api do
     get "me", to: "me#show"
+
+    # The exception (BLO-1671). Api::SignInsController inherits ApplicationController, not
+    # Api::BaseController: it verifies the same token but accepts one that names no organization,
+    # because "signed in, has no house yet" is exactly the funnel step it exists to record. It is
+    # not tenant-scoped, provisions no group, and can write nothing but the caller's own rows.
+    post "sign_ins", to: "sign_ins#create"
 
     # The admin surface (BLO-1047). Every member action is scoped to the token's group, so these
     # ids are always the caller's own house's; a cross-tenant id resolves to 404, never a leak.

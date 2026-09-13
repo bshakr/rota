@@ -26,6 +26,7 @@ const SERVER_ONLY_MODULES = [
   "lib/api/member",
   "lib/api/admin",
   "lib/api/super-admin",
+  "lib/api/sign-in",
   "lib/auth/super-admin",
 ];
 

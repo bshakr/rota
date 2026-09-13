@@ -39,9 +39,9 @@ RSpec.describe GroupAdmin do
   # once and they all arrive here with nothing in the database yet. The unique index is the
   # referee; the request that loses re-reads the winner's row rather than blowing up.
   describe ".provision!" do
-    def claims(sub: "user_01ALICE", org_id: "org_01FLAT", role: "admin", email: nil, name: nil)
+    def claims(sub: "user_01ALICE", org_id: "org_01FLAT", role: "admin", email: nil, name: nil, jti: nil)
       WorkosAccessToken::Claims.new(
-        workos_user_id: sub, workos_organization_id: org_id, role: role, email: email, name: name
+        workos_user_id: sub, workos_organization_id: org_id, role: role, email: email, name: name, jti: jti
       )
     end
 

@@ -182,11 +182,16 @@ RSpec.describe "WorkOS JWT authentication" do
     # steady-state read by an admin who already exists and whose role has not changed. That path
     # must not write — otherwise a single valid-token holder drives unbounded write load through
     # plain GETs, and these reads could never be served from a read replica.
-    it "writes nothing on a steady-state request whose role is unchanged" do
+    #
+    # Since BLO-1671 the guarantee is bounded rather than absolute, and deliberately so: the first
+    # request of an hour also writes `last_seen_at`, and every request after it writes nothing until
+    # that hour is up. The load claim above is unchanged — an admin refreshing their dashboard all
+    # morning costs one UPDATE, not one per request — and the hourly touch has its own specs below.
+    it "writes nothing on a steady-state request within the hour of the last touch" do
       get "/api/me", headers: workos_headers(role: "admin")
 
       writes = sql_writes_during do
-        get "/api/me", headers: workos_headers(role: "admin")
+        travel(59.minutes) { get "/api/me", headers: workos_headers(role: "admin") }
       end
 
       expect(response).to have_http_status(:ok)
@@ -203,6 +208,63 @@ RSpec.describe "WorkOS JWT authentication" do
       expect(GroupAdmin.sole.role).to eq("member")
       expect(writes).to be_present
       expect(writes).to all(match(/UPDATE "group_admins"/i))
+    end
+  end
+
+  # "When did we last hear from this admin" — the number the super admin dashboards read, and the
+  # one piece of instrumentation that sits directly on the authenticated read path. Which is why
+  # every spec here is about the hour rather than about the number: what has to be true is that a
+  # steady stream of reads costs one UPDATE an hour, and that the value still moves.
+  describe "last_seen_at" do
+    def alice = User.find_by!(workos_user_id: "user_01ALICE")
+
+    it "records when an admin was first seen" do
+      get "/api/me", headers: workos_headers(sub: "user_01ALICE")
+
+      expect(alice.last_seen_at).to be_within(1.second).of(Time.current)
+    end
+
+    it "does not write it again within the hour" do
+      get "/api/me", headers: workos_headers(sub: "user_01ALICE")
+      first_seen = alice.last_seen_at
+
+      travel(59.minutes) { get "/api/me", headers: workos_headers(sub: "user_01ALICE") }
+
+      expect(alice.last_seen_at).to eq(first_seen)
+    end
+
+    it "writes it again once the hour has passed" do
+      get "/api/me", headers: workos_headers(sub: "user_01ALICE")
+      first_seen = alice.last_seen_at
+
+      travel(61.minutes) do
+        get "/api/me", headers: workos_headers(sub: "user_01ALICE")
+
+        expect(alice.last_seen_at).to be_within(1.second).of(Time.current)
+      end
+
+      expect(alice.last_seen_at).to be > first_seen
+    end
+
+    # `update_column`, not `touch` or `update!`: a page view is not an edit, and stamping updated_at
+    # on every admin every hour would make the column useless for telling when a row really changed.
+    it "leaves updated_at alone" do
+      get "/api/me", headers: workos_headers(sub: "user_01ALICE")
+      updated_at = alice.updated_at
+
+      travel(61.minutes) { get "/api/me", headers: workos_headers(sub: "user_01ALICE") }
+
+      expect(alice.updated_at).to eq(updated_at)
+    end
+
+    # The touch is a fact about a request that was allowed in. A refused one has not seen anybody.
+    it "is not written for a token that was refused" do
+      user = create(:user, workos_user_id: "user_01ALICE")
+
+      get "/api/me", headers: workos_headers(sub: "user_01ALICE", key: WorkosAuth.foreign_key)
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(user.reload.last_seen_at).to be_nil
     end
   end
 

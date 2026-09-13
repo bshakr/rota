@@ -27,7 +27,13 @@ module MemberAuthenticatable
     # removal is supposed to end. A deactivated token therefore authenticates as nobody: a 401.
     @current_member = Member.active.find_by(access_token: bearer_token) if bearer_token.present?
 
-    return if @current_member
+    if @current_member
+      # "Did anyone actually open their link" — the one signal the member path has, and the only
+      # way to tell a house whose texts land from one whose housemates never tap them. Same
+      # one-an-hour rule as the admin path, and for the same reason: this is a read path.
+      @current_member.touch_last_seen
+      return
+    end
 
     # No detail about why: an unknown token and a malformed header are both simply "not authorized".
     render json: { error: "unauthorized" }, status: :unauthorized
