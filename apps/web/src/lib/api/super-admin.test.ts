@@ -18,8 +18,11 @@ vi.mock("next/navigation", () => ({
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { notFound, redirect } from "next/navigation";
 
+import { overviewPayload } from "@/test/overview-payload";
+
 import { ApiError } from "./errors";
 import { getOverview } from "./super-admin";
+import { OverviewShapeError } from "./super-admin-overview";
 
 const OPERATOR = "user_operator";
 const STRANGER = "user_stranger";
@@ -49,7 +52,7 @@ describe("super admin API client", () => {
     process.env.SUPER_ADMIN_WORKOS_USER_IDS = OPERATOR;
     vi.clearAllMocks();
     withAuthMock.mockResolvedValue({ accessToken: "JWT_OPERATOR", user: { id: OPERATOR } });
-    vi.stubGlobal("fetch", vi.fn(async () => respond(200, {})));
+    vi.stubGlobal("fetch", vi.fn(async () => respond(200, overviewPayload())));
   });
 
   afterEach(() => {
@@ -71,13 +74,29 @@ describe("super admin API client", () => {
   it("reaches Rails with an org-less token instead of sending the operator to setup", async () => {
     withAuthMock.mockResolvedValue({ accessToken: "JWT_OPERATOR", user: { id: OPERATOR } });
 
-    await expect(getOverview()).resolves.toEqual({});
+    await expect(getOverview()).resolves.toMatchObject({ attention_total: 2 });
     expect(redirectMock).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledOnce();
   });
 
-  it("tolerates the empty overview payload the endpoint answers with today", async () => {
-    await expect(getOverview()).resolves.toEqual({});
+  // Parsed, not cast. Every figure on the overview is derived, so a key Rails
+  // renamed would not show up as an obvious blank — it would render as a zero
+  // that looks exactly like a real fact. See ./super-admin-overview.ts.
+  it("hands back the parsed payload, with its unions narrowed", async () => {
+    const overview = await getOverview();
+
+    expect(overview.kpis.delivery_rate_last_7_days).toBe(96.4);
+    expect(overview.attention.map((row) => row.reason)).toEqual([
+      "failed_texts",
+      "unconfirmed_timezone",
+    ]);
+  });
+
+  it("refuses a 200 whose shape is not the overview", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(respond(200, {}));
+
+    await expect(getOverview()).rejects.toBeInstanceOf(OverviewShapeError);
+    expect(redirectMock).not.toHaveBeenCalled();
   });
 
   it("404s a caller who is not on the allowlist, before any request reaches Rails", async () => {

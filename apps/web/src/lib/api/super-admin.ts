@@ -5,7 +5,7 @@ import { requireSuperAdmin } from "@/lib/auth/super-admin";
 
 import { isApiError } from "./errors";
 import { type ApiRequestInit, requestJson } from "./http";
-import type { SuperAdminOverview } from "./types";
+import { type SuperAdminOverview, parseOverview } from "./super-admin-overview";
 
 // The super admin API client — the operator's half of ./admin.ts, and separate
 // from it on purpose.
@@ -49,15 +49,17 @@ async function superAdminRequest<T>(path: string, init?: ApiRequestInit): Promis
 // --- Overview ---------------------------------------------------------------
 
 /**
- * GET /api/super_admin/overview — the operator's landing data.
+ * GET /api/super_admin/overview — the operator's landing data: the KPI ledger,
+ * the attention list, the last ten houses with how far each got, and the health
+ * of the recurring jobs.
  *
- * The endpoint exists (https://linear.app/bloombase/issue/BLO-1669) and answers
- * `{}` until the query object behind it lands
- * (https://linear.app/bloombase/issue/BLO-1677). It is the one call that proves
- * the whole path — allowlist, bearer header, Rails' own allowlist check — so it
- * ships with the client rather than waiting for the page that will render it
- * (https://linear.app/bloombase/issue/BLO-1678).
+ * The one call in this app whose response is PARSED rather than cast. Every
+ * figure on that page is derived, so a key Rails renames does not render as an
+ * obvious blank — it renders as a zero that looks exactly like a real fact, and
+ * an operator acts on it. `parseOverview` turns that into a named failure the
+ * page can put on screen; see ./super-admin-overview.ts for the shape and the
+ * reasoning.
  */
-export function getOverview(): Promise<SuperAdminOverview> {
-  return superAdminRequest<SuperAdminOverview>("/api/super_admin/overview");
+export async function getOverview(): Promise<SuperAdminOverview> {
+  return parseOverview(await superAdminRequest<unknown>("/api/super_admin/overview"));
 }

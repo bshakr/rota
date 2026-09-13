@@ -2,42 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, House, LayoutDashboard, type LucideIcon, TrendingUp, Wallet } from "lucide-react";
+import { House } from "lucide-react";
 
 import { Container } from "@/components/container";
+// The nav list lives in its own module, not here: a value exported from a Client
+// Component is a client reference, and the overview page reads `ready` on the
+// server to decide whether its spend tile may link anywhere yet.
+import { SUPER_ADMIN_NAV } from "@/components/super-admin-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Wordmark } from "@/components/wordmark";
 import { cn } from "@/lib/utils";
-
-type NavItem = {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  /** False until the ticket that builds the route lands; see SUPER_ADMIN_NAV. */
-  ready: boolean;
-};
-
-/**
- * The operator's five surfaces, in the order the plan lists them. The group
- * dashboard (`/super-admin/groups/[id]`) is reached from the Houses list rather
- * than the nav, so four entries cover all five.
- *
- * `ready` is here because the shell ships before the screens do: an entry that
- * is not ready renders as a quiet "Soon" item rather than a link to a 404. Each
- * later ticket flips its own flag and nothing else:
- *   Traffic  https://linear.app/bloombase/issue/BLO-1682
- *   Houses   https://linear.app/bloombase/issue/BLO-1676
- *   Spend    https://linear.app/bloombase/issue/BLO-1684
- *
- * "Houses" rather than "Groups": the path keeps the API's noun, the label keeps
- * the product's one.
- */
-export const SUPER_ADMIN_NAV: readonly NavItem[] = [
-  { href: "/super-admin", label: "Overview", icon: LayoutDashboard, ready: true },
-  { href: "/super-admin/traffic", label: "Traffic", icon: TrendingUp, ready: false },
-  { href: "/super-admin/groups", label: "Houses", icon: Building2, ready: false },
-  { href: "/super-admin/spend", label: "Spend", icon: Wallet, ready: false },
-] as const;
 
 /**
  * The shared pill geometry. A nav row is tapped on a phone, so it is 44px tall —
