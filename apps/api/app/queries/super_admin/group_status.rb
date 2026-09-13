@@ -23,8 +23,11 @@ module SuperAdmin
 
     def self.of(group, stats, now: Time.current)
       return SUSPENDED if suspended?(group)
-      return NEVER_STARTED if stats.running_rotas.zero?
-      return QUIET if quiet?(stats, now)
+      # "Nobody is on any rota", not "nothing is switched on". A house that ran for a year and then
+      # paused its rotas has started, whatever it is doing now; calling that "never started" would
+      # put the label next to a year of its own traffic.
+      return NEVER_STARTED if stats.staffed_rotas.zero?
+      return QUIET if quiet?(group, stats, now)
 
       LIVE
     end
@@ -39,8 +42,15 @@ module SuperAdmin
     end
     private_class_method :suspended?
 
-    def self.quiet?(stats, now)
-      stats.last_activity_at.nil? || stats.last_activity_at < now - QUIET_AFTER
+    # Silence is measured from the last thing that happened, and for a house where nothing has
+    # happened yet, from the day it was created. Measuring from the beginning of time instead would
+    # stamp "Quiet" on a house made ten minutes ago — the one house on the list where the operator
+    # most needs to see that onboarding is still in progress.
+    def self.quiet?(group, stats, now)
+      since = stats.last_activity_at || group.created_at
+      return false if since.nil?
+
+      since < now - QUIET_AFTER
     end
     private_class_method :quiet?
   end

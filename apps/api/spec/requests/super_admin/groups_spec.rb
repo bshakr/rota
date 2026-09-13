@@ -44,11 +44,14 @@ RSpec.describe "GET /api/super_admin/groups" do
 
       rota = create(:rota, group: group)
       create(:rota_position, rota: rota, member: members.first, position: 0)
+      paused = create(:rota, :inactive, group: group)  # somebody on it, switched off: paused
+      create(:rota_position, rota: paused, member: members.second, position: 0)
       create(:rota, group: group)                      # nobody on it: a draft
       create(:rota, :inactive, group: group)           # also nobody on it: also a draft
 
       text_in(group, rota: rota, member: members.first, at: 2.days.ago)
       text_in(group, rota: rota, member: members.second, status: "failed", at: 3.days.ago)
+      text_in(group, rota: rota, member: members.third, status: "pending", at: 4.days.ago)
       text_in(group, rota: rota, member: members.third, at: 20.days.ago)
     end
 
@@ -61,12 +64,35 @@ RSpec.describe "GET /api/super_admin/groups" do
         "admins_count" => 2,
         "active_members_count" => 3,
         "running_rotas_count" => 1,
+        "paused_rotas_count" => 1,
         "draft_rotas_count" => 2
       )
     end
 
-    it "counts only the last seven days of texts, and how many of them failed" do
-      expect(list.first).to include("texts_last_7_days" => 2, "failed_texts_last_7_days" => 1)
+    # A text nobody tried to send is not a text. The sweep claims a row as `pending` and SendSmsJob
+    # moves it on; a row still sitting there is a stranded send, and counting it as one that went
+    # out would read as healthy traffic on exactly the morning the queue stopped.
+    it "counts the last seven days of texts by whether they were actually attempted" do
+      expect(list.first).to include(
+        "texts_last_7_days" => 2,
+        "failed_texts_last_7_days" => 1,
+        "unsent_texts_last_7_days" => 1
+      )
+    end
+
+    it "counts one of every status the right way round" do
+      other = create(:group, name: "Bevery Status")
+      rota = create(:rota, group: other)
+      member = create(:member, group: other)
+      SmsMessage::STATUSES.each_value { |status| text_in(other, rota: rota, member: member, status: status, at: 1.day.ago) }
+
+      row = list.find { |candidate| candidate.fetch("id") == other.id }
+
+      expect(row).to include(
+        "texts_last_7_days" => 3,       # sent, delivered, failed
+        "unsent_texts_last_7_days" => 2, # pending, sending
+        "failed_texts_last_7_days" => 1
+      )
     end
 
     it "reports the latest text as the last thing that happened in the house" do
@@ -80,8 +106,8 @@ RSpec.describe "GET /api/super_admin/groups" do
 
       expect(row).to include(
         "admins_count" => 0, "active_members_count" => 0, "running_rotas_count" => 0,
-        "draft_rotas_count" => 0, "texts_last_7_days" => 0, "failed_texts_last_7_days" => 0,
-        "last_activity_at" => nil
+        "paused_rotas_count" => 0, "draft_rotas_count" => 0, "texts_last_7_days" => 0,
+        "unsent_texts_last_7_days" => 0, "failed_texts_last_7_days" => 0, "last_activity_at" => nil
       )
     end
   end
@@ -120,9 +146,38 @@ RSpec.describe "GET /api/super_admin/groups" do
       expect(status_of(group)).to eq("quiet")
     end
 
-    it "is quiet when a running house has never sent anything" do
-      group = create(:group)
+    it "is quiet when a house that started a month ago has never sent anything" do
+      group = create(:group, created_at: 31.days.ago)
       running_rota(group)
+
+      expect(status_of(group)).to eq("quiet")
+    end
+
+    # The one house on this list where "Quiet" would be actively misleading: it was made this
+    # morning and has not had a chance to send anything yet.
+    it "is live for a brand new house that has not sent anything yet" do
+      group = create(:group, created_at: 10.minutes.ago)
+      running_rota(group)
+
+      expect(status_of(group)).to eq("live")
+    end
+
+    # A house that ran for a year and then switched its rotas off has started. Reading that as
+    # "never started" would put the label next to its own traffic.
+    it "is not never started when its staffed rotas are merely switched off" do
+      group = create(:group)
+      rota = create(:rota, :inactive, group: group)
+      create(:rota_position, rota: rota, member: create(:member, group: group), position: 0)
+      text_in(group, rota: rota, at: 2.days.ago)
+
+      expect(status_of(group)).to eq("live")
+    end
+
+    it "is quiet, not never started, when a paused house has also gone silent" do
+      group = create(:group, created_at: 1.year.ago)
+      rota = create(:rota, :inactive, group: group)
+      create(:rota_position, rota: rota, member: create(:member, group: group), position: 0)
+      text_in(group, rota: rota, at: 40.days.ago)
 
       expect(status_of(group)).to eq("quiet")
     end
@@ -135,7 +190,7 @@ RSpec.describe "GET /api/super_admin/groups" do
     end
 
     it "is never started rather than quiet, because the two are different conversations" do
-      group = create(:group)
+      group = create(:group, created_at: 1.year.ago)
       create(:rota, group: group)
       text_in(group, at: 40.days.ago)
 

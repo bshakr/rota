@@ -40,8 +40,15 @@ module SuperAdmin
         admins_count: stats.admins,
         active_members_count: stats.active_members,
         running_rotas_count: stats.running_rotas,
+        # Staffed but switched off. Its own column because it is neither a draft nor a rota that is
+        # texting anyone, and folding it into either would misreport whether reminders go out.
+        paused_rotas_count: stats.paused_rotas,
         draft_rotas_count: stats.draft_rotas,
+        # Texts the house actually tried to send in the window, and the two ways that goes wrong:
+        # Twilio refused it, or SendSmsJob never finished with it. A stranded send is invisible in
+        # a single total, and a stuck queue is exactly what this list exists to surface.
         texts_last_7_days: stats.texts,
+        unsent_texts_last_7_days: stats.unsent_texts,
         failed_texts_last_7_days: stats.failed_texts,
         last_activity_at: stats.last_activity_at
       }
