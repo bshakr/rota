@@ -4,15 +4,15 @@ import { CloudOff } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { InvalidLink } from "@/components/member/invalid-link";
 import { apiErrorMessage, isApiError } from "@/lib/api/errors";
-import { getMemberShifts } from "@/lib/api/member";
-import { TIME_ZONE } from "@/lib/date";
-import { groupToday } from "@/lib/group-dates";
+import { getMemberSchedule } from "@/lib/api/member";
+import { formatLongDate } from "@/lib/date";
+import { civilDate } from "@/lib/group-dates";
 
 import { assignCoverAction, cancelCoverAction } from "./actions";
-import { ShiftList } from "./shift-list";
+import { MemberFeed } from "./member-feed";
 
 export const metadata: Metadata = {
-  title: "Your shifts",
+  title: "Your rota",
   // A magic link is a per-person credential; it must never be crawled or cached
   // by a search engine that followed a leaked URL.
   robots: { index: false, follow: false },
@@ -25,23 +25,31 @@ export const dynamic = "force-dynamic";
 /**
  * The page every SMS points at. `[token]` is the member's permanent magic link.
  *
- * The token stays on THIS side of the wire: it is read here, in a Server Component
- * (`await params`), and forwarded to Rails only as `Authorization: Bearer <token>`
- * by the `server-only` member client — never as a path segment (Rails logs paths
- * verbatim at info, and this credential does not expire). It reaches the client
- * nowhere as a value: the two cover mutations are bound to it here and handed to
- * the list as opaque actions, so the browser gets the actions, not the token.
+ * The token is read here, in a Server Component (`await params`), and forwarded to
+ * Rails only as `Authorization: Bearer <token>` by the `server-only` member client —
+ * never as a path segment (Rails logs paths verbatim at info, and this credential does
+ * not expire). No Client Component receives it as a data prop, and none of the member
+ * API client reaches `.next/static`; both are asserted, by page.token-safety.test.ts
+ * and by scripts/assert-token-not-in-bundle.mjs.
+ *
+ * The two cover mutations are bound to it here and handed down as opaque action
+ * references. Be precise about what that buys: Next encrypts a CLOSED-OVER variable,
+ * not a `.bind()` argument, so the token is serialised in plain text into THIS
+ * request's flight payload. That payload is only ever the answer to a request that
+ * already carried the token in its URL, so it is not an escalation — but the guarantee
+ * is "never in a shared bundle, never in a logged path", not "these bytes never reach
+ * the browser".
  */
-export default async function MemberShiftsPage({
+export default async function MemberSchedulePage({
   params,
 }: {
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
 
-  let data;
+  let schedule;
   try {
-    data = await getMemberShifts(token);
+    schedule = await getMemberSchedule(token);
   } catch (error) {
     // A bad, rotated or deactivated token authenticates as nobody: 401. Show the
     // kind, blameless dead-link page — no stack trace, no "404", no hint about why.
@@ -55,7 +63,7 @@ export default async function MemberShiftsPage({
       return (
         <EmptyState
           icon={CloudOff}
-          title="We couldn't load your shifts"
+          title="We couldn't load your rota"
           description={apiErrorMessage(error, "This one's on us, not you. Try again in a moment.")}
         />
       );
@@ -65,21 +73,16 @@ export default async function MemberShiftsPage({
     throw error;
   }
 
-  const firstName = data.member.name.split(" ")[0];
-
-  // The reference "today" that relative dates ("in 3 days") are measured from.
-  // BLO-1064: swap TIME_ZONE for the group's own timezone once GET
-  // /api/member/shifts carries it — a one-argument change, since this whole app
-  // pins Europe/London for now and the member page stays consistent with it.
-  const today = groupToday(new Date(), TIME_ZONE);
+  const firstName = schedule.member.name.split(" ")[0];
 
   return (
     <>
       {/* The greeting. Fredoka, pressed wide, with a peach clay dot for a full
           stop: the whole flourish is one sticker, no swash and no gradient,
           because this should read like a note left on the fridge rather than a
-          dashboard heading. */}
-      <div className="animate-rise mb-8">
+          dashboard heading. The date under it is the GROUP's today, the same one
+          every relative day on this page is measured from. */}
+      <div className="animate-rise mb-6">
         <h1 className="text-display font-heading text-pretty">
           Hi {firstName}
           <span
@@ -88,15 +91,12 @@ export default async function MemberShiftsPage({
           />
         </h1>
         <p className="text-muted-foreground mt-3 text-[0.9375rem] text-pretty">
-          Here&apos;s what&apos;s coming up for you, across every rota.
+          {formatLongDate(civilDate(schedule.today))}. Here&apos;s what the whole house is up to.
         </p>
       </div>
 
-      <ShiftList
-        initialShifts={data.shifts}
-        coverableMembers={data.coverable_members}
-        memberId={data.member.id}
-        today={today}
+      <MemberFeed
+        schedule={schedule}
         assignAction={assignCoverAction.bind(null, token)}
         cancelAction={cancelCoverAction.bind(null, token)}
       />

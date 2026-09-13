@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
  *   admin   max-w-5xl  — dashboards and tables
  *   prose   max-w-2xl  — a rota editor, a settings form
  *   member  max-w-lg   — the single-column phone page
+ *   feed    max-w-lg, then max-w-5xl from lg — the member feed, which is one
+ *           column on a phone and a feed plus a sidebar on a desktop
  *
  * `asChild` renders the gutter onto a semantic element you pass (a <main>, a
  * <section>) instead of an extra <div>. Vertical rhythm is separate: stack major
@@ -25,7 +27,7 @@ export function Container({
   className,
   ...props
 }: React.ComponentProps<"div"> & {
-  width?: "admin" | "prose" | "member";
+  width?: "admin" | "prose" | "member" | "feed";
   asChild?: boolean;
 }) {
   const Comp = asChild ? Slot.Root : "div";
@@ -36,6 +38,7 @@ export function Container({
         width === "admin" && "max-w-5xl",
         width === "prose" && "max-w-2xl",
         width === "member" && "max-w-lg",
+        width === "feed" && "max-w-lg lg:max-w-5xl",
         className,
       )}
       {...props}

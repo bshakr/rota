@@ -6,6 +6,9 @@ import { requireHousehold } from "@/lib/auth/household";
 import { isApiError } from "./errors";
 import { type ApiRequestInit, requestJson } from "./http";
 import type {
+  CalendarConnectResponse,
+  CalendarEventsResponse,
+  CalendarSyncResponse,
   GroupResponse,
   GroupUpdateParams,
   Me,
@@ -83,6 +86,29 @@ export function getGroup(): Promise<GroupResponse> {
 /** Sending `timezone` at all confirms it (Rails stamps `timezone_confirmed_at`). */
 export function updateGroup(params: GroupUpdateParams): Promise<GroupResponse> {
   return adminRequest<GroupResponse>("/api/group", { method: "PATCH", body: params });
+}
+
+// --- House calendar (BLO-1667) ----------------------------------------------
+
+/** Validate and store the pasted iCal link; Rails fetches it once and runs the first sync inline. */
+export function connectCalendar(icalUrl: string): Promise<CalendarConnectResponse> {
+  return adminRequest<CalendarConnectResponse>("/api/group/calendar", {
+    method: "PUT",
+    body: { ical_url: icalUrl },
+  });
+}
+
+export function syncCalendar(): Promise<CalendarSyncResponse> {
+  return adminRequest<CalendarSyncResponse>("/api/group/calendar/sync", { method: "POST" });
+}
+
+/** Forget the link and everything it brought in. Rails answers 204, so there is no body to read. */
+export function disconnectCalendar(): Promise<void> {
+  return adminRequest<void>("/api/group/calendar", { method: "DELETE" });
+}
+
+export function listCalendarEvents(days = 30): Promise<CalendarEventsResponse> {
+  return adminRequest<CalendarEventsResponse>(`/api/group/calendar/events?days=${days}`);
 }
 
 // --- Members ----------------------------------------------------------------

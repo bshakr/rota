@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { MemberShiftsResponse } from "@/lib/api/types";
+import type { MemberScheduleResponse } from "@/lib/api/types";
 
 // The token-never-reaches-the-client guarantee, tested at the REAL leak vector.
 //
@@ -11,28 +11,37 @@ import type { MemberShiftsResponse } from "@/lib/api/types";
 // this force-dynamic page's per-request RSC/flight payload — never written to
 // `.next/static`. This renders the page server component with a sentinel token
 // and asserts that value appears in no prop it hands toward the client. The token
-// bound into a Server Action is a FUNCTION prop (its value lives in an encrypted
-// closure, not a serialized string), so it is correctly not a leak; a raw
-// `token={token}` string prop would be — and this catches exactly that.
+// bound into a Server Action is a FUNCTION prop, so it is not what this test is
+// looking for; a raw `token={token}` string prop would be, and this catches exactly
+// that. (Next serialises a `.bind()` argument into the flight payload in plain text —
+// only closed-over variables are encrypted — so the bound token does travel in the
+// response to a request that already carried it in its URL. See page.tsx.)
 
 const SENTINEL = "SENTINEL-TOKEN-a1b2c3d4e5f6-do-not-leak";
 
 vi.mock("@/lib/api/member", () => ({
-  getMemberShifts: vi.fn(),
+  getMemberSchedule: vi.fn(),
   assignCover: vi.fn(),
   cancelCover: vi.fn(),
 }));
 
-// Stub the client list so importing the page doesn't pull client-only deps
+// Stub the client tree so importing the page doesn't pull client-only deps
 // (sonner, radix) into the node runner. We inspect only the PROPS the page hands
 // it — which is the boundary the token must not cross.
-vi.mock("./shift-list", () => ({ ShiftList: () => null }));
+vi.mock("./member-feed", () => ({ MemberFeed: () => null }));
 
-const { getMemberShifts } = await import("@/lib/api/member");
-const { default: MemberShiftsPage } = await import("./page");
+const { getMemberSchedule } = await import("@/lib/api/member");
+const { default: MemberSchedulePage } = await import("./page");
 
-const RESPONSE: MemberShiftsResponse = {
+const RESPONSE: MemberScheduleResponse = {
+  today: "2026-07-18",
+  timezone: "Europe/London",
   member: { id: 1, name: "Alice Smith" },
+  members: [
+    { id: 1, name: "Alice Smith", contactable: true },
+    { id: 2, name: "Bob", contactable: true },
+  ],
+  rotas: [{ id: 1, name: "Kitchen" }],
   shifts: [
     {
       id: 100,
@@ -47,7 +56,7 @@ const RESPONSE: MemberShiftsResponse = {
       can_cancel_cover: false,
     },
   ],
-  coverable_members: [{ id: 2, name: "Bob" }],
+  events: [],
 };
 
 /**
@@ -71,9 +80,9 @@ function leaks(node: unknown, token: string, seen = new Set<object>()): boolean 
 
 describe("the magic-link token never reaches the client through the page render", () => {
   it("appears in no prop the page passes toward the client tree", async () => {
-    vi.mocked(getMemberShifts).mockResolvedValue(RESPONSE);
+    vi.mocked(getMemberSchedule).mockResolvedValue(RESPONSE);
 
-    const tree = await MemberShiftsPage({ params: Promise.resolve({ token: SENTINEL }) });
+    const tree = await MemberSchedulePage({ params: Promise.resolve({ token: SENTINEL }) });
 
     expect(leaks(tree, SENTINEL)).toBe(false);
   });

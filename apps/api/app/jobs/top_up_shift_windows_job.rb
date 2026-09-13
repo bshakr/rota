@@ -24,7 +24,7 @@ class TopUpShiftWindowsJob < ApplicationJob
       # stopped being texted. The log line is the only thing that makes this failure visible today;
       # `report` is what will carry it to Sentry the day a subscriber is added.
       Rails.logger.error("TopUpShiftWindowsJob failed for rota #{rota.id}: #{e.class}: #{e.message}")
-      Rails.error.report(e, context: { rota_id: rota.id }, source: "houserota.shift_generation")
+      Rails.error.report(e, context: { rota_id: rota.id }, source: "rotamonster.shift_generation")
     end
   end
 end

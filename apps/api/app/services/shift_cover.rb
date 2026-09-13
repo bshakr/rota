@@ -18,7 +18,7 @@
 # The lock is the rota, not the shift, deliberately: it is the only lock RotaRegenerator and
 # MemberRemoval can be made to share (both work a whole rota's window at once). The cost — cover
 # changes to two DIFFERENT shifts of the same rota now serialise rather than running in parallel — is
-# nothing for a house rota, where cover changes are rare and a rota holds a handful of people.
+# nothing for a household rota, where cover changes are rare and a rota holds a handful of people.
 #
 # ShiftCover owns only the lock, the write, and (inside the lock) recording the cover notices. Each
 # caller keeps its OWN rules (the guard) and its own idea of who to tell (`notify`), because those

@@ -21,7 +21,15 @@ Rails.application.routes.draw do
 
     # The admin surface (BLO-1047). Every member action is scoped to the token's group, so these
     # ids are always the caller's own house's; a cross-tenant id resolves to 404, never a leak.
-    resource :group, only: %i[show update], controller: "group"
+    resource :group, only: %i[show update], controller: "group" do
+      # The house calendar link (BLO-1667). Singular, like the group: there is one per house and the
+      # token names it, so no id ever appears in these paths, and the link itself is a credential
+      # that must never become one.
+      resource :calendar, only: %i[update destroy], controller: "group_calendar" do
+        post :sync
+        get :events
+      end
+    end
     resources :members, only: %i[index create update destroy] do
       post :rotate_link, on: :member
     end
@@ -37,6 +45,10 @@ Rails.application.routes.draw do
     # authenticated by an opaque bearer token that maps to one member (MemberAuthenticatable), and able
     # to reach only that member's own shifts and the cover action. The token is NEVER a path segment —
     # `/s/:token` exists only as the Next.js page, which forwards the token as a bearer header.
+
+    # The whole house's upcoming rota (BLO-1666). Additive: /api/member/shifts stays as it is until
+    # nothing calls it. Like every member route, the token is a bearer header and never a path part.
+    get    "member/schedule",         to: "member_schedules#show"
     get    "member/shifts",           to: "member_shifts#index"
     post   "member/shifts/:id/cover", to: "member_covers#create"
     delete "member/shifts/:id/cover", to: "member_covers#destroy"

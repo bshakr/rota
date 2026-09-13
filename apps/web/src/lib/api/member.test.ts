@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { assignCover, cancelCover, getMemberShifts } from "./member";
+import { assignCover, cancelCover, getMemberSchedule, getMemberShifts } from "./member";
 
 // A token a real member link would carry. The whole point of the member client is
 // that this value only ever appears in the Authorization header — never in a URL
@@ -43,6 +43,15 @@ describe("member API client", () => {
     expect(headers.Authorization).toBe(`Bearer ${TOKEN}`);
     expect(url).toBe("http://rails.test/api/member/shifts");
     // The load-bearing assertion: the token is never a path segment or query param.
+    expect(url).not.toContain(TOKEN);
+  });
+
+  it("fetches the whole-house schedule with the token in the header and not the URL", async () => {
+    await getMemberSchedule(TOKEN);
+    const { url, headers } = lastFetchCall();
+
+    expect(headers.Authorization).toBe(`Bearer ${TOKEN}`);
+    expect(url).toBe("http://rails.test/api/member/schedule");
     expect(url).not.toContain(TOKEN);
   });
 

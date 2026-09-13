@@ -67,6 +67,8 @@ export interface Group {
   timezone: string;
   timezone_confirmed: boolean;
   timezone_confirmed_at: string | null;
+  /** The house calendar link, when an admin has connected one (BLO-1667). Never the link itself. */
+  calendar: CalendarSummary | null;
 }
 
 /** PATCH /api/group carries a warning (not a block) when the timezone actually moves. */
@@ -85,6 +87,62 @@ export interface GroupUpdateParams {
   name?: string;
   /** Sending `timezone` at all is the human confirming it, even if unchanged — Rails stamps the flag. */
   timezone?: string;
+}
+
+// ---------------------------------------------------------------------------
+// House calendar: /api/group/calendar (BLO-1667)
+// ---------------------------------------------------------------------------
+
+/**
+ * What the admin sees of a connected calendar. `masked_url` is the only form of
+ * the link that ever leaves Rails; the raw iCal URL is a credential and stays
+ * server-side. `failing` is the flag the card's warning state hangs off.
+ */
+export interface CalendarSummary {
+  calendar_name: string | null;
+  masked_url: string;
+  events_count: number;
+  /** Events still waiting on a verdict from the model; the card says so while this is above zero. */
+  unclassified_count: number;
+  last_synced_at: string | null;
+  last_error: string | null;
+  failing: boolean;
+}
+
+export type CalendarEventKind = "event" | "away";
+
+export interface CalendarEventItem {
+  id: number;
+  title: string;
+  /** Civil dates in the group's calendar, inclusive. */
+  starts_on: string;
+  ends_on: string;
+  all_day: boolean;
+  /** "HH:MM" wall-clock start in the group's zone; null for all-day entries. */
+  start_time: string | null;
+  kind: CalendarEventKind;
+  member_ids: number[];
+}
+
+/**
+ * What the admin surfaces return: an event plus the model's one-line reason for its verdict. Members
+ * get `CalendarEventItem` without it, which is the shape spec section 13 pins.
+ */
+export interface CalendarEventPreviewItem extends CalendarEventItem {
+  reason: string | null;
+}
+
+export interface CalendarConnectResponse {
+  calendar: CalendarSummary;
+  events_preview: CalendarEventPreviewItem[];
+}
+
+export interface CalendarSyncResponse {
+  calendar: CalendarSummary;
+}
+
+export interface CalendarEventsResponse {
+  events: CalendarEventPreviewItem[];
 }
 
 // ---------------------------------------------------------------------------
@@ -366,4 +424,49 @@ export interface MemberShiftsResponse {
 /** POST and DELETE /api/member/shifts/:id/cover return the updated shift. */
 export interface MemberCoverResponse {
   shift: MemberShift;
+}
+
+/**
+ * A housemate as the member page sees them. `contactable` folds "active and not
+ * opted out" into the one boolean the UI acts on: an opted-out housemate still
+ * appears in the people strip (they live here) but cannot be handed a shift,
+ * because the cover action would reject them.
+ */
+export interface ScheduleMember extends MemberRef {
+  contactable: boolean;
+}
+
+/** A rota reduced to what a filter chip needs. */
+export interface RotaRef {
+  id: number;
+  name: string;
+}
+
+/**
+ * GET /api/member/schedule — the whole house's upcoming rota in one payload.
+ *
+ * `today` is the GROUP's calendar date, not the browser's and not the server's:
+ * every week boundary and every "in 3 days" on this page is measured from it.
+ * `shifts` covers every active, rostered rota, not only the viewer's turns, and
+ * each shift's `can_assign_cover` / `can_cancel_cover` are resolved for the
+ * VIEWER, so the page shows only the buttons the API would accept.
+ */
+export interface MemberScheduleResponse {
+  /** The group's today, as a civil date (YYYY-MM-DD). */
+  today: string;
+  /** The group's IANA timezone, e.g. "Europe/London". */
+  timezone: string;
+  member: MemberRef;
+  /** Every active member of the group, including the viewer, ordered by name. */
+  members: ScheduleMember[];
+  /** The group's active, non-draft rotas, ordered by name. */
+  rotas: RotaRef[];
+  /** Every shift of those rotas with due_on >= today, by due date then rota name. */
+  shifts: MemberShift[];
+  /**
+   * The house calendar's entries with ends_on >= today, by starts_on then start_time.
+   * Empty when no calendar is connected, so the feed never has to ask whether there
+   * is one. Titles are as the source calendar stored them, not the normalised form.
+   */
+  events: CalendarEventItem[];
 }

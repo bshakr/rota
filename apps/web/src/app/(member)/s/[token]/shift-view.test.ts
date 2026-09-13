@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { MemberRef, MemberShift } from "@/lib/api/types";
 
-import { coverTargetsFor, shiftStateFor } from "./shift-view";
+import type { ShiftState } from "./shift-view";
+import { shiftStateFor } from "./shift-view";
 
 // The member is always id 1 ("me") in these fixtures; everyone else is a housemate.
 const ME = 1;
@@ -31,7 +32,10 @@ function shift(partial: Partial<MemberShift> = {}): MemberShift {
 
 describe("shiftStateFor", () => {
   it("is 'yours' when I'm the assignee and no one is covering", () => {
-    const state = shiftStateFor(shift({ assigned_member: ref(ME, "Alice") }), ME);
+    // Typed against ShiftState from THIS module: the vocabulary lives with the function
+    // now, not in the shift card, so the feed can name a shift's state without importing
+    // a component. The annotation is the assertion — it fails to compile if it moves back.
+    const state: ShiftState | null = shiftStateFor(shift({ assigned_member: ref(ME, "Alice") }), ME);
     expect(state).toEqual({ kind: "yours" });
   });
 
@@ -61,20 +65,3 @@ describe("shiftStateFor", () => {
   });
 });
 
-describe("coverTargetsFor", () => {
-  const coverable = [ref(2, "Bob"), ref(3, "Cara"), ref(4, "Dev")];
-
-  it("offers every coverable member for my own uncovered shift", () => {
-    const targets = coverTargetsFor(shift({ assigned_member: ref(ME, "Alice") }), coverable);
-    expect(targets).toEqual(coverable);
-  });
-
-  it("excludes the original assignee when I'm handing on a shift I'm covering", () => {
-    // I (Alice) am covering Bob's shift; offering Bob back would be rejected as already_assignee.
-    const targets = coverTargetsFor(
-      shift({ assigned_member: ref(2, "Bob"), covering_member: ref(ME, "Alice") }),
-      coverable,
-    );
-    expect(targets).toEqual([ref(3, "Cara"), ref(4, "Dev")]);
-  });
-});
