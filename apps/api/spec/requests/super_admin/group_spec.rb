@@ -45,11 +45,11 @@ RSpec.describe "GET /api/super_admin/groups/:id" do
   describe "admins" do
     it "names each one, with the WorkOS role and the id to look them up by" do
       user = create(:user, name: "Ada Admin", email: "ada@example.com", workos_user_id: "user_01ADA")
-      create(:group_admin, group: group, user: user, role: "owner")
+      membership = create(:group_admin, group: group, user: user, role: "owner")
 
       expect(show.fetch("admins")).to eq([ {
-        "id" => user.id, "name" => "Ada Admin", "email" => "ada@example.com",
-        "workos_user_id" => "user_01ADA", "role" => "owner"
+        "id" => membership.id, "user_id" => user.id, "name" => "Ada Admin",
+        "email" => "ada@example.com", "workos_user_id" => "user_01ADA", "role" => "owner"
       } ])
     end
 

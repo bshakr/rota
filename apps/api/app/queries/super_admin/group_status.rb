@@ -19,8 +19,6 @@ module SuperAdmin
     NEVER_STARTED = "never_started".freeze
     SUSPENDED = "suspended".freeze
 
-    ALL = [ LIVE, QUIET, NEVER_STARTED, SUSPENDED ].freeze
-
     def self.of(group, stats, now: Time.current)
       return SUSPENDED if suspended?(group)
       # "Nobody is on any rota", not "nothing is switched on". A house that ran for a year and then

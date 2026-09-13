@@ -117,4 +117,35 @@ RSpec.describe "Super admin redaction" do
 
     expect(serialized.fetch(:body)).to eq("Bins tomorrow.\nManage: [link]")
   end
+
+  # The last pass does not care what shape the credential arrived in. A token with no URL around it
+  # is still a permanent login, and this is the case neither pattern above would catch.
+  it "redacts a token that appears with no link around it at all" do
+    message = SmsMessage.last
+    message.update_columns(body: "Alice says her code #{members.first.access_token} stopped working.")
+
+    serialized = SuperAdmin::SmsMessageSerializer.one(message)
+
+    expect(serialized.fetch(:body)).to eq("Alice says her code [link] stopped working.")
+  end
+
+  it "redacts a token belonging to another member of the same house" do
+    message = SmsMessage.where(member_id: members.first.id).last
+    message.update_columns(body: "Forwarded from Bob: #{members.second.access_token}")
+
+    serialized = SuperAdmin::SmsMessageSerializer.one(message)
+
+    expect(serialized.fetch(:body)).to eq("Forwarded from Bob: [link]")
+  end
+
+  # A path is not a credential. Blanking a line because it mentioned one would lose the sentence an
+  # operator is reading the log for.
+  it "leaves a sentence that mentions the path but carries no token" do
+    message = SmsMessage.last
+    message.update_columns(body: "see https://ourhouse.example/s/ for the rota")
+
+    serialized = SuperAdmin::SmsMessageSerializer.one(message)
+
+    expect(serialized.fetch(:body)).to eq("see https://ourhouse.example/s/ for the rota")
+  end
 end

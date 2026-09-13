@@ -5,7 +5,11 @@ module SuperAdmin
   class AdminSerializer < ApplicationSerializer
     def as_json
       {
-        id: user.id,
+        # The membership's own id, not the person's: this row IS the GroupAdmin, and the same human
+        # appears again under a different id on another house's page. `user_id` is beside it for
+        # the cases that are about the person rather than the membership.
+        id: record.id,
+        user_id: user.id,
         name: user.name,
         # An AuthKit access token carries no email unless the WorkOS JWT template has been
         # configured to add one, so a first sighting is provisioned with a placeholder at an
