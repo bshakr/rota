@@ -5,7 +5,7 @@
 # That is the whole trick: the app cannot tell these tokens from WorkOS's, because the only thing
 # it ever trusts is "was this signed by a key the JWKS published".
 module WorkosAuth
-  KID = "houserota-test-key"
+  KID = "rotamonster-test-key"
 
   class << self
     # 2048-bit RSA takes ~100ms to generate, so both keys are made once for the whole suite.

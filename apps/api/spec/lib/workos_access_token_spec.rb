@@ -41,13 +41,13 @@ RSpec.describe WorkosAccessToken do
     context "when WORKOS_JWT_ISSUER pins an exact issuer" do
       around do |example|
         original = Rails.application.config.x.workos.issuer
-        Rails.application.config.x.workos.issuer = "https://auth.houserota.example/"
+        Rails.application.config.x.workos.issuer = "https://auth.rotamonster.example/"
         example.run
         Rails.application.config.x.workos.issuer = original
       end
 
       it "accepts exactly that issuer" do
-        expect { verify(iss: "https://auth.houserota.example/") }.not_to raise_error
+        expect { verify(iss: "https://auth.rotamonster.example/") }.not_to raise_error
       end
 
       it "refuses even the otherwise-valid client-scoped issuer" do

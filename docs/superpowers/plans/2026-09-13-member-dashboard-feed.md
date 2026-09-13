@@ -16,7 +16,10 @@
 
 ## Global Constraints
 
-- **Branch and worktree.** All work happens in `/Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed` on branch `BLO-1666-member-dashboard-feed`. Never write to the parent checkout.
+Set `ROTA_REPO_ROOT` to the absolute path of your parent checkout before running
+the shell snippets below. This keeps the plan independent of the local folder name.
+
+- **Branch and worktree.** All work happens in `${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed` on branch `BLO-1666-member-dashboard-feed`. Never write to the parent checkout.
 - **The token never reaches the client.** It is read in `page.tsx` via `await params`, passed only to the `server-only` client in `apps/web/src/lib/api/member.ts`, and forwarded only as `Authorization: Bearer <token>`. Never a path segment, never a query param, never a plain prop on a Client Component.
 - **Dates are civil dates.** `due_on` and `today` are `YYYY-MM-DD` strings. All arithmetic goes through `apps/web/src/lib/group-dates.ts` (`addCivilDays`, `compareCivil`, `civilDate`). All rendering goes through `apps/web/src/lib/date.ts`. Never `new Date()` in a component, never `toLocaleDateString`.
 - **"Today" is `group.today`** on the API side (never `Date.current`, never UTC) and the API's `today` field on the web side (never the browser clock, never the `TIME_ZONE` module constant).
@@ -50,7 +53,7 @@ There is **one** `.env`, at the repo root. Both apps read it (`apps/api/config/a
 
 ```bash
 # From the worktree root, once:
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 cp .env.example .env           # if the worktree has no .env yet
 # The two values that matter for this ticket are already correct in the template:
 #   APP_URL=http://localhost:3001
@@ -59,12 +62,12 @@ cp .env.example .env           # if the worktree has no .env yet
 
 ```bash
 # Terminal 1 — Rails API on port 3000 (bin/rails server's default).
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/api
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/api"
 bin/rails db:prepare      # creates + migrates + seeds the development DB
 bin/rails server
 
 # Terminal 2 — Next.js on port 3001 (pinned in apps/web/package.json: `next dev -p 3001`).
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npm install               # only if node_modules is missing
 npm run dev
 ```
@@ -96,12 +99,12 @@ cd apps/api && bin/rails runner 'TopUpShiftWindowsJob.perform_now'
 
 ```bash
 # API
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/api
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/api"
 bundle exec rspec spec/requests/api/member/schedule_spec.rb
 bin/ci                                    # the full gate: db:test:prepare, rubocop, bundler-audit, brakeman, rspec
 
 # Web
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npx vitest run                            # all unit tests
 npx vitest run src/app/\(member\)/s/\[token\]/schedule-view.test.ts   # one file
 npm run typecheck
@@ -497,7 +500,7 @@ end
 - [ ] **Step 2: Run it to make sure it fails**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/api
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/api"
 bundle exec rspec spec/requests/api/member/schedule_spec.rb
 ```
 
@@ -582,7 +585,7 @@ end
 - [ ] **Step 5: Run the spec to verify it passes**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/api
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/api"
 bundle exec rspec spec/requests/api/member/schedule_spec.rb
 ```
 
@@ -591,7 +594,7 @@ Expected: all examples PASS.
 - [ ] **Step 6: Run the whole API gate**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/api
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/api"
 bin/ci
 ```
 
@@ -600,7 +603,7 @@ Expected: Setup, Style: Ruby (rubocop), Security: Gem audit, Security: Brakeman,
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 git add apps/api/app/controllers/api/member_schedules_controller.rb \
         apps/api/config/routes.rb \
         apps/api/spec/requests/api/member/schedule_spec.rb
@@ -653,7 +656,7 @@ and add this example inside the existing `describe("member API client", …)` bl
 - [ ] **Step 2: Run it to verify it fails**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npx vitest run src/lib/api/member.test.ts
 ```
 
@@ -726,7 +729,7 @@ export function getMemberSchedule(token: string): Promise<MemberScheduleResponse
 - [ ] **Step 5: Run the tests and the typechecker**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npx vitest run src/lib/api/member.test.ts && npm run typecheck
 ```
 
@@ -735,7 +738,7 @@ Expected: PASS, and typecheck clean.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 git add apps/web/src/lib/api/types.ts apps/web/src/lib/api/member.ts apps/web/src/lib/api/member.test.ts
 git commit -m "BLO-1666: MemberScheduleResponse types and the getMemberSchedule client
 
@@ -1065,7 +1068,7 @@ describe("nextShiftByMember", () => {
 - [ ] **Step 2: Run it to verify it fails**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npx vitest run 'src/app/(member)/s/[token]/schedule-view.test.ts'
 ```
 
@@ -1254,7 +1257,7 @@ export function nextShiftByMember(schedule: MemberScheduleResponse): Map<number,
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npx vitest run 'src/app/(member)/s/[token]/schedule-view.test.ts' && npm run typecheck && npm run lint
 ```
 
@@ -1263,7 +1266,7 @@ Expected: all PASS, typecheck and lint clean.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 git add 'apps/web/src/app/(member)/s/[token]/schedule-view.ts' 'apps/web/src/app/(member)/s/[token]/schedule-view.test.ts'
 git commit -m "BLO-1666: schedule-view — week bucketing, labels and feed filters
 
@@ -1447,7 +1450,7 @@ describe("rankCoverCandidates", () => {
 - [ ] **Step 2: Run it to verify it fails**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npx vitest run 'src/app/(member)/s/[token]/cover-ranking.test.ts'
 ```
 
@@ -1541,7 +1544,7 @@ export function rankCoverCandidates(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npx vitest run 'src/app/(member)/s/[token]/cover-ranking.test.ts' && npm run typecheck && npm run lint
 ```
 
@@ -1550,7 +1553,7 @@ Expected: all PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 git add 'apps/web/src/app/(member)/s/[token]/cover-ranking.ts' 'apps/web/src/app/(member)/s/[token]/cover-ranking.test.ts'
 git commit -m "BLO-1666: cover-ranking — free / has a shift that week / can't be texted
 
@@ -1584,7 +1587,7 @@ Also delete the now-unused `MemberRef` import if nothing else in the file uses i
 - [ ] **Step 2: Run the test to see it fail on the import**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npx vitest run 'src/app/(member)/s/[token]/shift-view.test.ts'
 ```
 
@@ -1638,7 +1641,7 @@ export function shiftStateFor(shift: MemberShift, memberId: number): ShiftState 
 - [ ] **Step 4: Run the tests and typecheck**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npx vitest run 'src/app/(member)/s/[token]/shift-view.test.ts' && npm run typecheck
 ```
 
@@ -1647,7 +1650,7 @@ Expected: PASS. `shift-list.tsx` still imports `coverTargetsFor`, so **typecheck
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 git add 'apps/web/src/app/(member)/s/[token]/shift-view.ts' 'apps/web/src/app/(member)/s/[token]/shift-view.test.ts'
 git commit -m "BLO-1666: shift-view owns ShiftState; coverTargetsFor superseded by cover-ranking
 
@@ -1747,7 +1750,7 @@ export function useIsDesktop(): boolean {
 - [ ] **Step 4: Verify**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npm run lint && npx vitest run
 ```
 
@@ -1756,7 +1759,7 @@ Expected: lint clean; the existing suite unchanged. (`use-is-desktop.ts` has no 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 git add apps/web/src/components/container.tsx 'apps/web/src/app/(member)/layout.tsx' apps/web/src/hooks/use-is-desktop.ts
 git commit -m "BLO-1666: feed container width and the desktop media query hook
 
@@ -1844,7 +1847,7 @@ export async function runAction(call: () => Promise<CoverActionResult>): Promise
 - [ ] **Step 2: Verify it compiles**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npm run lint
 ```
 
@@ -1853,7 +1856,7 @@ Expected: clean. (`npm run typecheck` still carries the expected `shift-list.tsx
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 git add 'apps/web/src/app/(member)/s/[token]/use-shift-updates.ts'
 git commit -m "BLO-1666: use-shift-updates — one shift array for the feed and the sheet
 
@@ -2089,7 +2092,7 @@ export function WeekSection({
 - [ ] **Step 3: Verify**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npm run lint
 ```
 
@@ -2098,7 +2101,7 @@ Expected: clean.
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 git add apps/web/src/components/member/shift-row.tsx apps/web/src/components/member/week-section.tsx
 git commit -m "BLO-1666: shift row and week section
 
@@ -2251,9 +2254,9 @@ export function NextShiftCard({
 - [ ] **Step 2: Verify and commit**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npm run lint
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 git add apps/web/src/components/member/next-shift-card.tsx
 git commit -m "BLO-1666: next-shift card, with the 'Then ...' line and the empty state
 
@@ -2500,9 +2503,9 @@ export function FilterChips({
 - [ ] **Step 4: Verify and commit**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npm run lint
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 git add apps/web/src/components/member/people-strip.tsx apps/web/src/components/member/people-card.tsx apps/web/src/components/member/filter-chips.tsx
 git commit -m "BLO-1666: people strip, people card and filter chips
 
@@ -2805,9 +2808,9 @@ Delete the trailing `void 0;` and the comment above it if lint flags them; the `
 - [ ] **Step 2: Verify and commit**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npm run lint
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 git add apps/web/src/components/member/hand-off-sheet.tsx
 git commit -m "BLO-1666: hand-off sheet — bottom sheet on phone, dialog on desktop, ranked
 
@@ -3038,9 +3041,9 @@ export function MemberFeed({
 - [ ] **Step 2: Verify and commit**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npm run lint
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 git add 'apps/web/src/app/(member)/s/[token]/member-feed.tsx'
 git commit -m "BLO-1666: member-feed shell — filters, layout, hand-off and take-back
 
@@ -3130,7 +3133,7 @@ Leave the `leaks` walker and the second ("guards against a vacuous check") examp
 - [ ] **Step 2: Run it to verify it fails**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npx vitest run 'src/app/(member)/s/[token]/page.token-safety.test.ts'
 ```
 
@@ -3240,7 +3243,7 @@ export default async function MemberSchedulePage({
 - [ ] **Step 4: Delete the replaced files**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 # Prove nothing still imports them BEFORE deleting.
 grep -rn "shift-list\|shift-card\|ShiftList\|ShiftCard\|getMemberShifts" apps/web/src
 git rm 'apps/web/src/app/(member)/s/[token]/shift-list.tsx' apps/web/src/components/member/shift-card.tsx
@@ -3320,7 +3323,7 @@ export default function Loading() {
 - [ ] **Step 6: Run the full web gate**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npm run ci
 ```
 
@@ -3329,7 +3332,7 @@ Expected: lint, typecheck, all Vitest suites, `check:tokens`, `next build`, and 
 - [ ] **Step 7: Run the API gate one more time**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/api
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/api"
 bin/ci
 ```
 
@@ -3338,7 +3341,7 @@ Expected: green.
 - [ ] **Step 8: Commit**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed"
 git add -A apps/web/src
 git commit -m "BLO-1666: the member page renders the whole-house feed
 
@@ -3362,7 +3365,7 @@ Depends on Group D. Do not report the PR as ready before this group is complete.
 - [ ] **Step 1: Bring both apps up with real data**
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/api
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/api"
 bin/rails db:prepare
 bin/rails db:seed
 bin/rails runner 'TopUpShiftWindowsJob.perform_now'
@@ -3371,7 +3374,7 @@ bin/rails server
 ```
 
 ```bash
-cd /Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/apps/web
+cd "${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/apps/web"
 npm run dev
 ```
 
@@ -3420,7 +3423,7 @@ Report anything that fails rather than fixing it silently, then fix it and re-ru
 `main` and the branch must be captured with the **same member, the same data and the same viewport**. Use a second worktree so the seeded database is shared and untouched:
 
 ```bash
-cd /Users/bassemshaker/code/houserota
+cd "${ROTA_REPO_ROOT}"
 git worktree add .koh/BLO-1666-before main
 cd .koh/BLO-1666-before/apps/web && npm install && npm run dev -- -p 3002
 ```
@@ -3439,7 +3442,7 @@ Capture at exactly 390x844 and 1440x900:
 
 Pair 5's "before" is the old "You're all clear" empty state; its "after" is "Nothing on your plate" with the house's feed still below it. Produce it by clearing Bass's future shifts in a scratch rota, or by using Ciara (kitchen only) at a moment she has nothing.
 
-Stage every PNG under `/Users/bassemshaker/code/houserota/.koh/BLO-1666-member-dashboard-feed/tmp/screenshots/BLO-1666/`, named `NN-<viewport>-<state>-before.png` / `-after.png`. **Never `git add` this folder.** This repo is private, so `raw.githubusercontent` URLs render broken through GitHub's camo proxy and committing PNGs to a feature branch is not a workaround.
+Stage every PNG under `${ROTA_REPO_ROOT}/.koh/BLO-1666-member-dashboard-feed/tmp/screenshots/BLO-1666/`, named `NN-<viewport>-<state>-before.png` / `-after.png`. **Never `git add` this folder.** This repo is private, so `raw.githubusercontent` URLs render broken through GitHub's camo proxy and committing PNGs to a feature branch is not a workaround.
 
 - [ ] **Step 2: Verify the captures before building anything from them**
 
@@ -3462,7 +3465,7 @@ gh pr checks --watch
 - [ ] **Step 6: Clean up the before worktree**
 
 ```bash
-cd /Users/bassemshaker/code/houserota
+cd "${ROTA_REPO_ROOT}"
 git worktree remove .koh/BLO-1666-before
 ```
 

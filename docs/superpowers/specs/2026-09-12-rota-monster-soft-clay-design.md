@@ -7,15 +7,16 @@ this work rewrites.
 
 ## 1. What changes
 
-HouseRota becomes **Rota Monster**, living at **rota.monster**. The web app
+The app is branded **Rota Monster**, living at **rota.monster**. The web app
 gets a ground-up visual identity called **Soft Clay**: lavender paper, plum
 ink, one grape action colour, a family of pastel tints, pillowy surfaces lit
 from above and squashed below, a rounded display face, and a voice that sounds
 like a housemate rather than a product. Every route in `apps/web` is restyled.
 The logo is deferred: the wordmark is plain type until a mark exists.
 
-Not changing: database names, the Rails module (`HouserotaApi`), env var
-names, the npm package name, the Postgres role. None of those are user-facing.
+This visual-design phase excluded internal identifiers. The later codebase rename
+updates the Rails module to `RotamonsterApi` and the npm package to `@rotamonster/web`.
+Database names, the Postgres role, and database connection variables stay unchanged.
 The API changes are two copy touches (mailer from-address, seed SMS template).
 
 ## 2. Name, voice, cast
