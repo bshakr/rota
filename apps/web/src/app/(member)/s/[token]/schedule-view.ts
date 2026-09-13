@@ -2,6 +2,9 @@ import type { MemberScheduleResponse, MemberShift } from "@/lib/api/types";
 import { formatDayNumber, formatMonthShort } from "@/lib/date";
 import { addCivilDays, civilDate, compareCivil } from "@/lib/group-dates";
 
+import type { FeedEvent } from "./calendar-view";
+import { toFeedEvent } from "./calendar-view";
+
 // The member feed's view model, as pure functions. Everything the page decides about
 // WHICH shifts appear and HOW they are grouped lives here, alone and tested, because
 // it is the only real logic on an otherwise presentational screen and because it has
@@ -36,6 +39,11 @@ export const ALL_SHIFTS: FeedFilter = { rota: { kind: "everyone" }, personId: nu
 export interface DayRow {
   due_on: string;
   shifts: MemberShift[];
+  /**
+   * House calendar entries that BEGIN this day — a trip, a dinner. Always present
+   * and often empty, so a row never has to ask whether a calendar is connected.
+   */
+  events: FeedEvent[];
 }
 
 /** One week of the feed: a Monday, a human label, and the days that have shifts. */
@@ -115,32 +123,79 @@ function upcoming(schedule: MemberScheduleResponse): MemberShift[] {
 }
 
 /**
- * The whole feed: week sections, each holding the days that actually have shifts.
+ * Whether the house calendar shows through the current filter.
+ *
+ * A rota chip means "just the bins, please", and a trip belongs to no rota — so the
+ * chips hide events entirely rather than showing a bin day under a heading that says
+ * otherwise. "Everyone" and "Just me" both show them (spec section 9): a trip is as
+ * much a part of your own week as your turns are.
+ *
+ * The PERSON half is deliberately not consulted. It narrows who the shifts are about,
+ * and what the house is doing stays true whoever you are looking at — the day you
+ * pick someone to ask is exactly the day you need to see they are in Greece.
+ */
+function showsEvents(filter: FeedFilter): boolean {
+  return filter.rota.kind !== "rota";
+}
+
+/**
+ * House calendar entries that begin today or later, as feed rows keyed by their day.
+ *
+ * An entry already under way when the payload was built has no row of its own: the
+ * feed only ever renders forwards, and a trip that started on Friday would otherwise
+ * reappear above today every time the page loaded. Who is away RIGHT NOW is answered
+ * by `awayMemberIdsOn` on the people strip, which reads the whole range.
+ */
+function eventsByDay(schedule: MemberScheduleResponse): Map<string, FeedEvent[]> {
+  const days = new Map<string, FeedEvent[]>();
+
+  for (const event of schedule.events) {
+    if (compareCivil(event.starts_on, schedule.today) < 0) continue;
+    const day = days.get(event.starts_on);
+    const feedEvent = toFeedEvent(event, schedule.members);
+    if (day) day.push(feedEvent);
+    else days.set(event.starts_on, [feedEvent]);
+  }
+
+  return days;
+}
+
+/**
+ * The whole feed: week sections, each holding the days that have shifts or house
+ * calendar entries.
  *
  * Weeks and days with nothing in them are omitted rather than rendered empty, so a
- * fortnightly rota does not leave a blank card every other week. Past shifts are
+ * fortnightly rota does not leave a blank card every other week — but a day carrying
+ * only a trip IS a day worth rendering, which is why the days are assembled from both
+ * sources rather than walked off the shifts alone. Past shifts and past entries are
  * dropped here as well as on the server: the function is then total, and a stale
  * payload after midnight cannot render yesterday.
  */
 export function buildFeed(schedule: MemberScheduleResponse, filter: FeedFilter): WeekSection[] {
-  const weeks: WeekSection[] = [];
-
+  const shiftDays = new Map<string, MemberShift[]>();
   for (const shift of upcoming(schedule)) {
     if (!matchesFilter(shift, filter, schedule.member.id)) continue;
+    const day = shiftDays.get(shift.due_on);
+    if (day) day.push(shift);
+    else shiftDays.set(shift.due_on, [shift]);
+  }
 
-    const start = weekStart(shift.due_on);
+  const eventDays = showsEvents(filter) ? eventsByDay(schedule) : new Map<string, FeedEvent[]>();
+  const dates = [...new Set([...shiftDays.keys(), ...eventDays.keys()])].sort(compareCivil);
+
+  const weeks: WeekSection[] = [];
+  for (const due_on of dates) {
+    const start = weekStart(due_on);
     let week = weeks.at(-1);
     if (!week || week.weekStart !== start) {
       week = { weekStart: start, label: weekLabel(start, schedule.today), days: [] };
       weeks.push(week);
     }
-
-    let day = week.days.at(-1);
-    if (!day || day.due_on !== shift.due_on) {
-      day = { due_on: shift.due_on, shifts: [] };
-      week.days.push(day);
-    }
-    day.shifts.push(shift);
+    week.days.push({
+      due_on,
+      shifts: shiftDays.get(due_on) ?? [],
+      events: eventDays.get(due_on) ?? [],
+    });
   }
 
   return weeks;

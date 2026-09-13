@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { MemberScheduleResponse, MemberShift } from "@/lib/api/types";
+import type { CalendarEventItem, MemberScheduleResponse, MemberShift } from "@/lib/api/types";
 
 import {
   ALL_SHIFTS,
@@ -47,6 +47,7 @@ function schedule(partial: Partial<MemberScheduleResponse> = {}): MemberSchedule
     ],
     rotas: [{ id: 1, name: "Kitchen" }],
     shifts: [],
+    events: [],
     ...partial,
   };
 }
@@ -230,6 +231,115 @@ describe("buildFeed", () => {
     );
 
     expect(feed).toEqual([]);
+  });
+});
+
+describe("buildFeed with house events", () => {
+  // Fri 25 Sept to Thu 1 Oct 2026; Alfie is id 2 here, the house's other member.
+  const greece: CalendarEventItem = {
+    id: 77,
+    title: "Bob in Greece",
+    starts_on: "2026-09-25",
+    ends_on: "2026-10-01",
+    all_day: true,
+    start_time: null,
+    kind: "away",
+    member_ids: [2],
+  };
+
+  // Thu 1 Oct 2026, 19:00.
+  const dinner: CalendarEventItem = {
+    id: 91,
+    title: "House dinner at home",
+    starts_on: "2026-10-01",
+    ends_on: "2026-10-01",
+    all_day: false,
+    start_time: "19:00",
+    kind: "event",
+    member_ids: [],
+  };
+
+  it("gives an entry its own day row on a day with no shifts", () => {
+    const feed = buildFeed(
+      schedule({
+        today: "2026-09-20",
+        shifts: [shift({ due_on: "2026-09-20" })],
+        events: [greece, dinner],
+      }),
+      ALL_SHIFTS,
+    );
+
+    expect(feed.map((week) => week.label)).toEqual(["This week", "Next week", "28 Sept – 4 Oct"]);
+    expect(feed[0].days.map((day) => day.due_on)).toEqual(["2026-09-20"]);
+    expect(feed[0].days[0].events).toEqual([]);
+
+    expect(feed[1].days.map((day) => day.due_on)).toEqual(["2026-09-25"]);
+    expect(feed[1].days[0].shifts).toEqual([]);
+    expect(feed[1].days[0].events.map((event) => event.id)).toEqual([77]);
+    expect(feed[1].days[0].events[0].untilLabel).toBe("until Thu 1 Oct");
+    expect(feed[1].days[0].events[0].memberNames).toEqual(["Bob"]);
+
+    expect(feed[2].days[0].events.map((event) => event.id)).toEqual([91]);
+  });
+
+  it("hangs an entry off the row of a day that already has shifts", () => {
+    const feed = buildFeed(
+      schedule({
+        today: "2026-09-28",
+        shifts: [shift({ due_on: "2026-10-01" })],
+        events: [dinner],
+      }),
+      ALL_SHIFTS,
+    );
+
+    expect(feed).toHaveLength(1);
+    expect(feed[0].days).toHaveLength(1);
+    expect(feed[0].days[0].shifts).toHaveLength(1);
+    expect(feed[0].days[0].events.map((event) => event.id)).toEqual([91]);
+  });
+
+  it("orders days by date however the payload ordered the entries", () => {
+    const feed = buildFeed(
+      schedule({ today: "2026-09-20", shifts: [], events: [dinner, greece] }),
+      ALL_SHIFTS,
+    );
+
+    expect(feed.flatMap((week) => week.days.map((day) => day.due_on))).toEqual([
+      "2026-09-25",
+      "2026-10-01",
+    ]);
+  });
+
+  it("drops an entry that began before today, the same as a past shift", () => {
+    const feed = buildFeed(
+      schedule({ today: "2026-09-27", shifts: [], events: [greece, dinner] }),
+      ALL_SHIFTS,
+    );
+
+    expect(feed.flatMap((week) => week.days.map((day) => day.due_on))).toEqual(["2026-10-01"]);
+  });
+
+  it("shows entries under 'Just me', where they are how you read your own week", () => {
+    const feed = buildFeed(
+      schedule({ today: "2026-09-20", shifts: [], events: [greece] }),
+      { rota: { kind: "me" }, personId: null },
+    );
+
+    expect(feed[0].days[0].events.map((event) => event.id)).toEqual([77]);
+  });
+
+  it("hides entries while a rota chip is active, since they belong to no rota", () => {
+    const feed = buildFeed(
+      schedule({
+        today: "2026-09-20",
+        shifts: [shift({ due_on: "2026-09-20" })],
+        events: [greece, dinner],
+      }),
+      { rota: { kind: "rota", rotaId: 1 }, personId: null },
+    );
+
+    expect(feed.flatMap((week) => week.days.map((day) => day.due_on))).toEqual(["2026-09-20"]);
+    expect(feed[0].days[0].events).toEqual([]);
   });
 });
 

@@ -41,6 +41,7 @@ function schedule(
     members,
     rotas: [{ id: 1, name: "Kitchen" }],
     shifts,
+    events: [],
   };
 }
 

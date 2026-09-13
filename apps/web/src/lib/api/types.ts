@@ -463,4 +463,10 @@ export interface MemberScheduleResponse {
   rotas: RotaRef[];
   /** Every shift of those rotas with due_on >= today, by due date then rota name. */
   shifts: MemberShift[];
+  /**
+   * The house calendar's entries with ends_on >= today, by starts_on then start_time.
+   * Empty when no calendar is connected, so the feed never has to ask whether there
+   * is one. Titles are as the source calendar stored them, not the normalised form.
+   */
+  events: CalendarEventItem[];
 }

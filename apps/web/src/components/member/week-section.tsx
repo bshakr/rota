@@ -1,6 +1,7 @@
 "use client";
 
 import type { WeekSection as WeekSectionModel } from "@/app/(member)/s/[token]/schedule-view";
+import { EventRow } from "@/components/member/event-row";
 import { ShiftRow } from "@/components/member/shift-row";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -91,6 +92,12 @@ export function WeekSection({
                       onHandOff={onHandOff}
                       onTakeBack={onTakeBack}
                     />
+                  ))}
+                  {/* House calendar entries come AFTER the day's turns, in the same
+                      list, because they are context for those turns rather than
+                      competition for them. A day can carry only these. */}
+                  {day.events.map((event) => (
+                    <EventRow key={`event-${event.id}`} event={event} />
                   ))}
                 </ul>
               </Card>

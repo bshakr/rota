@@ -18,6 +18,7 @@ import type { MemberScheduleResponse, MemberShift } from "@/lib/api/types";
 import { formatShiftDate, relativeDay } from "@/lib/date";
 import { civilDate } from "@/lib/group-dates";
 
+import { awayMemberIdsOn } from "./calendar-view";
 import type { RotaFilter } from "./schedule-view";
 import { ALL_SHIFTS, buildFeed, nextShiftByMember, nextUp, weekStart } from "./schedule-view";
 import type { AssignAction, CancelAction } from "./use-shift-updates";
@@ -81,6 +82,13 @@ export function MemberFeed({
   const weeks = React.useMemo(() => buildFeed(live, filter), [live, filter]);
   const upNext = React.useMemo(() => nextUp(live), [live]);
   const nextByMember = React.useMemo(() => nextShiftByMember(live), [live]);
+  // Who the house calendar has away on the GROUP's today — the same reference date
+  // every relative day on this page is measured from. Computed here rather than
+  // inside the two lists that show it, so the strip and the card can never disagree.
+  const awayToday = React.useMemo(
+    () => awayMemberIdsOn(schedule.events, schedule.today),
+    [schedule.events, schedule.today],
+  );
 
   const filtered = rotaFilter.kind !== "everyone" || personId !== null;
   const visible = expanded ? weeks : weeks.slice(0, INITIAL_WEEKS);
@@ -211,6 +219,7 @@ export function MemberFeed({
             <PeopleStrip
               members={schedule.members}
               viewerId={schedule.member.id}
+              awayToday={awayToday}
               selectedId={personId}
               onSelect={setPersonId}
             />
@@ -233,6 +242,7 @@ export function MemberFeed({
             members={schedule.members}
             viewerId={schedule.member.id}
             nextShifts={nextByMember}
+            awayToday={awayToday}
             selectedId={personId}
             onSelect={setPersonId}
           />

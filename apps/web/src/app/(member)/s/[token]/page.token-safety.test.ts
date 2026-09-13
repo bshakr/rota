@@ -56,6 +56,7 @@ const RESPONSE: MemberScheduleResponse = {
       can_cancel_cover: false,
     },
   ],
+  events: [],
 };
 
 /**
