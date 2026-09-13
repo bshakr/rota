@@ -77,6 +77,10 @@ Rails.application.routes.draw do
     resources :groups, only: %i[index show] do
       resources :sms_messages, only: :index
     end
+
+    # ?range=30d|90d|12m, and optional — a bare GET answers for the last 30 days, which is also what
+    # lets the authorization walker above request this route with no parameters (BLO-1683).
+    get "spend", to: "spend#show"
   end
 
   # Defines the root path route ("/")
