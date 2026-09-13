@@ -53,4 +53,12 @@ class SmsMessage < ApplicationRecord
   validates :days_before, absence: true, if: :cover_notice?
 
   validates :twilio_sid, uniqueness: true, allow_nil: true
+
+  # Rows that cost money and that nobody has asked Twilio the price of yet (BLO-1672).
+  #
+  # A SID is the proof Twilio accepted the message; a row without one never left the building and
+  # was never charged for. `price_fetched_at` is the "we asked" flag rather than the "we were
+  # charged" one — a message Twilio has no record of is marked asked with its price left null — so
+  # this scope shrinks with every sweep instead of re-offering the same unanswerable rows forever.
+  scope :awaiting_price, -> { where.not(twilio_sid: nil).where(price_fetched_at: nil) }
 end

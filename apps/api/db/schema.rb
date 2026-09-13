@@ -168,11 +168,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_100100) do
     t.string "error_code"
     t.string "kind", null: false
     t.bigint "member_id", null: false
+    t.integer "num_segments"
+    t.decimal "price", precision: 10, scale: 5
+    t.datetime "price_fetched_at"
+    t.string "price_unit", limit: 3
     t.datetime "sent_at"
     t.bigint "shift_id"
     t.string "status", default: "pending", null: false
     t.string "twilio_sid"
     t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_sms_messages_on_created_at"
     t.index ["created_at"], name: "index_sms_messages_on_login_time", where: "((kind)::text = 'member_login'::text)"
     t.index ["member_id"], name: "index_sms_messages_on_member_id"
     t.index ["shift_id", "days_before"], name: "index_sms_messages_on_reminder_idempotency", unique: true, where: "((kind)::text = 'reminder'::text)"

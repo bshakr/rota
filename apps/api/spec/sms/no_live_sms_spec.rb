@@ -39,6 +39,20 @@ RSpec.describe "no live SMS" do
       expect(delivery.status).to eq("queued")
     end
 
+    # The same shape the real adapter returns, so a locally seeded SMS log carries a segment count
+    # on every row rather than a column of nils the spend page would then have to special-case.
+    it "estimates a segment count, so the development SMS log looks like the real one" do
+      short = described_class.new.deliver(to: "+447700900123", body: "Bins tomorrow", status_callback: "x")
+      long = described_class.new.deliver(to: "+447700900123", body: "a" * 200, status_callback: "x")
+
+      expect(short.num_segments).to eq(1)
+      expect(long.num_segments).to eq(2)
+    end
+
+    it "has no price to report, because it never spent anything" do
+      expect(described_class.new.fetch_price("SM00000000000000000000000000000001")).to be_nil
+    end
+
     it "logs the body instead, which is the whole point of it" do
       allow(Rails.logger).to receive(:info)
 

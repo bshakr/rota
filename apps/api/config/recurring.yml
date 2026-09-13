@@ -33,6 +33,17 @@ default: &default
     queue: default
     schedule: every hour at minute 27
 
+  # Asks Twilio what it charged for the last week of texts, and records it on the rows that spent
+  # the money (BLO-1672). Twilio settles a price minutes after delivery and never volunteers it, so
+  # it has to be fetched; nightly is soon enough, because the seven-day window means a missed night
+  # costs nothing. 4:40am UTC keeps it clear of the reminder sweep on the hour, the window top-up at
+  # 3am, the calendar sync at minute 27 and the queue cleanup at minute 12. It reads Twilio: nothing
+  # on this path can send a text.
+  backfill_sms_prices:
+    class: BackfillSmsPricesJob
+    queue: default
+    schedule: every day at 4:40am
+
   clear_solid_queue_finished_jobs:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12

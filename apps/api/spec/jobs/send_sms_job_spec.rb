@@ -24,6 +24,17 @@ RSpec.describe SendSmsJob do
       expect(sms_message.sent_at).to be_present
     end
 
+    # The first half of what a text cost, and the only half that exists at send time. It is stored
+    # with the SID in the same write, so a row can never carry a SID with no segment count beside it
+    # — the spend page leans on segments as its estimate until Twilio settles a price (BLO-1672).
+    it "records the segment count Twilio counted, alongside the SID" do
+      stub_twilio_send(num_segments: "2")
+
+      described_class.perform_now(sms_message.id)
+
+      expect(sms_message.reload).to have_attributes(num_segments: 2, price: nil, price_fetched_at: nil)
+    end
+
     it "persists the body it actually sent, so the SMS log shows the text the member got" do
       stub_twilio_send
 

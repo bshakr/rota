@@ -2,11 +2,14 @@
 #
 # Nothing else in the app talks to Twilio. SendSmsJob calls `Sms.deliver`; which adapter that
 # reaches is config (see config/initializers/sms.rb), which is what lets development log a message
-# instead of sending it and lets the specs stub the wire.
+# instead of sending it and lets the specs stub the wire. The money side goes through the same
+# seam in the other direction: Sms::PriceBackfill takes one adapter from `Sms.adapter` and asks it
+# what Twilio charged — a read, never a send — so "nothing else talks to Twilio" stays true.
 module Sms
   # A text that did not go out, carrying whatever the carrier said about why. The distinction
   # between the two subclasses is the only thing SendSmsJob needs in order to decide between
-  # retrying and giving up.
+  # retrying and giving up — and Sms::PriceBackfill reads them the same way: transient means ask
+  # again later, permanent means do not bother.
   class DeliveryFailure < StandardError
     attr_reader :error_code
 
@@ -24,6 +27,11 @@ module Sms
   # Twilio, or the network between here and it, is having a moment. Worth waiting out — Solid Queue
   # retries with backoff, and only a run of failures becomes a terminal one.
   class TransientFailure < DeliveryFailure; end
+
+  # Twilio has no record of a SID we sent it: the message was deleted, or it aged out of Twilio's
+  # roughly thirteen-month retention. Distinct from "not priced yet" on purpose — no price is ever
+  # coming for this one, so the backfill marks the row asked and stops carrying it forever.
+  class MessageNotFound < StandardError; end
 
   # A template made it to send time carrying a placeholder we have no value for. Rota validation is
   # what should have caught this at save; if it reaches here, fail loudly rather than text
@@ -65,6 +73,12 @@ module Sms
     end
   end
 
-  # What an adapter hands back: enough to record the send and to match up the status webhook later.
-  Delivery = Data.define(:sid, :status)
+  # What an adapter hands back: enough to record the send, to match up the status webhook later,
+  # and to estimate what the text cost until Twilio settles a real price for it.
+  Delivery = Data.define(:sid, :status, :num_segments)
+
+  # Twilio's settled charge for one message: an amount the app's way up (positive) and the currency
+  # it was billed in. Twilio reports it as a negative string; the sign is flipped at the adapter so
+  # nothing downstream has to remember that Twilio counts the other way.
+  Price = Data.define(:amount, :unit)
 end
