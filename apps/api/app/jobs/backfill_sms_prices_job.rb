@@ -1,0 +1,29 @@
+# Nightly: asks Twilio what it charged for the texts that went out this week, and records it on the
+# rows that spent the money (BLO-1672). Runs on the clock; see config/recurring.yml.
+#
+# The price is never in the create response — Twilio settles a charge minutes after delivery, and
+# the status webhook does not carry it — so it has to be fetched afterwards. Seven days is far more
+# room than settling needs; the slack is there so that a few nights of missed runs still cost
+# nothing. Anything older than the window belongs to the one-off `bin/rails twilio:backfill_prices`,
+# which walks the whole history once rather than every night.
+#
+# Idempotent and resumable, the way TopUpShiftWindowsJob is: eligibility is "has a SID and has never
+# been asked about", so a doubled run finds nothing to redo and an interrupted one leaves the rest
+# for tomorrow. Reads only — nothing on this path can send a text.
+class BackfillSmsPricesJob < ApplicationJob
+  queue_as :default
+
+  WINDOW = 7.days
+
+  def perform
+    outcome = Sms::PriceBackfill.new.call(SmsMessage.where(created_at: WINDOW.ago..))
+
+    # The sweep is silent by design when it has nothing to do, so this line is the only way to see
+    # that it ran at all — and the only way "Twilio has been rate limiting us for a week" surfaces
+    # before the spend page starts showing estimates where settled prices should be.
+    Rails.logger.info(
+      "BackfillSmsPricesJob asked=#{outcome.asked} priced=#{outcome.priced} pending=#{outcome.pending} " \
+      "no_record=#{outcome.no_record} errored=#{outcome.errored} halted=#{outcome.halted.inspect}"
+    )
+  end
+end

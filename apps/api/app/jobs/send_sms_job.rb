@@ -55,7 +55,17 @@ class SendSmsJob < ApplicationJob
     end
     delivery = Sms.deliver(to: message.member.phone_e164, body: body)
 
-    message.update!(status: :sent, body: body, twilio_sid: delivery.sid, sent_at: Time.current)
+    # The segment count is written with the SID, in the same statement, because it is the only cost
+    # figure that exists at send time — Twilio settles a price minutes later, and BackfillSmsPricesJob
+    # is what goes and asks for it. Recording it here means no row ever carries a SID with nothing
+    # beside it for the spend page to estimate from (BLO-1672).
+    message.update!(
+      status: :sent,
+      body: body,
+      twilio_sid: delivery.sid,
+      num_segments: delivery.num_segments,
+      sent_at: Time.current
+    )
   rescue Sms::TransientFailure
     # Twilio did not accept the message, so nothing was sent. Release the claim so the retry can
     # re-claim, then re-raise for retry_on's backoff.

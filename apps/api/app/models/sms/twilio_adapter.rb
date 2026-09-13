@@ -17,12 +17,37 @@ module Sms
         status_callback: status_callback
       )
 
-      Delivery.new(sid: message.sid, status: message.status)
+      # `num_segments` is the only cost figure a create response carries, and Twilio is the one that
+      # counts it: the split depends on the encoding, and a single emoji drops a body from 160 GSM-7
+      # characters to 70 UTF-16 ones. It arrives as a string, like every number on this wire.
+      Delivery.new(sid: message.sid, status: message.status, num_segments: message.num_segments&.to_i)
     rescue ::Twilio::REST::RestError => e
       raise failure_class(e).new(e.message, error_code: e.code.to_s)
     rescue ::Twilio::REST::TwilioError => e
       # Everything below the HTTP response: a dropped connection, a timeout, DNS. twilio-ruby wraps
       # Faraday's errors in this. Nothing about the message is wrong, so it is worth another go.
+      raise TransientFailure, e.message
+    end
+
+    # What Twilio charged for a message it already sent. A GET — this method cannot send anything,
+    # which is what makes the price backfill safe to run against production.
+    #
+    # Twilio settles a charge minutes after delivery, so a freshly sent message comes back with a
+    # null price: nil here means "ask again tomorrow", not "free". The charge itself arrives as a
+    # NEGATIVE string ("-0.00790") because Twilio reports it as a debit against the account balance.
+    # Recorded spend is positive, so the sign is flipped here, at the boundary.
+    def fetch_price(sid)
+      message = client.messages(sid).fetch
+      return nil if message.price.blank?
+
+      Price.new(amount: BigDecimal(message.price.to_s).abs, unit: message.price_unit.presence&.upcase)
+    rescue ::Twilio::REST::RestError => e
+      # A 404 is not a failure to be retried: Twilio does not have this message and never will
+      # again, so the caller needs to tell it apart from every other refusal.
+      raise MessageNotFound, "Twilio has no record of #{sid}" if e.status_code == 404
+
+      raise failure_class(e).new(e.message, error_code: e.code.to_s)
+    rescue ::Twilio::REST::TwilioError => e
       raise TransientFailure, e.message
     end
 
