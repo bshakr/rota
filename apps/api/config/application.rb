@@ -54,7 +54,7 @@ unless env_name == "production"
   ENV.delete("QUEUE_DATABASE_URL")
 end
 
-module HouserotaApi
+module RotamonsterApi
   class Application < Rails::Application
     # Initialize configuration defaults for originally generated Rails version.
     config.load_defaults 8.1

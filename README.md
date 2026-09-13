@@ -5,7 +5,7 @@ Rota Monster keeps the list, works out whose turn it is, and texts them before t
 People who can't make it hand the turn on to someone else without an admin getting involved.
 
 Design and rationale: [`docs/superpowers/specs/2026-09-12-rota-monster-soft-clay-design.md`](docs/superpowers/specs/2026-09-12-rota-monster-soft-clay-design.md)
-is the Soft Clay visual direction, and [`docs/superpowers/specs/2026-07-13-houserota-design.md`](docs/superpowers/specs/2026-07-13-houserota-design.md)
+is the Soft Clay visual direction, and [`docs/superpowers/specs/2026-07-13-rotamonster-design.md`](docs/superpowers/specs/2026-07-13-rotamonster-design.md)
 is the product and scheduling design. Read them before changing anything structural. The
 decisions in them were made on purpose.
 
@@ -38,8 +38,8 @@ brew install postgresql@16 && brew services start postgresql@16
 ## Boot the stack
 
 ```sh
-git clone git@github.com:bshakr/rota.git houserota
-cd houserota
+git clone git@github.com:bshakr/rota.git rotamonster
+cd rotamonster
 cp .env.example .env          # then fill it in
 ```
 
@@ -81,6 +81,11 @@ everyone but its author. One mechanism, one place to look.
 In production, set the same variables plus `SECRET_KEY_BASE`.
 
 ## Databases
+
+Database names, roles, and connection variables retain their existing identifiers
+through the Rota Monster rename. No local or production database rename or migration
+is required. Keep `HOUSEROTA_API_DATABASE_PASSWORD` when using the fallback password
+setting; production database URLs continue to point at the existing databases.
 
 Each environment runs two Postgres databases:
 
