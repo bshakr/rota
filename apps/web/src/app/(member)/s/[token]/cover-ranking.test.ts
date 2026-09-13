@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import type { MemberScheduleResponse, MemberShift, ScheduleMember } from "@/lib/api/types";
+import type {
+  CalendarEventItem,
+  MemberScheduleResponse,
+  MemberShift,
+  ScheduleMember,
+} from "@/lib/api/types";
 
-import { rankCoverCandidates } from "./cover-ranking";
+import { rankCoverCandidates, selectableCandidates } from "./cover-ranking";
 
 const ME = 1;
 
@@ -27,6 +32,27 @@ function shift(partial: Partial<MemberShift> & { due_on: string }): MemberShift 
     can_cancel_cover: false,
     ...partial,
   };
+}
+
+function awayEvent(partial: Partial<CalendarEventItem> & { member_ids: number[] }): CalendarEventItem {
+  return {
+    id: nextId++,
+    title: "Away",
+    starts_on: "2026-09-23",
+    ends_on: "2026-09-23",
+    all_day: true,
+    start_time: null,
+    kind: "away",
+    ...partial,
+  };
+}
+
+/** The house calendar the schedule was fetched with. Empty unless a test says otherwise. */
+function withEvents(
+  base: MemberScheduleResponse,
+  events: CalendarEventItem[],
+): MemberScheduleResponse {
+  return { ...base, events };
 }
 
 function schedule(
@@ -143,10 +169,151 @@ describe("rankCoverCandidates", () => {
     expect(ranked.free[0].upcomingCount).toBe(0);
   });
 
-  it("returns three empty groups in a one-member house", () => {
+  it("returns four empty groups in a one-member house", () => {
     const target = shift({ due_on: "2026-09-16" });
     const ranked = rankCoverCandidates(target, schedule([person(ME, "Alice")], [target]));
 
-    expect(ranked).toEqual({ free: [], busy: [], unavailable: [] });
+    expect(ranked).toEqual({ free: [], busy: [], away: [], unavailable: [] });
+  });
+});
+
+// BLO-1667. The house calendar's away entries, which sit between "has a shift that
+// week" and "can't be texted": still a real ask, just the last one you would make.
+describe("rankCoverCandidates with a house calendar", () => {
+  const house = [person(ME, "Alice"), person(2, "Bob"), person(3, "Cara")];
+
+  it("moves housemates who are away on the due date into an Away group", () => {
+    const target = shift({ due_on: "2026-09-23" }); // Wed
+    const ranked = rankCoverCandidates(
+      target,
+      withEvents(schedule(house, [target]), [
+        // Bob is on a trip that covers the 23rd; Cara leaves the day after it.
+        awayEvent({
+          title: "Bob in Greece",
+          starts_on: "2026-09-20",
+          ends_on: "2026-09-24",
+          member_ids: [2],
+        }),
+        awayEvent({
+          title: "Cara in France",
+          starts_on: "2026-09-24",
+          ends_on: "2026-09-26",
+          member_ids: [3],
+        }),
+      ]),
+    );
+
+    expect(ranked.away.map((c) => c.member.name)).toEqual(["Bob"]);
+    expect(ranked.free.map((c) => c.member.name)).toEqual(["Cara"]);
+    expect(ranked.busy).toEqual([]);
+  });
+
+  it("keeps away housemates selectable, because the trip may have ended early", () => {
+    const target = shift({ due_on: "2026-09-23" });
+    const ranked = rankCoverCandidates(
+      target,
+      withEvents(schedule([person(ME, "Alice"), person(2, "Bob", false), person(3, "Cara")], [target]), [
+        awayEvent({ title: "Cara in France", member_ids: [3] }),
+      ]),
+    );
+
+    expect(selectableCandidates(ranked).map((c) => c.member.name)).toEqual(["Cara"]);
+    expect(ranked.unavailable.map((c) => c.member.name)).toEqual(["Bob"]);
+  });
+
+  it("names the trip and how long it runs as the reason", () => {
+    const target = shift({ due_on: "2026-09-23" });
+    const ranked = rankCoverCandidates(
+      target,
+      withEvents(schedule(house, [target]), [
+        awayEvent({
+          title: "Bob in Greece",
+          starts_on: "2026-09-20",
+          ends_on: "2026-09-24",
+          member_ids: [2],
+        }),
+        awayEvent({ title: "Cara at her mum's", member_ids: [3] }),
+      ]),
+    );
+
+    expect(ranked.away.map((c) => c.reason)).toEqual([
+      "Bob in Greece · until Thu 24 Sept",
+      "Cara at her mum's",
+    ]);
+  });
+
+  it("leaves the other groups without a reason", () => {
+    const target = shift({ due_on: "2026-09-23" });
+    const ranked = rankCoverCandidates(target, schedule(house, [target]));
+
+    expect(ranked.free.map((c) => c.reason)).toEqual([undefined, undefined]);
+  });
+
+  it("ignores entries that are not away, however long they run", () => {
+    const target = shift({ due_on: "2026-09-23" });
+    const ranked = rankCoverCandidates(
+      target,
+      withEvents(schedule(house, [target]), [
+        awayEvent({
+          title: "Kitchen refit",
+          kind: "event",
+          starts_on: "2026-09-21",
+          ends_on: "2026-09-28",
+          member_ids: [2, 3],
+        }),
+      ]),
+    );
+
+    expect(ranked.away).toEqual([]);
+    expect(ranked.free.map((c) => c.member.name)).toEqual(["Bob", "Cara"]);
+  });
+
+  it("still counts someone who can't be texted as unavailable, not away", () => {
+    // "Can't be texted" is the harder stop: a trip might have ended, an opt-out has not.
+    const target = shift({ due_on: "2026-09-23" });
+    const ranked = rankCoverCandidates(
+      target,
+      withEvents(schedule([person(ME, "Alice"), person(2, "Bob", false)], [target]), [
+        awayEvent({ title: "Bob in Greece", member_ids: [2] }),
+      ]),
+    );
+
+    expect(ranked.away).toEqual([]);
+    expect(ranked.unavailable.map((c) => c.member.name)).toEqual(["Bob"]);
+    expect(ranked.unavailable[0].reason).toBeUndefined();
+  });
+
+  it("orders the Away group by fewest upcoming turns, then by name", () => {
+    const target = shift({ due_on: "2026-09-23" });
+    const busyBob = shift({ due_on: "2026-10-07", assigned_member: { id: 2, name: "Bob" } });
+    const ranked = rankCoverCandidates(
+      target,
+      withEvents(schedule([...house, person(4, "Dana")], [target, busyBob]), [
+        awayEvent({ title: "House trip", member_ids: [2, 3, 4] }),
+      ]),
+    );
+
+    expect(ranked.away.map((c) => c.member.name)).toEqual(["Cara", "Dana", "Bob"]);
+    expect(ranked.away.map((c) => c.upcomingCount)).toEqual([0, 0, 1]);
+  });
+
+  it("deprioritises an away housemate who also has a shift that week", () => {
+    // Away wins over busy: the sheet must show each person exactly once.
+    const target = shift({ due_on: "2026-09-23" });
+    const bobsSameWeek = shift({
+      due_on: "2026-09-25",
+      rota_name: "Bins",
+      assigned_member: { id: 2, name: "Bob" },
+    });
+    const ranked = rankCoverCandidates(
+      target,
+      withEvents(schedule(house, [target, bobsSameWeek]), [
+        awayEvent({ title: "Bob in Greece", member_ids: [2] }),
+      ]),
+    );
+
+    expect(ranked.away.map((c) => c.member.name)).toEqual(["Bob"]);
+    expect(ranked.busy).toEqual([]);
+    expect(ranked.away[0].weekShifts.map((s) => s.rota_name)).toEqual(["Bins"]);
   });
 });

@@ -5,10 +5,11 @@ import { Check } from "lucide-react";
 import { toast } from "sonner";
 
 import type { CoverCandidate } from "@/app/(member)/s/[token]/cover-ranking";
-import { rankCoverCandidates } from "@/app/(member)/s/[token]/cover-ranking";
+import { rankCoverCandidates, selectableCandidates } from "@/app/(member)/s/[token]/cover-ranking";
 import type { AssignAction } from "@/app/(member)/s/[token]/use-shift-updates";
 import { runAction } from "@/app/(member)/s/[token]/use-shift-updates";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -43,13 +44,17 @@ import { cn } from "@/lib/utils";
 // The candidates are ranked rather than listed, because a flat list of names makes
 // every housemate look equally free. See cover-ranking.ts for the rules.
 
-const GROUPS = ["free", "busy", "unavailable"] as const;
+// The order is the ranking: best ask first, and the two kinds of "probably not" last.
+// "Away" comes off the house calendar (BLO-1667) and is still selectable; see
+// SELECTABLE_GROUPS in cover-ranking.ts for why.
+const GROUPS = ["free", "busy", "away", "unavailable"] as const;
 
 type CandidateGroup = (typeof GROUPS)[number];
 
 const GROUP_LABELS: Record<CandidateGroup, string> = {
   free: "Free that week",
   busy: "Has a shift that week",
+  away: "Away",
   unavailable: "Can't be texted",
 };
 
@@ -108,11 +113,11 @@ export function HandOffSheet({
 
   if (!shift || !ranked) return null;
 
-  const selectable = [...ranked.free, ...ranked.busy];
+  const selectable = selectableCandidates(ranked);
   const selected = selectable.find((candidate) => candidate.member.id === selectedId) ?? null;
   const date = civilDate(shift.due_on);
   const when = relativeDay(date, civilDate(schedule.today));
-  const nobody = ranked.free.length + ranked.busy.length + ranked.unavailable.length === 0;
+  const nobody = GROUPS.every((group) => ranked[group].length === 0);
 
   function change(next: boolean) {
     if (pending) return;
@@ -272,12 +277,17 @@ function CandidateRow({
   disabled: boolean;
   onSelect: () => void;
 }) {
-  const { member, weekShifts } = candidate;
-  const detail = selectable
-    ? weekShifts
-        .map((shift) => `${shift.rota_name} · ${formatShiftDate(civilDate(shift.due_on))}`)
-        .join(", ")
-    : "Not receiving texts right now";
+  const { member, weekShifts, reason } = candidate;
+  // An away candidate's line is the trip, not their rota. They may well have a shift
+  // that week too, but "in Greece until Thursday" is the fact that decides the ask,
+  // and a second clause on a line this narrow only truncates the first one away.
+  const detail =
+    reason ??
+    (selectable
+      ? weekShifts
+          .map((shift) => `${shift.rota_name} · ${formatShiftDate(civilDate(shift.due_on))}`)
+          .join(", ")
+      : "Not receiving texts right now");
 
   const content = (
     <>
@@ -287,7 +297,16 @@ function CandidateRow({
         </AvatarFallback>
       </Avatar>
       <span className="min-w-0 flex-1 text-left">
-        <span className="block truncate text-sm font-medium">{member.name}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="min-w-0 truncate text-sm font-medium">{member.name}</span>
+          {/* Peach, the same sticker the People card uses for "Away today", so the
+              two surfaces do not invent separate vocabularies for one fact. */}
+          {reason ? (
+            <Badge variant="warning" className="shrink-0">
+              Away
+            </Badge>
+          ) : null}
+        </span>
         {detail ? (
           <span className="text-muted-foreground block truncate text-xs">{detail}</span>
         ) : null}
