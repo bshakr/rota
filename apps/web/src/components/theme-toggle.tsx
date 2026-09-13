@@ -11,6 +11,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
 const OPTIONS = [
   { value: "light", label: "Light", icon: Sun },
@@ -18,7 +19,15 @@ const OPTIONS = [
   { value: "system", label: "System", icon: Monitor },
 ] as const;
 
-export function ThemeToggle() {
+/**
+ * `className` reaches the trigger Button, and exists for exactly one caller: the
+ * super admin HQ band. Ghost's hover tint and focus ring are measured against the
+ * PAGE, and the band is plum in both themes — the ring lands at 1.5:1 there by
+ * day and the hover fill at 1.08:1 at night. A surface that opts out of the page
+ * colours has to hand the control its own, and merging here is how, rather than
+ * teaching the toggle about a surface it should know nothing about.
+ */
+export function ThemeToggle({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
 
   // No `mounted` guard, and none is needed. The icon is swapped by CSS off the
@@ -39,7 +48,7 @@ export function ThemeToggle() {
           variant="ghost"
           size="icon"
           aria-label="Change theme"
-          className="relative"
+          className={cn("relative", className)}
         >
           <Sun className="size-[18px] scale-100 rotate-0 transition-transform dark:scale-0 dark:-rotate-90" />
           <Moon className="absolute size-[18px] scale-0 rotate-90 transition-transform dark:scale-100 dark:rotate-0" />
