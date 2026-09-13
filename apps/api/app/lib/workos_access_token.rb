@@ -16,7 +16,7 @@ class WorkosAccessToken
 
   # What a verified token tells us. Nothing else in the app touches the raw claim hash, so there
   # is exactly one place where a string from the internet becomes something we act on.
-  Claims = Data.define(:workos_user_id, :workos_organization_id, :role, :email, :name)
+  Claims = Data.define(:workos_user_id, :workos_organization_id, :role, :email, :name, :jti)
 
   ALGORITHM = "RS256"
 
@@ -120,7 +120,11 @@ class WorkosAccessToken
         # Neither of these is a standard AuthKit claim; they arrive only if the WorkOS JWT template
         # is configured to add them. See GroupAdmin.provision! for what happens when they are not.
         email: payload["email"].presence,
-        name: payload["name"].presence
+        name: payload["name"].presence,
+        # The JWT id, which is what makes recording a sign-in idempotent: the same token presented
+        # twice is the same sign-in (see Api::SignInsController). Nothing else reads it, and nothing
+        # requires it — a token without one still verifies and still authenticates.
+        jti: payload["jti"].presence
       )
     rescue KeyError
       raise InvalidToken, "token names no subject"

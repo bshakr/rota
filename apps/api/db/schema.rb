@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_14_100100) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_14_100200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -109,6 +109,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_100100) do
     t.boolean "active", default: true, null: false
     t.datetime "created_at", null: false
     t.bigint "group_id", null: false
+    t.datetime "last_seen_at"
     t.string "name", null: false
     t.string "phone_e164", null: false
     t.datetime "sms_opted_out_at"
@@ -161,6 +162,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_100100) do
     t.check_constraint "covering_member_id IS NULL OR covering_member_id <> assigned_member_id", name: "shifts_cover_differs_from_assignee"
   end
 
+  create_table "sign_ins", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "jti"
+    t.bigint "user_id", null: false
+    t.string "workos_organization_id"
+    t.index ["created_at"], name: "index_sign_ins_on_created_at"
+    t.index ["jti"], name: "index_sign_ins_on_jti", unique: true
+    t.index ["user_id", "created_at"], name: "index_sign_ins_on_user_id_and_created_at"
+  end
+
   create_table "sms_messages", force: :cascade do |t|
     t.text "body"
     t.datetime "created_at", null: false
@@ -193,6 +204,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_100100) do
   create_table "users", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "email", null: false
+    t.datetime "last_seen_at"
     t.string "name"
     t.datetime "updated_at", null: false
     t.string "workos_user_id", null: false
@@ -214,6 +226,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_100100) do
   add_foreign_key "shifts", "members", column: "assigned_member_id"
   add_foreign_key "shifts", "members", column: "covering_member_id"
   add_foreign_key "shifts", "rotas"
+  add_foreign_key "sign_ins", "users"
   add_foreign_key "sms_messages", "members"
   add_foreign_key "sms_messages", "shifts"
 end

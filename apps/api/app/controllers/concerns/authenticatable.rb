@@ -22,6 +22,11 @@ module Authenticatable
     # (e.g. `raise WorkosAccessToken::InvalidToken, "role too low" unless claims.role.in?(...)`);
     # it is a one-line change at one point, not a re-plumb. WorkOS remains the source of the role.
     Current.group_admin = GroupAdmin.provision!(claims)
+
+    # When we last heard from this admin, for the super admin dashboards (BLO-1671). Throttled to
+    # at most one UPDATE an hour so it does not undo the zero-writes steady state above — see
+    # LastSeen, which is the whole of the rule, shared with the member path.
+    Current.user.touch_last_seen
   rescue WorkosAccessToken::InvalidToken => e
     # The reason a token was refused belongs in our log, not in a response: told which of the
     # signature, the issuer, the audience or the expiry it failed, an attacker is being given a

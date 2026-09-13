@@ -2,6 +2,10 @@
 # can appear in the kitchen rota, the bins rota and the bathroom rota. `rota_positions` gives each
 # rota its own ordered subset.
 class Member < ApplicationRecord
+  # A housemate opening their magic link is the only signal we have that the link ever arrived, so
+  # the member path touches `last_seen_at` under the same one-an-hour rule the admin path uses.
+  include LastSeen
+
   ACCESS_TOKEN_BYTES = 32
 
   belongs_to :group

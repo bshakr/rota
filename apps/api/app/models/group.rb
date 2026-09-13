@@ -1,6 +1,8 @@
 # A tenant. Maps 1:1 onto a WorkOS Organization, which is the source of truth for admin identity.
 # Members and rotas are never stored in WorkOS.
 class Group < ApplicationRecord
+  include JitProvisioning
+
   # Rotas are destroyed before members on purpose: shifts point at members with a NOT NULL foreign
   # key, and Member refuses to be destroyed while any shift still names it. Clearing the rotas
   # clears their shifts, which is what frees the members to go.
