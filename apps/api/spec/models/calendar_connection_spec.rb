@@ -7,8 +7,14 @@ RSpec.describe CalendarConnection do
   it "masks the link to host plus the tail of the path" do
     connection = create(:calendar_connection, group: group, ical_url: url)
 
-    expect(connection.masked_url).to eq("calendar.google.com/…f3f9a/basic.ics")
+    expect(connection.masked_url).to eq("calendar.google.com/…3f9a/basic.ics")
     expect(connection.masked_url).not_to include("0123456789")
+  end
+
+  it "masks a link that has no secret folder above the file" do
+    connection = create(:calendar_connection, group: group, ical_url: "https://outlook.office365.com/house.ics")
+
+    expect(connection.masked_url).to eq("outlook.office365.com/…house.ics")
   end
 
   it "allows one calendar per group" do

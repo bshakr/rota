@@ -3,9 +3,9 @@
 # stored as given, never serialised back out, masked for display, redacted from logs.
 class CalendarConnection < ApplicationRecord
   FAILING_AFTER = 3
-  # How much of the path survives masking. Long enough to tell two calendars apart, short enough
-  # that the secret segment of a Google private address never appears.
-  MASK_TAIL = 15
+  # How much of the secret survives masking. Four characters are enough to tell two calendars
+  # apart and far too few to guess the rest.
+  SECRET_TAIL = 4
 
   belongs_to :group
   has_many :calendar_events, dependent: :delete_all
@@ -14,12 +14,14 @@ class CalendarConnection < ApplicationRecord
 
   scope :enabled, -> { where(disabled_at: nil) }
 
-  # Host plus the last few characters of the path: enough to recognise the link, not enough to use it.
+  # Host plus the tail of the path: enough to recognise the link, not enough to use it. In a Google
+  # private address the secret is the folder before the file name, so that folder is the one thing
+  # cut down, and the file name is kept whole because it names the calendar rather than unlocking it.
   def masked_url
     uri = URI.parse(ical_url)
-    "#{uri.host}/…#{uri.path.last(MASK_TAIL)}"
+    "#{uri.host}/…#{masked_path(uri.path)}"
   rescue URI::InvalidURIError
-    "…#{ical_url.last(MASK_TAIL)}"
+    "…#{ical_url.last(SECRET_TAIL)}"
   end
 
   def failing?
@@ -38,5 +40,14 @@ class CalendarConnection < ApplicationRecord
   def record_success!(**attrs)
     update!(attrs.merge(consecutive_failures: 0, last_error: nil, disabled_at: nil,
                         last_fetched_at: Time.current, last_synced_at: Time.current))
+  end
+
+  private
+
+  # A link with no folder above the file name has no secret to cut down, so only the file name is
+  # rendered. Nothing here ever returns a whole path segment except the file name.
+  def masked_path(path)
+    *folders, file = path.to_s.split("/").reject(&:empty?)
+    [ folders.last&.last(SECRET_TAIL), file ].compact.join("/")
   end
 end
