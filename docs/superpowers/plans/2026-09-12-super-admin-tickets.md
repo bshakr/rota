@@ -1,11 +1,11 @@
 # Super admin: epic and tickets
 
 Breakdown of [`2026-09-12-super-admin.md`](2026-09-12-super-admin.md) into Linear issues for the
-Rota Monster project. One parent issue (the epic), one child per ticket below. Each ticket is one
+Rota Monster project. Epic: [BLO-1668](https://linear.app/bloombase/issue/BLO-1668). One parent issue (the epic), one child per ticket below. Each ticket is one
 PR and leaves `main` shippable. Order within a phase is the order to ship. A ticket names the plan
 section it implements rather than repeating it.
 
-## Epic: Super admin area
+## Epic: Super admin area (BLO-1668)
 
 Operator-only surface for Rota Monster: manage houses, see conversion and usage, see what each
 house costs in Twilio texts and Claude calls, and inspect one house's health. Plan:
@@ -18,7 +18,7 @@ account gets a 404, and the spend page shows real Twilio and Claude figures per 
 
 ## Phase 0: the seam and the collectors
 
-### 0.1 Super admin auth seam (API)
+### 0.1 Super admin auth seam (API) — BLO-1669
 
 Rails half of the boundary. Plan sections: Decisions (who is a super admin, enforcement, refused
 caller, scoping, tokens without org_id), API.
@@ -31,7 +31,7 @@ caller, scoping, tokens without org_id), API.
   row; allowlisted gets 200; unset allowlist means 404 for everyone; token with no `org_id` is
   accepted here and still refused on `/api/me`.
 
-### 0.2 Super admin shell (web)
+### 0.2 Super admin shell (web) — BLO-1670
 
 Next half. Plan section: Web.
 
@@ -44,7 +44,7 @@ Next half. Plan section: Web.
 - `proxy-matcher.test.ts` asserts `/super-admin/groups/1` is proxy-protected; bundle-safety grep
   extended to the allowlist env var.
 
-### 0.3 Sign-in and last-seen collectors
+### 0.3 Sign-in and last-seen collectors — BLO-1671
 
 Plan sections: Data model (`sign_ins`, `last_seen_at`, the throttled touch), API (`POST
 /api/sign_ins`).
@@ -59,7 +59,7 @@ Plan sections: Data model (`sign_ins`, `last_seen_at`, the throttled touch), API
 - Specs: touch written once then not again within the hour; sign-ins endpoint accepts an org-less
   token, refuses a bad signature, dedupes by `jti`.
 
-### 0.4 Spend collectors: Twilio segments and prices
+### 0.4 Spend collectors: Twilio segments and prices — BLO-1672
 
 Plan sections: Decisions (Twilio cost), Data model (`sms_messages` columns), Rollout step 4.
 
@@ -73,7 +73,7 @@ Plan sections: Decisions (Twilio cost), Data model (`sms_messages` columns), Rol
 - Specs: adapter returns segments (WebMock), job fetches only eligible rows and handles "not priced
   yet", rake task never sends.
 
-### 0.5 Spend collectors: Claude calls
+### 0.5 Spend collectors: Claude calls — BLO-1673
 
 Plan sections: Decisions (where spend is recorded, Claude cost), Data model (`ai_calls`).
 
@@ -89,7 +89,7 @@ Plan sections: Decisions (where spend is recorded, Claude cost), Data model (`ai
 
 ## Phase 1: group management
 
-### 1.1 Groups list and detail endpoints, redacting serializers
+### 1.1 Groups list and detail endpoints, redacting serializers — BLO-1674
 
 Plan sections: API (`groups`, `groups/:id`, `groups/:id/sms_messages`), Decisions (member PII),
 Testing item 2.
@@ -101,7 +101,7 @@ Testing item 2.
 - Search by name or slug; filters: status, unconfirmed timezone, has failures.
 - Redaction spec greps the JSON for tokens and `/s/` links.
 
-### 1.2 Suspend, resume, rename, timezone, notes (API)
+### 1.2 Suspend, resume, rename, timezone, notes (API) — BLO-1675
 
 Plan sections: Group management actions, "Suspension, precisely".
 
@@ -114,7 +114,7 @@ Plan sections: Group management actions, "Suspension, precisely".
 - Specs: all five enforcement points, resume restores them, no reminder older than 24 hours fires
   after resume.
 
-### 1.3 Groups list and group page, first cut (web)
+### 1.3 Groups list and group page, first cut (web) — BLO-1676
 
 Plan section: Group management, Group dashboard (header, admins, members, rotas, notes, actions).
 
@@ -128,7 +128,7 @@ Plan section: Group management, Group dashboard (header, admins, members, rotas,
 
 ## Phase 2: overall dashboard
 
-### 2.1 Overview query object and job runs
+### 2.1 Overview query object and job runs — BLO-1677
 
 Plan section: Overall dashboard.
 
@@ -138,7 +138,7 @@ Plan section: Overall dashboard.
   furthest funnel step, system health. Cached 60 seconds.
 - Specs with factories and `travel_to`: each KPI, attention ordering, furthest-step derivation.
 
-### 2.2 Overview page (web)
+### 2.2 Overview page (web) — BLO-1678
 
 - KPI tiles using the house dashboard's hero ledger tile, attention list linking to group pages,
   recent houses, system health, links to Traffic and Spend.
@@ -147,7 +147,7 @@ Plan section: Overall dashboard.
 
 ## Phase 3: group dashboard, completed
 
-### 3.1 Group report query object
+### 3.1 Group report query object — BLO-1679
 
 Plan section: Group dashboard.
 
@@ -156,7 +156,7 @@ Plan section: Group dashboard.
   sign-in counts, members with last opened.
 - Specs: series bucketing across a month boundary, warnings input matches the house's own.
 
-### 3.2 Charts and the finished group page (web)
+### 3.2 Charts and the finished group page (web) — BLO-1680
 
 Plan sections: Web (charts), Group dashboard.
 
@@ -169,7 +169,7 @@ Plan sections: Web (charts), Group dashboard.
 
 ## Phase 4: traffic
 
-### 4.1 Traffic query object
+### 4.1 Traffic query object — BLO-1681
 
 Plan section: Traffic dashboard.
 
@@ -178,7 +178,7 @@ Plan section: Traffic dashboard.
   error code, covers, active houses, active admins, members who opened their link, new houses).
 - Specs: funnel counts and rates, weekly buckets across a DST change, active-house definition.
 
-### 4.2 Traffic page (web)
+### 4.2 Traffic page (web) — BLO-1682
 
 - Range picker (7, 30, 90 days), funnel bars with "not tracked yet" on step 1, stacked weekly
   bars by kind, failures table, the usage tiles.
@@ -187,7 +187,7 @@ Plan section: Traffic dashboard.
 
 ## Phase 5: spend
 
-### 5.1 Spend query object
+### 5.1 Spend query object — BLO-1683
 
 Plan section: Spend.
 
@@ -198,7 +198,7 @@ Plan section: Spend.
 - Specs: settled versus estimated, division with zero active members, median and p90 with one
   house and many.
 
-### 5.2 Spend page, overview tile, group card (web)
+### 5.2 Spend page, overview tile, group card (web) — BLO-1684
 
 - `/super-admin/spend` with range picker, monthly stacked bars, per-house table, unit economics,
   the candidate-price margin calculator (not stored; a vitest for the maths).
@@ -208,7 +208,7 @@ Plan section: Spend.
 
 ## Phase 6 (optional): anonymous traffic
 
-### 6.1 Decide: first-party page views or Plausible
+### 6.1 Decide: first-party page views or Plausible — BLO-1685 (one ticket covers 6.1 and 6.2)
 
 A decision ticket, not code. If Plausible, close 6.2 and add the script to the landing page
 instead.
