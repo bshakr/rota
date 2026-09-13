@@ -14,5 +14,20 @@ module SuperAdmin
 
     include SuperAdminAuthenticatable
     include ApiErrorRendering
+
+    # An id that names no house. 404, the same status the house side answers for an id it cannot
+    # reach (TenantScoped#not_found), but for the opposite reason: there it hides whether a record
+    # exists from somebody not entitled to know. Here the caller has already passed the allowlist,
+    # so this really does mean "no such house" — a stale bookmark, or a group deleted since. The
+    # refusal that hides this whole area from a caller who is NOT on the allowlist is a different
+    # 404 entirely, rendered by SuperAdminAuthenticatable before any action runs, and deliberately
+    # byte-identical to the one an unrouted path gets.
+    rescue_from ActiveRecord::RecordNotFound, with: :not_found
+
+    private
+
+    def not_found
+      render json: { error: "not_found" }, status: :not_found
+    end
   end
 end

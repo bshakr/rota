@@ -69,6 +69,14 @@ Rails.application.routes.draw do
   # asserts every route answers 404 to a caller who is not on the allowlist.
   namespace :super_admin, path: "api/super_admin" do
     get "overview", to: "overview#show"
+
+    # Group management (BLO-1674). Ids here are deliberately NOT the caller's own house's — reading
+    # across every tenant is the whole point of this namespace, and the allowlist, not a scope, is
+    # what stands in front of it. The nested log is the house's own delivery log with the magic
+    # link redacted out of every body.
+    resources :groups, only: %i[index show] do
+      resources :sms_messages, only: :index
+    end
   end
 
   # Defines the root path route ("/")

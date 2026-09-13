@@ -5,6 +5,13 @@ class User < ApplicationRecord
   include JitProvisioning
   include LastSeen
 
+  # An AuthKit access token carries no email unless the WorkOS JWT template has been configured to
+  # add one, and `email` is NOT NULL, so a first sighting of an admin without one is provisioned
+  # with an address at this domain (see .defaults_from). `.invalid` is reserved by RFC 2606
+  # precisely so that it can never resolve: the placeholder is obviously a placeholder, and
+  # obviously not somewhere a message could be sent. Nothing in this product emails an admin.
+  PLACEHOLDER_EMAIL_DOMAIN = "users.workos.invalid".freeze
+
   has_many :group_admins, dependent: :destroy
   has_many :groups, through: :group_admins
   has_many :sign_ins, dependent: :destroy
@@ -29,13 +36,19 @@ class User < ApplicationRecord
     user
   end
 
+  # The stand-in address for an admin WorkOS named without an email. Public because the super admin
+  # console's specs build such a user directly, and because .defaults_from below is private.
+  def self.placeholder_email(workos_user_id)
+    "#{workos_user_id}@#{PLACEHOLDER_EMAIL_DOMAIN}"
+  end
+
   # An AuthKit access token carries no email and no name — they arrive only if the WorkOS JWT
   # template has been configured to add them. The column is NOT NULL, so a first sighting of an
   # admin without them gets a placeholder that is obviously a placeholder, and obviously not a
   # deliverable address. Nothing in this product emails an admin.
   def self.defaults_from(claims)
     {
-      email: claims.email || "#{claims.workos_user_id}@users.workos.invalid",
+      email: claims.email || placeholder_email(claims.workos_user_id),
       name: claims.name
     }
   end
@@ -48,4 +61,11 @@ class User < ApplicationRecord
     user.update!(name: claims.name) if claims.name && claims.name != user.name
   end
   private_class_method :resync
+
+  # Whether the stored address is the stand-in above rather than something WorkOS actually told us.
+  # The super admin console shows "not provided" instead, so an operator is never handed an address
+  # that looks deliverable and is not.
+  def email_placeholder?
+    email.to_s.end_with?("@#{PLACEHOLDER_EMAIL_DOMAIN}")
+  end
 end
