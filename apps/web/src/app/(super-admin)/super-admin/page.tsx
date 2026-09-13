@@ -57,6 +57,18 @@ export default async function SuperAdminOverviewPage() {
     if (isOverviewShapeError(error) && process.env.NODE_ENV !== "production") throw error;
     if (!isApiError(error) && !isOverviewShapeError(error)) throw error;
 
+    if (isOverviewShapeError(error)) {
+      // The production half of "fails loudly". Only three people can reach this
+      // page, so a shape drift could sit on screen for days before one of them
+      // looks; the log is what puts it in front of whoever is watching the deploy
+      // that caused it. The rendered state names the fields too, but nobody greps
+      // a screenshot.
+      console.error(
+        "[super-admin/overview] payload did not match the expected shape:",
+        error.issues.join("; "),
+      );
+    }
+
     failure = error;
   }
 

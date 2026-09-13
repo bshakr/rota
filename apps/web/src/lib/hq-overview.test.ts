@@ -7,13 +7,16 @@ import {
   JOB_LABELS,
   PLAN_FUNNEL_STEPS,
   STALE_GRACE_MS,
+  STALE_GRACE_SHARE,
   attentionSentence,
   deliveryRateNote,
   formatRate,
   isJobStale,
   planStepNumber,
+  plural,
   queueFailuresNote,
   showingOf,
+  staleAfterMs,
   stepCaption,
 } from "./hq-overview";
 import { ATTENTION_REASONS, FUNNEL_STEPS, JOB_NAMES } from "./api/super-admin-overview";
@@ -147,6 +150,28 @@ describe("the onboarding ladder", () => {
   });
 });
 
+describe("staleAfterMs", () => {
+  // Fifteen minutes is a sensible cushion on an hourly job and a meaningless one
+  // on a daily job, so the grace is the LARGER of a flat floor and a share of the
+  // cadence.
+  it("gives an hourly job the flat floor, because a quarter of an hour is less", () => {
+    expect(HOUR * STALE_GRACE_SHARE).toBe(STALE_GRACE_MS);
+    expect(staleAfterMs("reminder_sweep")).toBe(HOUR + STALE_GRACE_MS);
+    expect(staleAfterMs("sync_house_calendars")).toBe(HOUR + STALE_GRACE_MS);
+  });
+
+  it("gives a daily job a proportional grace, not fifteen minutes", () => {
+    expect(staleAfterMs("top_up_shift_windows")).toBe(DAY + 6 * HOUR);
+    expect(staleAfterMs("top_up_shift_windows")).toBeGreaterThan(DAY + STALE_GRACE_MS);
+  });
+
+  it("never gives any job less than the floor", () => {
+    for (const job of JOB_NAMES) {
+      expect(staleAfterMs(job)).toBeGreaterThanOrEqual(JOB_CADENCE_MS[job] + STALE_GRACE_MS);
+    }
+  });
+});
+
 describe("isJobStale", () => {
   it("gives an hourly job its cadence plus a grace before complaining", () => {
     expect(isJobStale(ago(30 * MINUTE), "reminder_sweep", NOW)).toBe(false);
@@ -155,10 +180,13 @@ describe("isJobStale", () => {
   });
 
   // A daily job is a day behind before anything is wrong — the same rule, a
-  // different cadence, read off config/recurring.yml.
-  it("holds a daily job to a daily cadence", () => {
+  // different cadence, read off config/recurring.yml. A 3am run that slipped to
+  // 3:20 behind a deploy is not a job that stopped, so an hour late is fine and
+  // most of a second day is not.
+  it("holds a daily job to a daily cadence, with a proportional grace", () => {
     expect(isJobStale(ago(20 * HOUR), "top_up_shift_windows", NOW)).toBe(false);
-    expect(isJobStale(ago(DAY + HOUR), "top_up_shift_windows", NOW)).toBe(true);
+    expect(isJobStale(ago(DAY + HOUR), "top_up_shift_windows", NOW)).toBe(false);
+    expect(isJobStale(ago(DAY + 7 * HOUR), "top_up_shift_windows", NOW)).toBe(true);
   });
 
   it("treats the calendar sync as hourly, like the sweep", () => {
@@ -177,6 +205,16 @@ describe("isJobStale", () => {
     for (const job of JOB_NAMES) {
       expect(JOB_LABELS[job]).not.toBe("");
     }
+  });
+});
+
+describe("plural", () => {
+  // Exported for the KPI tiles: "1 covers this week" would undo in one word the
+  // care every other figure on the page is rendered with.
+  it("picks the one-or-many word off the count", () => {
+    expect(plural(1, "cover", "covers")).toBe("cover");
+    expect(plural(0, "cover", "covers")).toBe("covers");
+    expect(plural(7, "cover", "covers")).toBe("covers");
   });
 });
 

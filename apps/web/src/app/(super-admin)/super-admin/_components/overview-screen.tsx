@@ -1,6 +1,6 @@
 import { PageHeader } from "@/components/page-header";
 import type { SuperAdminOverview } from "@/lib/api/super-admin-overview";
-import { relativeTime } from "@/lib/date";
+import { formatTimestamp, relativeTime } from "@/lib/date";
 
 import { AttentionList } from "./attention-list";
 import { KpiLedger } from "./kpi-ledger";
@@ -36,9 +36,21 @@ export function OverviewScreen({ overview, now }: { overview: SuperAdminOverview
           // Not decoration. The payload is cached for a minute, so a figure that
           // has not moved since the last look needs to say whether it is calm or
           // simply the same cached copy.
-          <span className="text-muted-foreground text-xs">
-            Counted {relativeTime(generatedAt, now)}
-          </span>
+          //
+          // The INSTANT, not the relative string. Under a 60-second cache
+          // "Counted just now" is what this line says on every single load,
+          // including the load where Rails has been down for an hour and is
+          // serving a stale entry — a clock that always reads the same time is
+          // not a clock. The relative phrasing keeps its job as the hover title,
+          // where it answers "how long ago was that?" without having to be right
+          // to the second.
+          <time
+            className="text-muted-foreground text-xs"
+            dateTime={overview.generated_at}
+            title={`Counted ${relativeTime(generatedAt, now)}`}
+          >
+            Counted {formatTimestamp(generatedAt)}
+          </time>
         }
       />
 

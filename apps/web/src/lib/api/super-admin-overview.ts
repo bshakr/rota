@@ -20,6 +20,11 @@ import { z } from "zod";
 // not a reason to blank this screen, and the next ticket that renders it will add
 // it here. It is a key that goes MISSING, or changes type, that this catches.
 //
+// The WORDS that go with these shapes — the labels, the pills, the staleness
+// cadences, the rate formatting — live in src/lib/hq-overview.ts. Shape here,
+// meaning there; if you arrived at this file looking for the copy, that is where
+// it went.
+//
 // Deliberately not `server-only` — it holds no token and no origin, only shapes.
 // Note that bundle-safety.test.ts matches `lib/api/super-admin` as a prefix, so a
 // Client Component importing this module trips that guard. That is the right
@@ -44,9 +49,14 @@ export type AttentionReason = (typeof ATTENTION_REASONS)[number];
  * The onboarding ladder, lowest rung first.
  *
  * MUST stay in step with `SuperAdmin::Overview::FUNNEL_STEPS`. These are steps 3
- * to 8 of the plan's eight-step funnel: steps 1 (landing views) and 2 (sign-ins)
- * need tables the query cannot read yet, so they are absent rather than guessed
- * at, and the page says so rather than renumbering the ladder.
+ * to 8 of the plan's eight-step funnel. Step 1 (landing views) needs the
+ * `page_views` table that is Phase 5. Step 2 (signed in) IS tracked —
+ * https://linear.app/bloombase/issue/BLO-1671 landed `sign_ins` — but this query
+ * does not join it, because a house's furthest rung is asked of the house and a
+ * sign-in belongs to a person who may not have one yet; that funnel is the
+ * traffic query's job (https://linear.app/bloombase/issue/BLO-1681). So both are
+ * absent from THIS payload rather than guessed at, and the page says so rather
+ * than renumbering the ladder.
  */
 export const FUNNEL_STEPS = [
   "made_house",
@@ -111,17 +121,39 @@ const attentionRowSchema = z.object({
   count: count.nullable(),
 });
 
-const recentHouseSchema = z.object({
-  group_id: z.number().int().positive(),
-  name: z.string(),
-  slug: z.string(),
-  timezone: z.string(),
-  timezone_confirmed: z.boolean(),
-  created_at: timestamp,
-  furthest_step: z.enum(FUNNEL_STEPS),
-  /** 1-based within FUNNEL_STEPS, so the page draws six pips without owning the list. */
-  furthest_step_number: z.number().int().positive(),
-});
+const recentHouseSchema = z
+  .object({
+    group_id: z.number().int().positive(),
+    name: z.string(),
+    slug: z.string(),
+    timezone: z.string(),
+    timezone_confirmed: z.boolean(),
+    created_at: timestamp,
+    furthest_step: z.enum(FUNNEL_STEPS),
+    /**
+     * 1-based within FUNNEL_STEPS, so the page draws six pips without owning the
+     * list. Bounded by the ladder's length: a seventh rung would draw a pip that
+     * is not there.
+     */
+    furthest_step_number: z.number().int().positive().max(FUNNEL_STEPS.length),
+  })
+  // The step and its number are TWO renderings of one fact — the pips are drawn
+  // from the number, the caption from the step — so a payload where they
+  // disagree would draw four filled pips over the words "a reminder arrived" and
+  // look entirely plausible. Rails derives one from the other
+  // (`FUNNEL_STEPS.index(step) + 1`); this is the assertion that it still does.
+  .superRefine((house, ctx) => {
+    const expected = FUNNEL_STEPS.indexOf(house.furthest_step) + 1;
+    if (house.furthest_step_number === expected) return;
+
+    ctx.addIssue({
+      code: "custom",
+      path: ["furthest_step_number"],
+      message:
+        `disagrees with furthest_step: "${house.furthest_step}" is rung ${expected}, ` +
+        `not ${house.furthest_step_number}`,
+    });
+  });
 
 const jobHealthSchema = z.object({
   name: z.enum(JOB_NAMES),
@@ -132,7 +164,16 @@ const jobHealthSchema = z.object({
 });
 
 const systemHealthSchema = z.object({
-  jobs: z.array(jobHealthSchema),
+  /**
+   * Exactly one row per monitored job, always. Rails builds this by mapping
+   * `JobRun::MONITORED`, so a name with no runs behind it still appears (reported
+   * as "never finished", which for something scheduled hourly is the loudest
+   * thing this tile can say). A SHORT array would therefore mean a job quietly
+   * stopped being monitored — and the tile would render as if all were well,
+   * because a row that is not there cannot look wrong. Pinning the length is what
+   * makes that visible.
+   */
+  jobs: z.array(jobHealthSchema).length(JOB_NAMES.length),
   /**
    * Solid Queue lives in its own database, so this one figure can fail on its own
    * and arrive null. That is "we could not ask", not "there are none".

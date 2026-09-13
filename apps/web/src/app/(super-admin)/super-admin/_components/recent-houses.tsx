@@ -1,11 +1,10 @@
-import Link from "next/link";
-import { ChevronRight } from "lucide-react";
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FUNNEL_STEPS, type RecentHouse } from "@/lib/api/super-admin-overview";
 import { relativeTime } from "@/lib/date";
 import { FUNNEL_STEP_LABELS, UNTRACKED_LEADING_STEPS, stepCaption } from "@/lib/hq-overview";
 import { cn } from "@/lib/utils";
+
+import { HouseRow } from "./house-row";
 
 /**
  * The last ten houses made, each with the furthest rung of onboarding it reached,
@@ -34,35 +33,29 @@ export function RecentHouses({ houses, now }: { houses: RecentHouse[]; now: Date
             <ul className="divide-border -mx-2 divide-y">
               {houses.map((house) => (
                 <li key={house.group_id}>
-                  <Link
-                    href={`/super-admin/groups/${house.group_id}`}
-                    className="hover:bg-accent hover:text-accent-foreground flex items-center gap-3 rounded-xl px-2 py-3 transition-colors outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="font-heading text-sm font-semibold break-words">
-                          {house.name}
-                        </span>
-                        <span className="text-muted-foreground text-xs">
-                          {relativeTime(new Date(house.created_at), now)}
-                        </span>
+                  <HouseRow groupId={house.group_id}>
+                    <span className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-heading text-sm font-semibold break-words">
+                        {house.name}
                       </span>
-                      <StepIndicator reached={house.furthest_step_number} />
-                      <span className="text-muted-foreground mt-1 block text-xs">
-                        {stepCaption(house.furthest_step_number)} &middot;{" "}
-                        {FUNNEL_STEP_LABELS[house.furthest_step]}
+                      <span className="text-muted-foreground text-xs">
+                        {relativeTime(new Date(house.created_at), now)}
                       </span>
                     </span>
-                    <ChevronRight className="text-muted-foreground size-4 shrink-0" aria-hidden />
-                  </Link>
+                    <StepIndicator reached={house.furthest_step_number} />
+                    <span className="text-muted-foreground mt-1 block text-xs">
+                      {stepCaption(house.furthest_step_number)} &middot;{" "}
+                      {FUNNEL_STEP_LABELS[house.furthest_step]}
+                    </span>
+                  </HouseRow>
                 </li>
               ))}
             </ul>
 
             {/* Said once, under the list, rather than on every row. */}
             <p className="text-muted-foreground mt-4 text-xs text-pretty">
-              Steps 1 and 2 — landing views and signing in — are not tracked yet, so every house
-              starts at step {UNTRACKED_LEADING_STEPS + 1}.
+              Steps 1 and 2 — landing views and signing in — aren&apos;t counted on this page yet,
+              so every house starts at step {UNTRACKED_LEADING_STEPS + 1}.
             </p>
           </>
         )}

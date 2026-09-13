@@ -19,7 +19,12 @@ import type { AttentionReason, FunnelStep, JobName } from "./api/super-admin-ove
  * shown when three hundred do. Each of those is a sentence, and each is tested.
  */
 
-const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+/**
+ * The one-or-many word for a count. Exported because the KPI tiles need it too:
+ * a tile that reads "1 covers this week" undoes in one word the care every other
+ * figure on this page is rendered with.
+ */
+export const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
 // --- Rates ------------------------------------------------------------------
 
@@ -115,10 +120,14 @@ export function attentionSentence(reason: AttentionReason, count: number | null)
 export const PLAN_FUNNEL_STEPS = 8;
 
 /**
- * Steps 1 (landing views) and 2 (signed in) need the `page_views` table that is
- * Phase 5 and a `sign_ins` join the overview query does not make. They are not
- * tracked, and the page says so — calling `made_house` "step 1" would quietly
- * redefine the funnel everyone else is reading.
+ * Steps 1 (landing views) and 2 (signed in) are not COUNTED ON THIS PAGE. Step 1
+ * needs the `page_views` table that is Phase 5; step 2 is tracked — `sign_ins`
+ * landed with https://linear.app/bloombase/issue/BLO-1671 — but the overview
+ * query does not join it, because that funnel belongs to the traffic dashboard
+ * (https://linear.app/bloombase/issue/BLO-1681).
+ *
+ * The page says so rather than renumbering: calling `made_house` "step 1" would
+ * quietly redefine the funnel everyone else is reading.
  */
 export const UNTRACKED_LEADING_STEPS = 2;
 
@@ -179,7 +188,8 @@ export const JOB_CADENCE_LABELS: Record<JobName, string> = {
 };
 
 /**
- * The slack a job gets past its cadence before the page calls it stale.
+ * The FLOOR on the slack a job gets past its cadence before the page calls it
+ * stale.
  *
  * A run takes time, the scheduler fires on the minute and the row is written when
  * the pass ENDS, so the gap between two finishes is always a little over the
@@ -187,6 +197,22 @@ export const JOB_CADENCE_LABELS: Record<JobName, string> = {
  * every hour, and a marker that cries wolf is a marker nobody reads.
  */
 export const STALE_GRACE_MS = 15 * MINUTE_MS;
+
+/**
+ * The grace as a SHARE of the cadence, used whenever that is the larger of the
+ * two. Fifteen minutes is a sensible cushion on an hourly job and a meaningless
+ * one on a daily job: a nightly 3am run that slips to 3:20 because a deploy was
+ * mid-flight is not a job that has stopped, and a tile that says "Stale" about it
+ * every few weeks teaches an operator to ignore the word. Proportional slack
+ * keeps the marker meaning the same thing at both cadences.
+ */
+export const STALE_GRACE_SHARE = 0.25;
+
+/** How long `job` may stay quiet before the page calls it stale. */
+export function staleAfterMs(job: JobName): number {
+  const cadence = JOB_CADENCE_MS[job];
+  return cadence + Math.max(STALE_GRACE_MS, cadence * STALE_GRACE_SHARE);
+}
 
 /**
  * Has this job missed its slot?
@@ -197,7 +223,7 @@ export const STALE_GRACE_MS = 15 * MINUTE_MS;
  */
 export function isJobStale(lastFinishedAt: Date | null, job: JobName, now: Date): boolean {
   if (lastFinishedAt === null) return true;
-  return now.getTime() - lastFinishedAt.getTime() > JOB_CADENCE_MS[job] + STALE_GRACE_MS;
+  return now.getTime() - lastFinishedAt.getTime() > staleAfterMs(job);
 }
 
 /**

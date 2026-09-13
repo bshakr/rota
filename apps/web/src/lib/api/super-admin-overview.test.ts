@@ -125,12 +125,43 @@ describe("parseOverview", () => {
   });
 
   it("refuses a job the health tile has no label for", () => {
-    const system_health = {
-      ...payload().system_health,
-      jobs: [{ name: "vacuum_the_hall", last_finished_at: null, succeeded: null, error_class: null }],
-    };
+    const jobs = payload().system_health.jobs.map((job, index) =>
+      index === 0 ? { ...job, name: "vacuum_the_hall" } : job,
+    );
 
-    expect(() => parseOverview(payload({ system_health }))).toThrow(OverviewShapeError);
+    expect(() =>
+      parseOverview(payload({ system_health: { ...payload().system_health, jobs } })),
+    ).toThrow(OverviewShapeError);
+  });
+
+  // Rails builds this list by mapping JobRun::MONITORED, so a name with no runs
+  // behind it still appears. A short array means a job stopped being monitored —
+  // and a row that is not there cannot look wrong, so the tile would render as if
+  // all were well.
+  it("refuses a health tile with a job missing from it", () => {
+    const jobs = payload().system_health.jobs.slice(0, 2);
+
+    expect(() =>
+      parseOverview(payload({ system_health: { ...payload().system_health, jobs } })),
+    ).toThrow(OverviewShapeError);
+  });
+
+  // The pips are drawn from the number and the caption from the step. A payload
+  // where they disagree draws four filled pips over the words "a reminder
+  // arrived" and looks entirely plausible, which is why it is refused rather than
+  // rendered.
+  it("refuses a house whose step number disagrees with its step", () => {
+    const recent_houses = [{ ...payload().recent_houses[0], furthest_step_number: 2 }];
+
+    expect(() => parseOverview(payload({ recent_houses }))).toThrow(
+      /furthest_step_number.*delivered_text.*rung 5/,
+    );
+  });
+
+  it("refuses a rung past the end of the ladder", () => {
+    const recent_houses = [{ ...payload().recent_houses[0], furthest_step_number: 7 }];
+
+    expect(() => parseOverview(payload({ recent_houses }))).toThrow(OverviewShapeError);
   });
 
   // A rate of 0 and a rate of null are opposite facts, so the schema keeps both

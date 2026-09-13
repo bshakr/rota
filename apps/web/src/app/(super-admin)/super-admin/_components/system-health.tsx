@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SystemHealth as SystemHealthPayload } from "@/lib/api/super-admin-overview";
-import { relativeTime } from "@/lib/date";
+import { formatTimestamp, relativeTime } from "@/lib/date";
 import { JOB_CADENCE_LABELS, JOB_LABELS, isJobStale, queueFailuresNote } from "@/lib/hq-overview";
 import { cn } from "@/lib/utils";
 
@@ -47,7 +47,14 @@ export function SystemHealth({ health, now }: { health: SystemHealthPayload; now
               <li key={job.name} className="flex items-start justify-between gap-3 py-3 first:pt-0">
                 <span className="min-w-0">
                   <span className="block text-sm font-medium">{JOB_LABELS[job.name]}</span>
-                  <span className="text-muted-foreground mt-0.5 block text-xs">
+                  {/* The relative time is the one worth reading at a glance, but
+                      "2 days ago" is not something you can put in a bug report or
+                      line up against a deploy. The exact instant rides along as
+                      the hover title rather than as a second line of type. */}
+                  <span
+                    className="text-muted-foreground mt-0.5 block text-xs"
+                    title={lastFinishedAt ? formatTimestamp(lastFinishedAt) : undefined}
+                  >
                     {lastFinishedAt
                       ? `Finished ${relativeTime(lastFinishedAt, now)}`
                       : "Has never finished a pass"}{" "}
