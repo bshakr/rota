@@ -10,9 +10,28 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_13_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_14_100100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "ai_calls", force: :cascade do |t|
+    t.integer "cache_creation_input_tokens"
+    t.integer "cache_read_input_tokens"
+    t.bigint "calendar_connection_id"
+    t.decimal "cost_usd", precision: 12, scale: 6
+    t.datetime "created_at", null: false
+    t.string "error_class"
+    t.bigint "group_id", null: false
+    t.integer "input_tokens"
+    t.integer "items_count"
+    t.string "model", null: false
+    t.integer "output_tokens"
+    t.string "purpose", null: false
+    t.boolean "succeeded", null: false
+    t.index ["calendar_connection_id"], name: "index_ai_calls_on_calendar_connection_id"
+    t.index ["created_at"], name: "index_ai_calls_on_created_at"
+    t.index ["group_id", "created_at"], name: "index_ai_calls_on_group_id_and_created_at"
+  end
 
   create_table "calendar_connections", force: :cascade do |t|
     t.string "calendar_name"
@@ -175,6 +194,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_13_090000) do
     t.index ["workos_user_id"], name: "index_users_on_workos_user_id", unique: true
   end
 
+  add_foreign_key "ai_calls", "calendar_connections", on_delete: :nullify
+  add_foreign_key "ai_calls", "groups"
   add_foreign_key "calendar_connections", "groups"
   add_foreign_key "calendar_event_members", "calendar_events", on_delete: :cascade
   add_foreign_key "calendar_event_members", "members", on_delete: :cascade

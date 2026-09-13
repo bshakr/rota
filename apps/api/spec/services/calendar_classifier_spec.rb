@@ -7,7 +7,12 @@ RSpec.describe CalendarClassifier do
 
   # max_retries 0 so the failure examples do not sleep through the SDK's two backoffs.
   let(:client) { Anthropic::Client.new(api_key: "sk-ant-api03-test", timeout: 5, max_retries: 0) }
-  subject(:classifier) { described_class.new(members: group.members.active.to_a, client: client) }
+  # The house whose calendar is being read, and so the house every call below is billed to. Lazy, so
+  # the fingerprinting examples that never reach the model never build one.
+  let(:connection) { create(:calendar_connection, group: group) }
+  subject(:classifier) do
+    described_class.new(members: group.members.active.to_a, client: client, connection: connection)
+  end
 
   def item(ref, summary, all_day: true, starts_on: Date.new(2026, 9, 16), ends_on: Date.new(2026, 9, 19))
     { ref: ref, summary: summary, all_day: all_day, starts_on: starts_on, ends_on: ends_on }
@@ -258,12 +263,135 @@ RSpec.describe CalendarClassifier do
 
   it "raises Failed when no key is configured, without reaching the network" do
     allow(Rails.configuration.x.calendar_classifier).to receive(:api_key).and_return(nil)
-    keyless = described_class.new(members: group.members.active.to_a)
+    keyless = described_class.new(members: group.members.active.to_a, connection: connection)
 
     expect { keyless.classify([ carlisle ]) }.to raise_error(described_class::Failed, /ANTHROPIC_API_KEY/) { |e|
       expect(e.verdicts).to eq({})
     }
     expect(a_request(:post, AnthropicStubs::MESSAGES_URL)).not_to have_been_made
+    # Nothing was asked for, so nothing was spent. CalendarSync builds a classifier on every sync
+    # just to fingerprint, and a house with no key must not accumulate a row an hour that says it
+    # spent nothing.
+    expect(AiCall.count).to eq(0)
+  end
+
+  # Spend collection (BLO-1673). Every request is one ai_calls row, whichever way it ends, because a
+  # house that keeps failing to classify is a house that keeps paying for nothing.
+  describe "recording what a call cost" do
+    # 2150 input at $1 per million and 640 output at $5 is $0.005350.
+    let(:usage) { { input_tokens: 2_150, output_tokens: 640 } }
+
+    it "writes one row per chunk, with the usage the reply carried and the cost of it" do
+      stub_claude_verdicts([], usage: usage)
+
+      classifier.classify(Array.new(51) { |n| item("fp#{n}", "Event #{n}") })
+
+      expect(AiCall.count).to eq(2)
+      expect(AiCall.order(:items_count).pluck(:items_count)).to eq([ 1, 50 ])
+      expect(AiCall.last).to have_attributes(
+        group_id: group.id, calendar_connection_id: connection.id,
+        purpose: "calendar_classify", model: "claude-haiku-4-5",
+        input_tokens: 2_150, output_tokens: 640, succeeded: true, error_class: nil,
+        cost_usd: "0.005350".to_d
+      )
+    end
+
+    # Anthropic omits the cache counts when nothing was cached, which is every call this app makes.
+    it "records a reply that carried no cache counts as zero, not as nothing" do
+      stub_claude_verdicts([])
+
+      classifier.classify([ carlisle ])
+
+      expect(AiCall.sole).to have_attributes(cache_creation_input_tokens: 0, cache_read_input_tokens: 0)
+    end
+
+    it "prices the cache counts when a reply does carry them" do
+      stub_claude_verdicts([], usage: usage.merge(cache_creation_input_tokens: 800,
+                                                  cache_read_input_tokens: 4_000))
+
+      classifier.classify([ carlisle ])
+
+      expect(AiCall.sole).to have_attributes(
+        cache_creation_input_tokens: 800, cache_read_input_tokens: 4_000,
+        # $0.005350 for the call, plus 800 written at $1.25 and 4000 read at $0.10 per million.
+        cost_usd: "0.006750".to_d
+      )
+    end
+
+    # Anthropic refused the request, so there are no tokens to report and nothing was charged. The
+    # row is still written: the point of it is that this house asked and got nowhere.
+    it "records a 429 as a failed call named by Anthropic's own error class" do
+      stub_claude_key
+      stub_request(:post, AnthropicStubs::MESSAGES_URL).to_return(status: 429, body: "{}")
+
+      expect { classifier.classify([ carlisle ]) }.to raise_error(described_class::Failed)
+
+      expect(AiCall.sole).to have_attributes(
+        succeeded: false, error_class: "Anthropic::Errors::RateLimitError",
+        items_count: 1, input_tokens: 0, output_tokens: 0, cost_usd: 0
+      )
+    end
+
+    # The other way round: the request was accepted and billed, and the reply was unusable. The
+    # tokens are real and must not be lost just because the verdicts were.
+    it "records a malformed reply as a failed call that still cost what it spent" do
+      stub_claude_key
+      stub_request(:post, AnthropicStubs::MESSAGES_URL).to_return(
+        status: 200, headers: { "Content-Type" => "application/json" },
+        body: { id: "msg_01Stub", type: "message", role: "assistant", model: "claude-haiku-4-5",
+                content: [ { type: "text", text: "Sorry, I cannot help with that." } ],
+                stop_reason: "end_turn", stop_sequence: nil, usage: usage }.to_json
+      )
+
+      # `classify` flattens every cause into one Failed for CalendarSync, which is the whole point of
+      # that class. The distinction between "rate limited" and "answered in the wrong shape" survives
+      # on the row, which is where an operator goes looking for it.
+      expect { classifier.classify([ carlisle ]) }
+        .to raise_error(described_class::Failed, /not the JSON the schema asked for/)
+
+      expect(AiCall.sole).to have_attributes(
+        succeeded: false, error_class: "CalendarClassifier::Malformed",
+        input_tokens: 2_150, output_tokens: 640, cost_usd: "0.005350".to_d
+      )
+    end
+
+    it "records the chunk that failed and the chunks that did not, separately" do
+      stub_claude_key
+      stub_request(:post, AnthropicStubs::MESSAGES_URL).to_return(
+        claude_reply([ { ref: "1", kind: "away", member_ids: [ alfie.id ], reason: "Alfie in Carlisle" } ],
+                     usage: usage),
+        { status: 500, body: "{}" }
+      )
+
+      expect { classifier.classify([ carlisle ] + Array.new(50) { |n| item("later#{n}", "Event #{n}") }) }
+        .to raise_error(described_class::Failed)
+
+      expect(AiCall.order(:id).pluck(:succeeded, :error_class, :items_count)).to eq(
+        [ [ true, nil, 50 ], [ false, "Anthropic::Errors::InternalServerError", 1 ] ]
+      )
+    end
+
+    # bin/classifier-eval runs this prompt against the live model on six plain structs and no
+    # database. There is nobody to bill, and it stays the write-nothing script it says it is.
+    it "writes nothing when there is no house to bill" do
+      stub_claude_verdicts([])
+      unbilled = described_class.new(members: group.members.active.to_a, client: client)
+
+      unbilled.classify([ carlisle ])
+
+      expect(AiCall.count).to eq(0)
+    end
+
+    # Spec 7.4 outranks the bookkeeping: a verdict that was paid for and understood is stored even
+    # if writing down what it cost goes wrong.
+    it "classifies anyway when the row cannot be written" do
+      stub_claude_verdicts([ { ref: "1", kind: "away", member_ids: [ alfie.id ], reason: "Alfie away" } ])
+      allow(AiCall).to receive(:create!).and_raise(ActiveRecord::StatementInvalid, "no such table")
+      allow(Rails.logger).to receive(:warn)
+
+      expect(classifier.classify([ carlisle ])["fp1"]).to have_attributes(kind: "away")
+      expect(Rails.logger).to have_received(:warn).with(/could not record spend/)
+    end
   end
 
   it "fingerprints the title, the shape and the roster, and nothing else" do
