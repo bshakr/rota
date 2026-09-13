@@ -76,6 +76,23 @@ module SuperAdmin
         # BLO-1673, but the money is its own query object and its own ticket:
         # https://linear.app/bloombase/issue/BLO-1683. Present and null so the page can render the
         # tile's empty state now rather than growing a key later.
+        #
+        # When that lands, fill this key from `SuperAdmin::Spend.cached(range: "90d")` rather than
+        # adding a second one. Its `months` array runs oldest first, so `months[-1]` is this month
+        # so far and `months[-2]` is last month, whole.
+        #
+        # Ask for 90d and NOT 30d. A 30-day window starts mid-month, so its `months[-2]` covers only
+        # the part of last month that fell inside the window — last month's total would read low,
+        # silently, by a different amount every day of the month. 90d always reaches back past the
+        # first of last month, so that bucket is a complete calendar month. 12m has the same
+        # property, if the page would rather share one cache entry with the spend page's default.
+        #
+        # Two things the tile must not do with those figures. `sms_cost_settled` (what Twilio has
+        # actually charged) and `sms_cost_estimated` (segments priced at an assumed rate, because
+        # Twilio has not settled them yet) are separate deliberately, and must not be added into one
+        # "texts" number without saying that part of it is an estimate — `sms_cost` is the combined
+        # figure for when one number is genuinely wanted. And that money arrives already rounded for
+        # display, so nothing downstream rounds it a second time.
         spend: nil
       }
     end
