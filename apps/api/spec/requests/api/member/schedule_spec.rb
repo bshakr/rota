@@ -201,6 +201,121 @@ RSpec.describe "GET /api/member/schedule" do
     end
   end
 
+  # The house calendar (BLO-1667). Events ride in the shifts payload because the member page draws
+  # one chronological feed: "Alfie is in Greece all week" is the reason a shift is being handed off,
+  # and a second request for it would arrive after the rows had already been painted.
+  describe "the house calendar" do
+    let(:connection) { create(:calendar_connection, group: group) }
+
+    # Every example below reads the feed from the same afternoon, so "today" is a fixed date rather
+    # than whatever the suite happens to run on. 12:00 UTC is 13:00 in London: the same day either
+    # way, so the assertions are about the window and not about a timezone edge.
+    def get_schedule_on_september_13(member = alice)
+      travel_to(Time.utc(2026, 9, 13, 12, 0)) { get_schedule(member) }
+    end
+
+    def event_titles
+      response.parsed_body["events"].map { |event| event["title"] }
+    end
+
+    it "is an empty list when the house has connected no calendar" do
+      get_schedule
+
+      expect(response.parsed_body["events"]).to eq([])
+    end
+
+    it "carries the whole member-facing shape, and nothing the admin preview adds" do
+      away = create(:calendar_event, calendar_connection: connection, summary: "Alfie in Greece",
+        kind: "away", all_day: true, reason: "A trip to Greece, so Alfie is away",
+        starts_on: Date.new(2026, 9, 25), ends_on: Date.new(2026, 10, 1))
+      CalendarEventMember.create!(calendar_event: away, member: bob)
+
+      get_schedule_on_september_13
+
+      # An exact hash, not `include`: the member payload is a privacy boundary (spec section 13) and
+      # `reason`, the model's sentence about a housemate's private trip, must not ride along.
+      expect(response.parsed_body["events"]).to eq([ {
+        "id" => away.id,
+        "title" => "Alfie in Greece",
+        "starts_on" => "2026-09-25",
+        "ends_on" => "2026-10-01",
+        "all_day" => true,
+        "start_time" => nil,
+        "kind" => "away",
+        "member_ids" => [ bob.id ]
+      } ])
+    end
+
+    it "renders a timed start as the wall clock the house wrote down, in the group's zone" do
+      # 18:00 UTC on 1 October is 19:00 in London, which is the time the dinner was put in the
+      # calendar as. The member reads their own clock, never the database's.
+      create(:calendar_event, calendar_connection: connection, summary: "House dinner at home",
+        all_day: false, starts_on: Date.new(2026, 10, 1), ends_on: Date.new(2026, 10, 1),
+        starts_at: Time.utc(2026, 10, 1, 18, 0), ends_at: Time.utc(2026, 10, 1, 20, 30))
+
+      get_schedule_on_september_13
+
+      expect(response.parsed_body["events"].first)
+        .to include("kind" => "event", "all_day" => false, "start_time" => "19:00")
+    end
+
+    it "orders by date and then by the clock, with all-day rows last on a day they share" do
+      create(:calendar_event, calendar_connection: connection, summary: "Bin day", all_day: true,
+        starts_on: Date.new(2026, 10, 1), ends_on: Date.new(2026, 10, 1))
+      create(:calendar_event, calendar_connection: connection, summary: "House dinner at home",
+        all_day: false, starts_on: Date.new(2026, 10, 1), ends_on: Date.new(2026, 10, 1),
+        starts_at: Time.utc(2026, 10, 1, 18, 0), ends_at: Time.utc(2026, 10, 1, 20, 30))
+      create(:calendar_event, calendar_connection: connection, summary: "Alfie in Greece", kind: "away",
+        starts_on: Date.new(2026, 9, 25), ends_on: Date.new(2026, 10, 1))
+      create(:calendar_event, calendar_connection: connection, summary: "Landlord visit",
+        all_day: false, starts_on: Date.new(2026, 10, 1), ends_on: Date.new(2026, 10, 1),
+        starts_at: Time.utc(2026, 10, 1, 9, 30), ends_at: Time.utc(2026, 10, 1, 10, 0))
+
+      get_schedule_on_september_13
+
+      # A row with no clock has nothing to sort by, so it settles after the appointments of its day.
+      expect(event_titles)
+        .to eq([ "Alfie in Greece", "Landlord visit", "House dinner at home", "Bin day" ])
+    end
+
+    it "keeps an event that is still running today and drops one that has already finished" do
+      create(:calendar_event, calendar_connection: connection, summary: "Deep clean week",
+        starts_on: Date.new(2026, 9, 8), ends_on: Date.new(2026, 9, 13))
+      create(:calendar_event, calendar_connection: connection, summary: "August bank holiday",
+        starts_on: Date.new(2026, 8, 31), ends_on: Date.new(2026, 9, 12))
+
+      get_schedule_on_september_13
+
+      expect(event_titles).to eq([ "Deep clean week" ])
+    end
+
+    it "shows an event still waiting on a verdict as a plain event with nobody away" do
+      # Pending is not a third kind: until the classifier answers it is stored as an ordinary event
+      # with an empty roster, so the feed shows the title and claims nothing about who is away.
+      pending_event = create(:calendar_event, calendar_connection: connection, summary: "Sofia to Lisbon",
+        classified_at: nil, kind: "event",
+        starts_on: Date.new(2026, 9, 20), ends_on: Date.new(2026, 9, 24))
+
+      get_schedule_on_september_13
+
+      expect(response.parsed_body["events"])
+        .to eq([ { "id" => pending_event.id, "title" => "Sofia to Lisbon", "starts_on" => "2026-09-20",
+                   "ends_on" => "2026-09-24", "all_day" => true, "start_time" => nil,
+                   "kind" => "event", "member_ids" => [] } ])
+    end
+
+    it "never carries another house's events, even when both houses have a calendar" do
+      create(:calendar_event, calendar_connection: connection, summary: "Our bin day",
+        starts_on: Date.new(2026, 9, 20), ends_on: Date.new(2026, 9, 20))
+      create(:calendar_event, calendar_connection: create(:calendar_connection), summary: "Their bin day",
+        starts_on: Date.new(2026, 9, 20), ends_on: Date.new(2026, 9, 20))
+
+      get_schedule_on_september_13
+
+      expect(event_titles).to eq([ "Our bin day" ])
+    end
+  end
+
   describe "tenancy" do
     it "returns nothing of another group's house" do
       other = create(:group)
