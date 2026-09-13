@@ -70,3 +70,51 @@ No em or en dashes anywhere user-visible. One emoji, only in the example SMS. No
 code comments; nothing overflows at 390px; both themes pass `check:tokens`; before and
 after screenshots of `/` at 1440 and 390 in both themes, published as a gallery and
 linked from the PR.
+
+## 7. Revisions 2026-09-13 (review round)
+
+An SEO, a content-editor and a growth review of the shipped page were reconciled
+into four waves. This is wave 1, truth and copy only: no new sections, no product
+changes. What changed in `landing.tsx` and why.
+
+- The h1 is now "The chore rota that texts your housemates", and "Whose turn? Who's
+  home? Sorted." leads the paragraph under it. Bass, 2026-09-13: the headline has to
+  be the phrase people search for. The brand line said nothing a stranger could act
+  on and carried no rankable words, and section 3's three stacked spans were built
+  around it; the h1 now wraps on its own with `text-balance`. The string comes from
+  `SITE_TITLE` in `apps/web/src/lib/site.ts`, so the h1, the `<title>`, the Open
+  Graph and Twitter card titles and the card image cannot drift apart. The card image
+  swaps its two lines to match, and the footer keeps the brand line.
+- Hero paragraph frames the calendar as a question ("Keep a house calendar?"). The
+  page never said the calendar is optional, which is the accepted risk in section 2
+  left unsoftened. The audience word moved into the `<title>` and the meta
+  description rather than the hero, once the h1 took the keyword.
+- Both CTA notes say "Free", and the hero note says the button opens a sign-in
+  ("Free. Sign in with email, two minutes, promise."). The product is free today and
+  the click hit a WorkOS redirect with neither fact stated.
+- The example SMS moves Ciara's turn to Sat 27 Sep. The page's own feed says today
+  is Sat 20 Sep, Ciara is away until Sun 21 and Sat 20 is Raph's turn, so texting
+  Ciara for "this Saturday" was the exact mistake the product promises never to make.
+- "an hour later at most" becomes "within a couple of hours", matching the sync
+  design's section 3: Google caches the feed for one to two hours.
+- Panel headings became benefits rather than features: "Nobody has to nag" (which
+  also stops contradicting the "Gently nags" badge), "Can't do it? Hand it on",
+  "Everybody sees what's on".
+- The calendar panel's first line ends "No shared calendar? Skip it. The rota works
+  on its own", and the closing body makes the link conditional.
+- The reassurance strip stopped repeating the panels and now answers cost, the
+  privacy of the secret link, and what an admin has to press. Its second line
+  ("reads event titles and dates, nothing else") is true of the parser, which reads
+  only SUMMARY, UID, DTSTART, DTEND, RRULE, RECURRENCE-ID, STATUS and the two X-WR-
+  headers, and of the classifier, which sends the title and the dates. The strip
+  also gained a quiet h2 "Nothing to install" so its three lines are not orphaned in
+  the document outline.
+- The closing heading is "Set it up tonight. Argue about something else.", so
+  "Sorted." in the h1 and the footer are the only uses of "sort" left on the page.
+- "Feed" is gone from visitor-facing copy; the member surface is called a page.
+- Both wordmarks link to `/` with an "Rota Monster home" label.
+- The hero text column lost `animate-pop`: it started the h1 at opacity 0 for 0.45s
+  and the h1 is the largest contentful paint. The vignette beside it still pops.
+
+Waves 2 to 4 (page metadata and Open Graph, a how-it-works block and an FAQ, then
+the demo house and analytics) are tracked in the review round, not here.

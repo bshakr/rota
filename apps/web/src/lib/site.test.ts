@@ -52,6 +52,19 @@ describe("page titles", () => {
     expect(SITE_DESCRIPTION.length).toBeLessThanOrEqual(160);
   });
 
+  // The h1 is the same phrase as the title, and it is the one surface a reader
+  // sees before any of the metadata. It reads the constant rather than repeating
+  // the words, and this is what stops someone typing them back in by hand.
+  it("leads the landing page with the same phrase as the title", () => {
+    const landing = readFileSync(
+      fileURLToPath(new URL("../app/_components/landing.tsx", import.meta.url)),
+      "utf8",
+    );
+
+    expect(landing).toMatch(/<h1[^>]*>\s*\{SITE_TITLE\}/);
+    expect(SITE_TITLE).toBe("The chore rota that texts your housemates");
+  });
+
   // Next applies `title.template` to CHILD segments only, so `/` cannot use the
   // layout's template and applies the same string by hand. The two must not drift:
   // if someone edits the template in layout.tsx, the homepage title has to follow.

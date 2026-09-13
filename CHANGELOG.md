@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.0.2.3] - 2026-09-13
+
+### Changed
+
+- The homepage headline is now the phrase people search for, "The chore rota that
+  texts your housemates", and "Whose turn? Who's home? Sorted." leads the paragraph
+  under it. The Open Graph and Twitter card titles and the card image follow the
+  same order.
+- Homepage copy round one after the SEO, content and growth reviews: the hero makes
+  the house calendar optional, both calls to action say the product is free, the
+  example text message moves to a Saturday Ciara is actually home, "an hour later at
+  most" becomes "within a couple of hours" to match the sync, the panel headings and
+  reassurance strip stop repeating each other, and the wordmarks link home. The hero
+  text column lost its entrance animation so the headline paints straight away.
+  Design record: docs/superpowers/specs/2026-09-13-homepage-whose-turn-whos-home.md
+  section 7.
+
 ## [0.0.2.2] - 2026-09-13
 
 ### Added
