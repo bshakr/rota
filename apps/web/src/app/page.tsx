@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { pageTitle, SITE_DESCRIPTION, SITE_TITLE, siteOrigin } from "@/lib/site";
 
 import { Landing } from "./_components/landing";
+import { LandingView } from "./_components/landing-view";
 import { buildStructuredData, toJsonLd } from "./_components/structured-data";
 
 // The only page a search engine ever sees, so it is the only page with real
@@ -67,6 +68,12 @@ export default async function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: toJsonLd(buildStructuredData(siteOrigin())) }}
       />
+      {/*
+        Renders nothing; it exists to fire `landing_view`, the top of the funnel and the denominator
+        for every step after it. Mounted here rather than inside `Landing` so that measuring the page
+        does not drag any of its markup across the client boundary. See _components/landing-view.tsx.
+      */}
+      <LandingView />
       <Landing />
     </>
   );

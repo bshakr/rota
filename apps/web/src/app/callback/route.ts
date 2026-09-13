@@ -1,5 +1,6 @@
 import { handleAuth } from "@workos-inc/authkit-nextjs";
 
+import { captureServerEvent } from "@/lib/analytics-server";
 import { recordSignIn } from "@/lib/api/sign-in";
 
 // The WorkOS redirect lands here — WORKOS_REDIRECT_URI is http://localhost:3001/callback,
@@ -24,5 +25,16 @@ export const GET = handleAuth({
   // `(data: HandleAuthSuccessData) => void | Promise<void>` and awaited before the redirect is
   // issued. Which is why `recordSignIn` can never reject and bounds its own wait: a slow or broken
   // Rails must not be able to hold an admin on a blank callback page, let alone fail their sign-in.
-  onSuccess: ({ accessToken }) => recordSignIn(accessToken),
+  //
+  // TWO things happen here, and they are not the same thing. `recordSignIn` tells Rails which admin
+  // signed in and when, so the operator console can show "last seen"; `signin_completed` adds one
+  // anonymous row to the funnel, carrying no user id and no properties at all, because the event
+  // store has no visitor identity in it. A sign-in is counted there, never attributed.
+  //
+  // Only the first is awaited. The analytics capture is fire-and-forget on purpose: `onSuccess` is
+  // awaited before the redirect is issued, and a point on a chart is not worth a slower login.
+  onSuccess: ({ accessToken }) => {
+    captureServerEvent("signin_completed");
+    return recordSignIn(accessToken);
+  },
 });

@@ -14,6 +14,14 @@ Rails.application.routes.draw do
   # Webhooks::TwilioStatusController.
   post "webhooks/twilio/status" => "webhooks/twilio_status#create", as: :twilio_status_webhook
 
+  # The web app's own events (wave 4c). Server-to-server from Next, authenticated by a shared secret
+  # rather than a token, and deliberately outside the `api` namespace: there is no WorkOS identity
+  # here and no tenant to scope to. It accepts only the four anonymous event names — see
+  # Internal::AnalyticsEventsController for why that list is not every name.
+  namespace :internal do
+    post "analytics/events", to: "analytics_events#create"
+  end
+
   # The admin API. Everything under it inherits Api::BaseController — so every route here is
   # authenticated by a WorkOS-signed JWT and scoped to the group that token names — with one
   # deliberate exception, marked below.

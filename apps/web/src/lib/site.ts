@@ -30,6 +30,18 @@ export function siteUrl(path = "/"): string {
 // card renders. Four copies is how the OG card ends up a release behind.
 
 /** The brand, spelled once. */
+/**
+ * Where every call to action on the marketing page points. `/dashboard` is proxy-protected, so a
+ * logged-out click starts the existing AuthKit sign-in redirect and a signed-in one simply lands.
+ *
+ * It lives here, in a plain module, rather than beside the landing page, because both a server
+ * component (the page) and a client component (SignInLink, which fires `signin_started` only when
+ * the href really is the sign-in hand-off) need the actual string. Exports of a "use client" module
+ * reach a server component as client references rather than values, so a shared constant cannot
+ * live in one.
+ */
+export const SIGN_IN_HREF = "/dashboard";
+
 export const SITE_NAME = "Rota Monster";
 
 /**

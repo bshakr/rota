@@ -33,6 +33,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_100400) do
     t.index ["group_id", "created_at"], name: "index_ai_calls_on_group_id_and_created_at"
   end
 
+  create_table "analytics_events", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "group_id"
+    t.string "name", null: false
+    t.datetime "occurred_at", null: false
+    t.jsonb "properties", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.index ["group_id"], name: "index_analytics_events_on_group_id"
+    t.index ["name", "occurred_at"], name: "index_analytics_events_on_name_and_occurred_at"
+    t.index ["occurred_at"], name: "index_analytics_events_on_occurred_at"
+  end
+
   create_table "calendar_connections", force: :cascade do |t|
     t.string "calendar_name"
     t.integer "consecutive_failures", default: 0, null: false
@@ -94,6 +106,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_100400) do
 
   create_table "groups", force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.jsonb "first_touch"
     t.string "name", null: false
     t.text "notes"
     t.string "slug", default: -> { "('household-'::text || substr(md5((random())::text), 1, 16))" }, null: false
@@ -121,6 +134,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_100400) do
     t.string "access_token", null: false
     t.boolean "active", default: true, null: false
     t.datetime "created_at", null: false
+    t.datetime "first_opened_at"
     t.bigint "group_id", null: false
     t.datetime "last_seen_at"
     t.string "name", null: false
@@ -226,6 +240,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_100400) do
 
   add_foreign_key "ai_calls", "calendar_connections", on_delete: :nullify
   add_foreign_key "ai_calls", "groups"
+  add_foreign_key "analytics_events", "groups", on_delete: :cascade
   add_foreign_key "calendar_connections", "groups"
   add_foreign_key "calendar_event_members", "calendar_events", on_delete: :cascade
   add_foreign_key "calendar_event_members", "members", on_delete: :cascade

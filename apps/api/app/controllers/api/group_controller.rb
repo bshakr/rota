@@ -18,20 +18,34 @@ module Api
       # timezone will do to reminders that are already scheduled.
       timezone_moved = group_params.key?(:timezone) && group_params[:timezone] != group.timezone
 
-      group.assign_attributes(group_params)
+      # A NULL `timezone_confirmed_at` is what "nobody has set this house up yet" looks like, so this
+      # request being the one that stamps it IS the house being named. Read it before the write.
+      naming = !group.timezone_confirmed? && group_params.key?(:timezone)
+
+      group.assign_attributes(group_params.except(:first_touch))
+      # First touch is first: a house records where it came from once, and a later request can never
+      # overwrite it. `/setup` sends it exactly once and clears its cookie, but the API is what
+      # guarantees the value, because a replayed PATCH must not relabel a house's origin.
+      group.first_touch = FirstTouch.sanitise(group_params[:first_touch]) if group.first_touch.blank?
       # The presence of a `timezone` in the request is the human confirming it — even if the value is
       # unchanged, "I checked, UTC is right" is exactly the confirmation the NULL was waiting for. So
       # the stamp keys off the param being sent, not off the value moving.
       group.timezone_confirmed_at = Time.current if group_params.key?(:timezone)
       group.save!
 
+      # The top of the funnel's first server-side step, and the only event that carries the campaign
+      # that brought the house here — which is what makes every later event attributable.
+      AnalyticsEvent.record(AnalyticsEvent::HOUSE_NAMED, group: group, **(group.first_touch || {})) if naming
+
       render json: { group: GroupSerializer.one(group) }.merge(timezone_warning(timezone_moved))
     end
 
     private
 
+    # `first_touch` is permitted as five named scalars and nothing else, so a client cannot post an
+    # arbitrary document into a jsonb column. FirstTouch then trims, caps and drops blanks.
     def group_params
-      params.permit(:name, :timezone)
+      params.permit(:name, :timezone, first_touch: FirstTouch::KEYS)
     end
 
     # Changing the timezone does not touch a single stored shift — the reminder sweep resolves the
