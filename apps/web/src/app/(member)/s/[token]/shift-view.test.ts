@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { MemberRef, MemberShift } from "@/lib/api/types";
 
+import type { ShiftState } from "./shift-view";
 import { coverTargetsFor, shiftStateFor } from "./shift-view";
 
 // The member is always id 1 ("me") in these fixtures; everyone else is a housemate.
@@ -31,7 +32,10 @@ function shift(partial: Partial<MemberShift> = {}): MemberShift {
 
 describe("shiftStateFor", () => {
   it("is 'yours' when I'm the assignee and no one is covering", () => {
-    const state = shiftStateFor(shift({ assigned_member: ref(ME, "Alice") }), ME);
+    // Typed against ShiftState from THIS module: the vocabulary lives with the function
+    // now, not in the shift card, so the feed can name a shift's state without importing
+    // a component. The annotation is the assertion — it fails to compile if it moves back.
+    const state: ShiftState | null = shiftStateFor(shift({ assigned_member: ref(ME, "Alice") }), ME);
     expect(state).toEqual({ kind: "yours" });
   });
 

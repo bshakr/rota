@@ -367,3 +367,42 @@ export interface MemberShiftsResponse {
 export interface MemberCoverResponse {
   shift: MemberShift;
 }
+
+/**
+ * A housemate as the member page sees them. `contactable` folds "active and not
+ * opted out" into the one boolean the UI acts on: an opted-out housemate still
+ * appears in the people strip (they live here) but cannot be handed a shift,
+ * because the cover action would reject them.
+ */
+export interface ScheduleMember extends MemberRef {
+  contactable: boolean;
+}
+
+/** A rota reduced to what a filter chip needs. */
+export interface RotaRef {
+  id: number;
+  name: string;
+}
+
+/**
+ * GET /api/member/schedule — the whole house's upcoming rota in one payload.
+ *
+ * `today` is the GROUP's calendar date, not the browser's and not the server's:
+ * every week boundary and every "in 3 days" on this page is measured from it.
+ * `shifts` covers every active, rostered rota, not only the viewer's turns, and
+ * each shift's `can_assign_cover` / `can_cancel_cover` are resolved for the
+ * VIEWER, so the page shows only the buttons the API would accept.
+ */
+export interface MemberScheduleResponse {
+  /** The group's today, as a civil date (YYYY-MM-DD). */
+  today: string;
+  /** The group's IANA timezone, e.g. "Europe/London". */
+  timezone: string;
+  member: MemberRef;
+  /** Every active member of the group, including the viewer, ordered by name. */
+  members: ScheduleMember[];
+  /** The group's active, non-draft rotas, ordered by name. */
+  rotas: RotaRef[];
+  /** Every shift of those rotas with due_on >= today, by due date then rota name. */
+  shifts: MemberShift[];
+}
