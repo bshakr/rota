@@ -29,7 +29,7 @@ Google Calendar exposes a per-calendar "Secret address in iCal format" (Settings
 
 ## 4. Admin connection flow
 
-Where: a new "House calendar" section in the existing group-settings card on the admin dashboard (`apps/web/src/app/(admin)/dashboard/_components/group-settings.tsx`, anchor `#group-settings`).
+Where: a new "House calendar" section in the existing group-settings card on the admin dashboard (`apps/web/src/app/(admin)/dashboard/_components/group-settings.tsx`; the section carries its own anchor `#house-calendar`).
 
 States
 1. Not connected: one field "Calendar link" with help text: "In Google Calendar open Settings, pick the house calendar, and copy the Secret address in iCal format. Anyone with this link can read the calendar, so it is stored like a password. Event titles are sent to Anthropic's Claude to tell trips from other events." Button "Connect".
@@ -83,14 +83,14 @@ The secret URL. The app has no Active Record encryption configured and stores me
 - Window: `group.today - 7.days` to `group.today + 90.days`, matching the shift horizon. An event is kept when its `[starts_on, ends_on]` overlaps the window.
 - All-day events (`DTSTART;VALUE=DATE`): `starts_on = DTSTART`, `ends_on = DTEND - 1 day` (iCal's DTEND is exclusive; a missing DTEND means one day). `all_day = true`, `starts_at`/`ends_at` null.
 - Timed events: convert to the group's time zone, `starts_on`/`ends_on` are the local dates, `ends_on` drops back a day when the end lands exactly on local midnight. Floating times (no TZID, no Z) use `X-WR-TIMEZONE` if present, else the group's zone.
-- Recurrence overrides: a VEVENT with `RECURRENCE-ID` replaces the generated occurrence with the same UID and start; `STATUS:CANCELLED` drops it. Instances of a recurring multi-day event that started before the window and run into it are not expanded by the library; documented limitation, negligible for a house calendar.
+- Recurrence overrides: a VEVENT with `RECURRENCE-ID` replaces the generated occurrence with the same UID and start; `STATUS:CANCELLED` drops it. Instances of a recurring multi-day event that started before the window and run into it are not expanded by the library; documented limitation, negligible for a house calendar. Expansion is queried two days wider than the window and filtered back, because the recurrence library reads date bounds in the process zone; the container pins `TZ=UTC` besides. A body that fails to parse raises `NotACalendar`; a single event whose expansion raises is skipped with a warning naming its UID.
 - `X-WR-CALNAME` becomes `calendar_name`. Only `SUMMARY`, `UID`, `DTSTART`, `DTEND`, `RRULE`, `EXDATE`, `RECURRENCE-ID`, `STATUS` are read. Nothing else is stored.
 
 `CalendarSync`
 1. Fetch. On 304, done.
 2. Parse into occurrence structs. A body that is not a calendar raises `CalendarParser::NotACalendar`.
 3. Fingerprint each occurrence, reuse stored verdicts, and send the rest to Claude in one batched call (section 7). A failed call leaves those occurrences pending; it never fails the sync.
-4. In one transaction: `upsert_all` the rows keyed on `instance_key` with `synced_at = now`; replace the join rows for away events; delete this connection's events with `synced_at < now` (instances no longer in the feed, cancelled, or now outside the window). Update `events_count`, `last_synced_at`, `etag`, `last_modified`, reset `consecutive_failures` and `last_error`.
+4. In one transaction: `upsert_all` the rows keyed on `instance_key` with `synced_at = now`; replace the join rows for away events; delete this connection's events whose `instance_key` is not in this pass (instances no longer in the feed, cancelled, or now outside the window; keyed on instance rather than a timestamp so two passes in one clock tick cannot miss). Update `events_count`, `last_synced_at`, `etag`, `last_modified`, reset `consecutive_failures` and `last_error`.
 5. On any failure: increment `consecutive_failures`, set `last_error` to a short human sentence keyed on the exception class, keep the existing rows (stale beats empty). `Gone` sets `disabled_at` after three consecutive failures (the link was reset; retrying hourly forever is pointless). Any failure sets `disabled_at` after 48 consecutive failures (two days). A disabled connection is skipped by the job until the admin presses "Sync now" or saves a new link, both of which clear `disabled_at`.
 
 ## 7. Away inference
@@ -100,10 +100,10 @@ The house already writes away dates as calendar titles ("Alfie away in Carlisle"
 ### 7.1 Model and call shape
 
 - Model: Claude Haiku 4.5, `claude-haiku-4-5`, through the official `anthropic` Ruby gem. No extended thinking; this is a short classification. Sonnet 5 (`claude-sonnet-5`) is the step up if Haiku proves unreliable on real titles (open question 2).
-- One request per sync for everything that needs a verdict, chunked at 50 events per request. `max_tokens` 4096 per chunk.
+- One request per sync for everything that needs a verdict, chunked at 50 events per request. `max_tokens` 8192 per chunk; the prompt asks for each reason as one clause under fifteen words.
 - Structured output (`output_config.format` with a JSON schema, which Haiku 4.5 supports) so the reply is always valid JSON in a fixed shape; no free-text parsing.
 - System prompt (stable across calls, so it stays byte-identical): the app's purpose, the definition of away, the guidance below, and the roster of active housemates as `id: name` pairs.
-- User message: a JSON array of the events to classify, each `{ ref, title, all_day, starts_on, ends_on, nights }` where `ref` is the fingerprint (7.3) and `nights` is `ends_on - starts_on`.
+- User message: a JSON array of the events to classify, each `{ ref, title, all_day, starts_on, ends_on, nights }` where `ref` is the item's position in the chunk ("1" to "50"; the classifier maps it back to the fingerprint of 7.3, so the model never echoes 64-character strings) and `nights` is `ends_on - starts_on`.
 - Reply schema: `{ verdicts: [{ ref, kind: "event" | "away", member_ids: [integer], reason: string }] }`. `reason` is one short clause the admin sees ("Alfie, three nights in Carlisle"; "a birthday, not a trip"), capped at 120 characters on our side.
 - Client: `timeout` 20 seconds, SDK default retries (2) on 429 and 5xx. `ANTHROPIC_API_KEY` from the environment, required in production (the API refuses to boot without it, the same way it refuses to boot without Twilio credentials), optional in development and test.
 
@@ -164,7 +164,7 @@ Under a cent per house per month in steady state. The prompt is well under the m
 
 ## 8. Surfacing failures
 
-`collectDashboardWarnings` (`apps/web/src/lib/dashboard.ts`) gains one entry, `calendar-sync`, severity `warning`, when `group.calendar` is present and `failing` is true (`consecutive_failures >= 3` or `disabled_at` set): title "House calendar isn't syncing", description built from `last_error`, action "Check the calendar link" pointing at `#group-settings`. It sits after the timezone warning and before failed texts: quieter than a lost reminder, louder than a draft rota. Unit-tested alongside the existing cases.
+`collectDashboardWarnings` (`apps/web/src/lib/dashboard.ts`) gains one entry, `calendar-sync`, severity `warning`, when `group.calendar` is present and `failing` is true (`consecutive_failures >= 3` or `disabled_at` set): title "House calendar isn't syncing", description built from `last_error`, action "Check the calendar link" pointing at `#house-calendar`, the section's own anchor inside the group-settings card. It sits after the timezone warning and before failed texts: quieter than a lost reminder, louder than a draft rota. Unit-tested alongside the existing cases.
 
 ## 9. Member payload and feed integration
 
@@ -198,7 +198,7 @@ Not in this ticket. The week glance stays chores-only; the admin's calendar view
 
 ## 12. Testing
 
-- Fixtures in `spec/fixtures/ics/`: simple timed event; all-day single day; all-day multi-day (exclusive DTEND); weekly RRULE with EXDATE; RRULE with a RECURRENCE-ID override and a cancelled instance; floating time with `X-WR-TIMEZONE`; a Google export with `X-WR-CALNAME`; a non-calendar HTML body.
+- Fixtures in `spec/fixtures/files/ics/` (rspec-rails' default `file_fixture_path`): simple timed event; all-day single day; all-day multi-day (exclusive DTEND); weekly RRULE with EXDATE; RRULE with a RECURRENCE-ID override and a cancelled instance; floating time with `X-WR-TIMEZONE`; a Google export with `X-WR-CALNAME`; a non-calendar HTML body.
 - `CalendarParser` specs per fixture, asserting dates in a non-UTC group zone (Europe/London across the October clock change, and one Auckland case).
 - `CalendarClassifier` specs with WebMock: the request carries the model id, the JSON schema, the roster, and the titles (and nothing else from the feed); a valid reply becomes verdicts; a reply with an unknown ref, an off-roster member id, or an away verdict with no members is dropped or coerced (section 7.2); a 429, a 5xx, a timeout, and a missing key each raise `CalendarClassifier::Failed` without leaking titles into the message; chunking at 50.
 - Classifier eval, not a spec: `bin/classifier-eval` runs the section 7.5 table against the live model with the demo roster and prints a per-row pass or fail. Run by hand before PR 1 merges and whenever the prompt or model changes; expected 12 of 12. Not part of `bin/ci`.
