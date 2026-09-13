@@ -18,8 +18,16 @@ import type { MemberScheduleResponse, MemberShift } from "@/lib/api/types";
 import { formatShiftDate, relativeDay } from "@/lib/date";
 import { civilDate } from "@/lib/group-dates";
 
+import { awayMemberIdsOn } from "./calendar-view";
 import type { RotaFilter } from "./schedule-view";
-import { ALL_SHIFTS, buildFeed, nextShiftByMember, nextUp, weekStart } from "./schedule-view";
+import {
+  ALL_SHIFTS,
+  buildFeed,
+  hasShifts,
+  nextShiftByMember,
+  nextUp,
+  weekStart,
+} from "./schedule-view";
 import type { AssignAction, CancelAction } from "./use-shift-updates";
 import { runAction, useShiftUpdates } from "./use-shift-updates";
 
@@ -81,6 +89,13 @@ export function MemberFeed({
   const weeks = React.useMemo(() => buildFeed(live, filter), [live, filter]);
   const upNext = React.useMemo(() => nextUp(live), [live]);
   const nextByMember = React.useMemo(() => nextShiftByMember(live), [live]);
+  // Who the house calendar has away on the GROUP's today, the same reference date
+  // every relative day on this page is measured from. Computed here rather than
+  // inside the two lists that show it, so the strip and the card can never disagree.
+  const awayToday = React.useMemo(
+    () => awayMemberIdsOn(schedule.events, schedule.today),
+    [schedule.events, schedule.today],
+  );
 
   const filtered = rotaFilter.kind !== "everyone" || personId !== null;
   const visible = expanded ? weeks : weeks.slice(0, INITIAL_WEEKS);
@@ -150,9 +165,16 @@ export function MemberFeed({
     toast.success("Got it. You're back down for this one.");
   }
 
-  const feed =
-    weeks.length === 0 ? (
-      filtered ? (
+  // The empty state is decided from the SHIFTS, not from the week count, and it sits
+  // ABOVE the feed rather than instead of it. A person filter keeps every house
+  // calendar entry on purpose (the day you tap someone to ask is the day you need to
+  // see they are in Greece), so weeks stay non-empty for a housemate who has no turns
+  // at all. Counting weeks therefore swallowed the one message they needed, and left
+  // event rows that read as if they were that person's commitments. Saying "no shifts"
+  // first and keeping the entries under it is both true statements at once.
+  const feed = (
+    <>
+      {hasShifts(weeks) ? null : filtered ? (
         <EmptyState
           icon={Filter}
           title="No shifts for this filter"
@@ -169,28 +191,35 @@ export function MemberFeed({
           title="Nothing on the rota yet"
           description="Whoever runs your rota has not set anything up. We'll text you as soon as they do."
         />
-      )
-    ) : (
-      <>
-        <div className="space-y-8">
-          {visible.map((week) => (
-            <WeekSection
-              key={week.weekStart}
-              week={week}
-              today={schedule.today}
-              viewerId={schedule.member.id}
-              onHandOff={openHandOff}
-              onTakeBack={setTakingBack}
-            />
-          ))}
-        </div>
-        {!expanded && weeks.length > INITIAL_WEEKS ? (
-          <Button variant="secondary" size="lg" className="w-full" onClick={() => setExpanded(true)}>
-            Show more weeks
-          </Button>
-        ) : null}
-      </>
-    );
+      )}
+      {weeks.length > 0 ? (
+        <>
+          <div className="space-y-8">
+            {visible.map((week) => (
+              <WeekSection
+                key={week.weekStart}
+                week={week}
+                today={schedule.today}
+                viewerId={schedule.member.id}
+                onHandOff={openHandOff}
+                onTakeBack={setTakingBack}
+              />
+            ))}
+          </div>
+          {!expanded && weeks.length > INITIAL_WEEKS ? (
+            <Button
+              variant="secondary"
+              size="lg"
+              className="w-full"
+              onClick={() => setExpanded(true)}
+            >
+              Show more weeks
+            </Button>
+          ) : null}
+        </>
+      ) : null}
+    </>
+  );
 
   return (
     <>
@@ -211,6 +240,7 @@ export function MemberFeed({
             <PeopleStrip
               members={schedule.members}
               viewerId={schedule.member.id}
+              awayToday={awayToday}
               selectedId={personId}
               onSelect={setPersonId}
             />
@@ -233,6 +263,7 @@ export function MemberFeed({
             members={schedule.members}
             viewerId={schedule.member.id}
             nextShifts={nextByMember}
+            awayToday={awayToday}
             selectedId={personId}
             onSelect={setPersonId}
           />

@@ -1,6 +1,7 @@
 "use client";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { MemberShift, ScheduleMember } from "@/lib/api/types";
 import { avatarTint } from "@/lib/avatar-tint";
@@ -18,6 +19,7 @@ export function PeopleCard({
   members,
   viewerId,
   nextShifts,
+  awayToday,
   selectedId,
   onSelect,
 }: {
@@ -25,6 +27,8 @@ export function PeopleCard({
   viewerId: number;
   /** Each person's next responsible shift, keyed by member id. */
   nextShifts: Map<number, MemberShift>;
+  /** Ids of housemates the house calendar has away on the group's today. */
+  awayToday: number[];
   selectedId: number | null;
   onSelect: (memberId: number | null) => void;
 }) {
@@ -58,8 +62,18 @@ export function PeopleCard({
                     </AvatarFallback>
                   </Avatar>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">
-                      {member.id === viewerId ? `${member.name} (you)` : member.name}
+                    {/* The desktop has the room the phone's strip does not, so "away"
+                        is spelled out here rather than carried by a dot. Same warning
+                        sticker the feed's away rows wear, so the two read as one fact. */}
+                    <span className="flex items-center gap-2">
+                      <span className="min-w-0 truncate text-sm font-medium">
+                        {member.id === viewerId ? `${member.name} (you)` : member.name}
+                      </span>
+                      {awayToday.includes(member.id) ? (
+                        <Badge variant="warning" className="shrink-0">
+                          Away today
+                        </Badge>
+                      ) : null}
                     </span>
                     <span className="text-muted-foreground block truncate text-xs">
                       {next

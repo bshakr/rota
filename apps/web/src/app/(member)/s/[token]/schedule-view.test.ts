@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { MemberScheduleResponse, MemberShift } from "@/lib/api/types";
+import type { CalendarEventItem, MemberScheduleResponse, MemberShift } from "@/lib/api/types";
 
 import {
   ALL_SHIFTS,
   buildFeed,
+  hasShifts,
   matchesFilter,
   nextShiftByMember,
   nextUp,
@@ -47,6 +48,7 @@ function schedule(partial: Partial<MemberScheduleResponse> = {}): MemberSchedule
     ],
     rotas: [{ id: 1, name: "Kitchen" }],
     shifts: [],
+    events: [],
     ...partial,
   };
 }
@@ -230,6 +232,211 @@ describe("buildFeed", () => {
     );
 
     expect(feed).toEqual([]);
+  });
+});
+
+describe("buildFeed with house events", () => {
+  // Fri 25 Sept to Thu 1 Oct 2026; Alfie is id 2 here, the house's other member.
+  const greece: CalendarEventItem = {
+    id: 77,
+    title: "Bob in Greece",
+    starts_on: "2026-09-25",
+    ends_on: "2026-10-01",
+    all_day: true,
+    start_time: null,
+    kind: "away",
+    member_ids: [2],
+  };
+
+  // Thu 1 Oct 2026, 19:00.
+  const dinner: CalendarEventItem = {
+    id: 91,
+    title: "House dinner at home",
+    starts_on: "2026-10-01",
+    ends_on: "2026-10-01",
+    all_day: false,
+    start_time: "19:00",
+    kind: "event",
+    member_ids: [],
+  };
+
+  it("gives an entry its own day row on a day with no shifts", () => {
+    const feed = buildFeed(
+      schedule({
+        today: "2026-09-20",
+        shifts: [shift({ due_on: "2026-09-20" })],
+        events: [greece, dinner],
+      }),
+      ALL_SHIFTS,
+    );
+
+    expect(feed.map((week) => week.label)).toEqual(["This week", "Next week", "28 Sept – 4 Oct"]);
+    expect(feed[0].days.map((day) => day.due_on)).toEqual(["2026-09-20"]);
+    expect(feed[0].days[0].events).toEqual([]);
+
+    expect(feed[1].days.map((day) => day.due_on)).toEqual(["2026-09-25"]);
+    expect(feed[1].days[0].shifts).toEqual([]);
+    expect(feed[1].days[0].events.map((event) => event.id)).toEqual([77]);
+    expect(feed[1].days[0].events[0].untilLabel).toBe("until Thu 1 Oct");
+    expect(feed[1].days[0].events[0].memberNames).toEqual(["Bob"]);
+
+    expect(feed[2].days[0].events.map((event) => event.id)).toEqual([91]);
+  });
+
+  it("hangs an entry off the row of a day that already has shifts", () => {
+    const feed = buildFeed(
+      schedule({
+        today: "2026-09-28",
+        shifts: [shift({ due_on: "2026-10-01" })],
+        events: [dinner],
+      }),
+      ALL_SHIFTS,
+    );
+
+    expect(feed).toHaveLength(1);
+    expect(feed[0].days).toHaveLength(1);
+    expect(feed[0].days[0].shifts).toHaveLength(1);
+    expect(feed[0].days[0].events.map((event) => event.id)).toEqual([91]);
+  });
+
+  it("orders days by date however the payload ordered the entries", () => {
+    const feed = buildFeed(
+      schedule({ today: "2026-09-20", shifts: [], events: [dinner, greece] }),
+      ALL_SHIFTS,
+    );
+
+    expect(feed.flatMap((week) => week.days.map((day) => day.due_on))).toEqual([
+      "2026-09-25",
+      "2026-10-01",
+    ]);
+  });
+
+  it("moves an away entry already under way onto today rather than dropping it", () => {
+    // Greece ran 25 Sept to 1 Oct and today is the 27th: the trip started in the past
+    // but Bob is away RIGHT NOW, which is the fact the feed exists to show.
+    const feed = buildFeed(
+      schedule({ today: "2026-09-27", shifts: [], events: [greece, dinner] }),
+      ALL_SHIFTS,
+    );
+
+    expect(feed.flatMap((week) => week.days.map((day) => day.due_on))).toEqual([
+      "2026-09-27",
+      "2026-10-01",
+    ]);
+    expect(feed[0].days[0].events.map((event) => event.id)).toEqual([77]);
+    // The "until" label carries the rest of the trip, so nothing is lost by moving it.
+    expect(feed[0].days[0].events[0].untilLabel).toBe("until Thu 1 Oct");
+  });
+
+  it("moves a plain multi-day entry already under way onto today too", () => {
+    // Nothing else renders a plain event, so dropping this one lost it from every
+    // surface the member has.
+    const works: CalendarEventItem = {
+      id: 55,
+      title: "Scaffolding up",
+      starts_on: "2026-09-26",
+      ends_on: "2026-09-30",
+      all_day: true,
+      start_time: null,
+      kind: "event",
+      member_ids: [],
+    };
+
+    const feed = buildFeed(schedule({ today: "2026-09-27", shifts: [], events: [works] }), ALL_SHIFTS);
+
+    expect(feed[0].days[0].due_on).toBe("2026-09-27");
+    expect(feed[0].days[0].events.map((event) => event.id)).toEqual([55]);
+  });
+
+  it("drops an entry that already ENDED, the same as a past shift", () => {
+    const feed = buildFeed(
+      schedule({ today: "2026-10-02", shifts: [], events: [greece, dinner] }),
+      ALL_SHIFTS,
+    );
+
+    expect(feed).toEqual([]);
+  });
+
+  it("puts an in-progress entry on the same row as a shift already due today", () => {
+    const feed = buildFeed(
+      schedule({
+        today: "2026-09-27",
+        shifts: [shift({ due_on: "2026-09-27" })],
+        events: [greece],
+      }),
+      ALL_SHIFTS,
+    );
+
+    expect(feed[0].days).toHaveLength(1);
+    expect(feed[0].days[0].due_on).toBe("2026-09-27");
+    expect(feed[0].days[0].shifts).toHaveLength(1);
+    expect(feed[0].days[0].events.map((event) => event.id)).toEqual([77]);
+  });
+
+  it("shows entries under 'Just me', where they are how you read your own week", () => {
+    const feed = buildFeed(
+      schedule({ today: "2026-09-20", shifts: [], events: [greece] }),
+      { rota: { kind: "me" }, personId: null },
+    );
+
+    expect(feed[0].days[0].events.map((event) => event.id)).toEqual([77]);
+  });
+
+  it("hides entries while a rota chip is active, since they belong to no rota", () => {
+    const feed = buildFeed(
+      schedule({
+        today: "2026-09-20",
+        shifts: [shift({ due_on: "2026-09-20" })],
+        events: [greece, dinner],
+      }),
+      { rota: { kind: "rota", rotaId: 1 }, personId: null },
+    );
+
+    expect(feed.flatMap((week) => week.days.map((day) => day.due_on))).toEqual(["2026-09-20"]);
+    expect(feed[0].days[0].events).toEqual([]);
+  });
+});
+
+describe("hasShifts", () => {
+  // Thu 1 Oct 2026, a house dinner nobody is on the hook for.
+  const dinner: CalendarEventItem = {
+    id: 91,
+    title: "House dinner at home",
+    starts_on: "2026-10-01",
+    ends_on: "2026-10-01",
+    all_day: false,
+    start_time: "19:00",
+    kind: "event",
+    member_ids: [],
+  };
+
+  it("is false for a feed built only from house calendar entries", () => {
+    // The bug this guards: a person filter matching nothing still admits every house
+    // entry, so the feed has weeks and the member is never told this person is free.
+    const feed = buildFeed(schedule({ today: "2026-09-28", shifts: [], events: [dinner] }), {
+      rota: { kind: "everyone" },
+      personId: 2,
+    });
+
+    expect(feed.length).toBeGreaterThan(0);
+    expect(hasShifts(feed)).toBe(false);
+  });
+
+  it("is true as soon as one day carries a shift", () => {
+    const feed = buildFeed(
+      schedule({
+        today: "2026-09-28",
+        shifts: [shift({ due_on: "2026-10-02", assigned_member: { id: 2, name: "Bob" } })],
+        events: [dinner],
+      }),
+      { rota: { kind: "everyone" }, personId: 2 },
+    );
+
+    expect(hasShifts(feed)).toBe(true);
+  });
+
+  it("is false for an empty feed", () => {
+    expect(hasShifts([])).toBe(false);
   });
 });
 

@@ -10,7 +10,10 @@ class GroupSerializer < ApplicationSerializer
       slug: record.slug,
       timezone: record.timezone,
       timezone_confirmed: record.timezone_confirmed?,
-      timezone_confirmed_at: record.timezone_confirmed_at
+      timezone_confirmed_at: record.timezone_confirmed_at,
+      # The house calendar link (BLO-1667), or null when no admin has connected one. The summary
+      # never carries `ical_url`: the link is a credential and leaves the server only masked.
+      calendar: CalendarConnectionSerializer.one(record.calendar_connection)
     }
   end
 end

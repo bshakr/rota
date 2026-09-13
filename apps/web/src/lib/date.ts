@@ -177,6 +177,38 @@ export function relativeDay(target: Date, today: Date): string {
   return `${-days} days ago`;
 }
 
+/**
+ * "just now" / "5 min ago" / "2 h ago" / "yesterday": elapsed time at the
+ * granularity the thing being described actually changes at.
+ *
+ * `relativeDay` is day-granular because a shift is due on a DATE, and that is
+ * exactly wrong for something that runs every hour: a calendar swept at 09:00
+ * would read "today" until midnight, so an admin pressing "Sync now" would watch
+ * the line not move and conclude nothing happened.
+ *
+ * Under a day this is pure elapsed milliseconds, so neither a zone nor a locale
+ * can change the answer. A day or more hands off to `relativeDay`, which counts
+ * whole local days and says "yesterday" rather than "27 h ago". A target in the
+ * future (a server clock a few seconds ahead) reads "just now" rather than a
+ * negative count.
+ *
+ * Both arguments are explicit for the same reason `relativeDay`'s are: a
+ * `Date.now()` inside a component renders one string on the server and another in
+ * the browser a moment later, which is a hydration mismatch. Pass the instant the
+ * server rendered at.
+ */
+export function relativeTime(target: Date, now: Date): string {
+  const elapsed = now.getTime() - target.getTime();
+  if (elapsed < MINUTE_MS) return "just now";
+  if (elapsed < HOUR_MS) return `${Math.floor(elapsed / MINUTE_MS)} min ago`;
+  if (elapsed < DAY_MS) return `${Math.floor(elapsed / HOUR_MS)} h ago`;
+  return relativeDay(target, now);
+}
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
 /** Whole calendar days from `a` to `b`, counted at midnight in TIME_ZONE. */
 function wholeDaysBetween(a: Date, b: Date): number {
   const ms = midnightUtcFor(b) - midnightUtcFor(a);

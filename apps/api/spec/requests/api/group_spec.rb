@@ -23,6 +23,25 @@ RSpec.describe "Api::Group" do
       expect(response.parsed_body["group"]).to include("timezone_confirmed" => false, "timezone_confirmed_at" => nil)
     end
 
+    # The dashboard reads the whole calendar card off this one payload (spec section 4), and the link
+    # itself is never part of it.
+    it "carries the calendar summary when one is connected, and null otherwise" do
+      get "/api/group", headers: headers
+      expect(response.parsed_body["group"]["calendar"]).to be_nil
+
+      connection = create(:calendar_connection, group: group, calendar_name: "Park Vista", events_count: 3,
+                                                consecutive_failures: 3, last_error: "Couldn't reach the calendar.")
+
+      get "/api/group", headers: headers
+
+      expect(response.parsed_body["group"]["calendar"]).to include(
+        "calendar_name" => "Park Vista", "events_count" => 3, "unclassified_count" => 0,
+        "failing" => true, "last_error" => "Couldn't reach the calendar."
+      )
+      expect(response.parsed_body["group"]["calendar"]).not_to have_key("ical_url")
+      expect(response.body).not_to include(connection.ical_url)
+    end
+
     it "is refused without a token" do
       get "/api/group"
 

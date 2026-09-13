@@ -4,9 +4,16 @@ import { CalendarCheck, Repeat } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
-import { getGroup, listMembers, listRotas, listShifts, listSmsMessages } from "@/lib/api/admin";
+import {
+  getGroup,
+  listCalendarEvents,
+  listMembers,
+  listRotas,
+  listShifts,
+  listSmsMessages,
+} from "@/lib/api/admin";
 import { isApiError } from "@/lib/api/errors";
-import type { Rota, Shift, SmsMessage } from "@/lib/api/types";
+import type { CalendarEventPreviewItem, Rota, Shift, SmsMessage } from "@/lib/api/types";
 import { collectDashboardWarnings } from "@/lib/dashboard";
 import { compareCivil, groupToday, isThisWeek } from "@/lib/group-dates";
 
@@ -34,7 +41,13 @@ export default async function DashboardPage() {
     listMembers(),
   ]);
 
-  const today = groupToday(new Date(), group.timezone);
+  // One instant for the whole render: `today` is the group's own calendar day, and
+  // `now` is what the calendar card measures "last checked" against. Reading the
+  // clock once means the two cannot disagree, and passing the instant to the client
+  // rather than letting it call Date.now() is what keeps the rendered string
+  // identical on both sides of hydration.
+  const now = new Date();
+  const today = groupToday(now, group.timezone);
 
   // Only running rotas have shifts; a draft has no roster to generate them from.
   const runningRotas = rotas.filter((rota) => rota.active && !rota.draft);
@@ -74,6 +87,25 @@ export default async function DashboardPage() {
   } catch (error) {
     if (!isApiError(error)) throw error;
   }
+
+  // The house calendar's "What we found" disclosure (BLO-1667). Only worth a
+  // request when a calendar is connected, and a preview that fails must not blank
+  // the dashboard: fall back to an empty list and let the settings card show the
+  // stored `last_error`. Anything that isn't an ApiError still propagates, notably
+  // the sign-in redirect thrown on a 401.
+  let calendarEvents: CalendarEventPreviewItem[] = [];
+  if (group.calendar) {
+    try {
+      ({ events: calendarEvents } = await listCalendarEvents(30));
+    } catch (error) {
+      if (!isApiError(error)) throw error;
+    }
+  }
+
+  // Only the names cross to the client. A Member also carries its magic-link
+  // access_token, which has no business in a page payload.
+  const memberNames: Record<number, string> = {};
+  for (const member of members) memberNames[member.id] = member.name;
 
   const warnings = collectDashboardWarnings({
     group,
@@ -127,7 +159,12 @@ export default async function DashboardPage() {
           <WeekGlance shifts={weekShifts} today={today} />
         )}
 
-        <GroupSettings group={group} />
+        <GroupSettings
+          group={group}
+          calendarEvents={calendarEvents}
+          memberNames={memberNames}
+          now={now.toISOString()}
+        />
       </div>
     </>
   );

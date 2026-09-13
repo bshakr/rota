@@ -7,6 +7,7 @@ import {
   formatShiftDate,
   formatTimestamp,
   relativeDay,
+  relativeTime,
 } from "./date";
 
 // These formatters run in CLIENT components (the member feed's week sections, the
@@ -108,5 +109,39 @@ describe("relativeDay counts whole calendar days in Europe/London", () => {
     // The clocks go forward on Sunday 29 March 2026. A naive millisecond division
     // would call this "in 2 days" for part of the range.
     expect(relativeDay(at("2026-03-30"), at("2026-03-28"))).toBe("in 2 days");
+  });
+});
+
+describe("relativeTime is minute-granular under a day, then defers to relativeDay", () => {
+  /** An instant, spelled as UTC so the example reads as a clock rather than a zone puzzle. */
+  const instant = (iso: string) => new Date(iso);
+  const now = instant("2026-09-13T14:30:00Z");
+
+  it("calls anything inside the last minute 'just now'", () => {
+    expect(relativeTime(instant("2026-09-13T14:30:00Z"), now)).toBe("just now");
+    expect(relativeTime(instant("2026-09-13T14:29:01Z"), now)).toBe("just now");
+  });
+
+  it("counts minutes up to the hour, rounding down", () => {
+    expect(relativeTime(instant("2026-09-13T14:29:00Z"), now)).toBe("1 min ago");
+    expect(relativeTime(instant("2026-09-13T14:25:30Z"), now)).toBe("4 min ago");
+    expect(relativeTime(instant("2026-09-13T13:31:00Z"), now)).toBe("59 min ago");
+  });
+
+  it("counts hours up to the day, rounding down", () => {
+    expect(relativeTime(instant("2026-09-13T13:30:00Z"), now)).toBe("1 h ago");
+    expect(relativeTime(instant("2026-09-13T12:15:00Z"), now)).toBe("2 h ago");
+    expect(relativeTime(instant("2026-09-12T14:31:00Z"), now)).toBe("23 h ago");
+  });
+
+  it("hands off to relativeDay at a day, so it says yesterday rather than 24 h ago", () => {
+    expect(relativeTime(instant("2026-09-12T14:30:00Z"), now)).toBe("yesterday");
+    expect(relativeTime(instant("2026-09-10T09:00:00Z"), now)).toBe("3 days ago");
+  });
+
+  it("reads a future instant as 'just now' rather than a negative count", () => {
+    // A server clock a few seconds ahead of the timestamp it just wrote must not
+    // render "-1 min ago" on the admin's screen.
+    expect(relativeTime(instant("2026-09-13T14:30:05Z"), now)).toBe("just now");
   });
 });

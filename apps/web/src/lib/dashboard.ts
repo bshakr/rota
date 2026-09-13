@@ -8,9 +8,11 @@ import type { Group, Member, Rota, SmsMessage } from "./api/types";
  *
  * The order is the priority: an unconfirmed timezone is the quietest and most
  * expensive failure (every text an hour wrong, forever, with no error), so it
- * leads. A failed text is the loudest (someone was owed a reminder and didn't get
- * it), so it `shouts` in the destructive tone. Drafts and unreachable people are
- * important but visible-by-nature, so they follow in the warning tone.
+ * leads. A calendar that stopped syncing follows for the same reason: nothing
+ * on screen says the members' page has gone stale. A failed text is the loudest
+ * (someone was owed a reminder and didn't get it), so it `shouts` in the
+ * destructive tone. Drafts and unreachable people are important but
+ * visible-by-nature, so they follow in the warning tone.
  */
 
 export type WarningSeverity = "warning" | "destructive";
@@ -33,7 +35,10 @@ export interface DashboardWarningInput {
   members: Member[];
   /** SMS log rows already filtered to status=failed. */
   failedSms: SmsMessage[];
-  /** Route of the group-settings screen (name + timezone). Owned by the rotas area. */
+  /**
+   * Route of the group-settings screen (name, timezone, house calendar). Owned by
+   * the rotas area. A fragment on it is replaced when a warning aims at one section.
+   */
   settingsHref: string;
 }
 
@@ -58,6 +63,24 @@ export function collectDashboardWarnings({
         `Until someone does, every text may go out an hour off, silently.`,
       href: settingsHref,
       action: "Set the timezone",
+    });
+  }
+
+  // A calendar that stopped syncing fails quietly: the members' page just goes
+  // stale, with nothing on screen to say why. Quieter than a lost reminder,
+  // louder than a draft rota.
+  if (group.calendar?.failing) {
+    warnings.push({
+      id: "calendar-sync",
+      severity: "warning",
+      title: "House calendar isn't syncing",
+      description:
+        `${group.calendar.last_error ?? "The last few checks failed."} ` +
+        `Events and away dates on the members' page may be out of date.`,
+      // `settingsHref` may itself be an in-page anchor, so swap its fragment for
+      // the calendar section rather than appending a second one.
+      href: `${settingsHref.split("#")[0]}#house-calendar`,
+      action: "Check the calendar link",
     });
   }
 

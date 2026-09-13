@@ -1,0 +1,62 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The away classifier against the LIVE model, on the house's own titles (spec section 7.5).
+# Deliberately not a spec: every spec stubs the API and this one must not, so it is not in bin/ci.
+# Run it by hand before PR 1 merges and whenever the prompt or the model changes. Expect 12 of 12.
+#
+#   cd apps/api && ANTHROPIC_API_KEY=sk-ant-... bin/classifier-eval
+#
+# It reads and writes nothing: the roster is six plain structs, not Member records.
+
+require_relative "../config/environment"
+
+Housemate = Struct.new(:id, :name)
+ROSTER = [
+  Housemate.new(1, "Bass"), Housemate.new(2, "Eliza"), Housemate.new(3, "Raph"),
+  Housemate.new(4, "Ciara"), Housemate.new(5, "Alfie"), Housemate.new(6, "Mic")
+].freeze
+
+# title, all-day?, nights, expected kind, expected housemates
+CASES = [
+  [ "Alfie away in Carlisle (Filming)", true, 3, "away", %w[Alfie] ],
+  [ "Ciara – France", true, 2, "away", %w[Ciara] ],
+  [ "Bass and Eliza France", true, 4, "away", %w[Bass Eliza] ],
+  [ "Mic Ireland with fam", true, 5, "away", %w[Mic] ],
+  [ "Alfie in Greece (Song Leader Retreat)", true, 6, "away", %w[Alfie] ],
+  [ "Raph off to Lisbon", true, 3, "away", %w[Raph] ],
+  [ "Raph Bins Out", true, 0, "event", [] ],
+  [ "Alfie Bday", true, 0, "event", [] ],
+  [ "Naomi's birthday", true, 0, "event", [] ],
+  [ "Ester in London [ES4C]", true, 4, "event", [] ],
+  [ "House dinner @ home", false, 0, "event", [] ],
+  [ "Raphael – Tummo retreat w Nico", false, 0, "event", [] ]
+].freeze
+
+def names_for(ids) = ROSTER.select { |housemate| ids.include?(housemate.id) }.map(&:name).sort
+
+start = Date.new(2026, 9, 16)
+items = CASES.each_with_index.map do |(title, all_day, nights, _kind, _names), index|
+  { ref: "row-#{index}", summary: title, all_day: all_day, starts_on: start, ends_on: start + nights }
+end
+
+begin
+  verdicts = CalendarClassifier.new(members: ROSTER).classify(items)
+rescue CalendarClassifier::Failed => e
+  warn "classifier-eval could not reach the model: #{e.message}"
+  warn "Set ANTHROPIC_API_KEY and try again."
+  exit 1
+end
+
+failures = 0
+CASES.each_with_index do |(title, _all_day, _nights, kind, expected), index|
+  verdict = verdicts["row-#{index}"]
+  got = verdict ? names_for(verdict.member_ids) : []
+  ok = !verdict.nil? && verdict.kind == kind && got == expected.sort
+  failures += 1 unless ok
+  puts format("%-5s %-40s %-6s %-14s %s", ok ? "PASS" : "FAIL", title,
+              verdict&.kind || "none", got.join(", "), verdict&.reason)
+end
+
+puts "#{CASES.size - failures} of #{CASES.size} as expected"
+exit(failures.zero? ? 0 : 1)
