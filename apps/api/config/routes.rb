@@ -37,6 +37,10 @@ Rails.application.routes.draw do
     # authenticated by an opaque bearer token that maps to one member (MemberAuthenticatable), and able
     # to reach only that member's own shifts and the cover action. The token is NEVER a path segment —
     # `/s/:token` exists only as the Next.js page, which forwards the token as a bearer header.
+
+    # The whole house's upcoming rota (BLO-1666). Additive: /api/member/shifts stays as it is until
+    # nothing calls it. Like every member route, the token is a bearer header and never a path part.
+    get    "member/schedule",         to: "member_schedules#show"
     get    "member/shifts",           to: "member_shifts#index"
     post   "member/shifts/:id/cover", to: "member_covers#create"
     delete "member/shifts/:id/cover", to: "member_covers#destroy"
