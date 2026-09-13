@@ -187,9 +187,13 @@ export function HouseCalendarSettings({
 
           {connection.unclassified_count > 0 ? (
             <p role="status" className="text-muted-foreground text-sm">
+              {/* The tail of the sentence is a JS string rather than JSX text. Written
+                  as text it wrapped onto a second line carrying `&apos;`, and the
+                  transform then dropped the space in front of "not", so the card read
+                  "2 eventsnot sorted yet." A string has no whitespace rules to lose. */}
               {connection.unclassified_count}{" "}
-              {connection.unclassified_count === 1 ? "event" : "events"} not sorted yet.
-              We&apos;ll try again within the hour.
+              {connection.unclassified_count === 1 ? "event" : "events"}
+              {" not sorted yet. We’ll try again within the hour."}
             </p>
           ) : null}
 

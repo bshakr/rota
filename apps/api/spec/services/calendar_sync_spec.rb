@@ -122,6 +122,35 @@ RSpec.describe CalendarSync do
     expect(connection.reload).to have_attributes(events_count: 2, last_error: nil)
   end
 
+  # The stored window reaches seven days behind today so a trip already under way keeps its row and
+  # its away match, but the settings card spends events_count on "{n} events in the next 90 days".
+  # Counting every stored row told the admin about entries that finished last week.
+  it "counts only entries that have not finished, which is what the card claims to count" do
+    past = <<~ICS
+      BEGIN:VEVENT
+      DTSTART;VALUE=DATE:20260908
+      DTEND;VALUE=DATE:20260910
+      UID:over@google.com
+      SUMMARY:Bins out
+      END:VEVENT
+      BEGIN:VEVENT
+      DTSTART;VALUE=DATE:20260911
+      DTEND;VALUE=DATE:20260915
+      UID:running@google.com
+      SUMMARY:Scaffolding up
+      END:VEVENT
+    ICS
+    stub_feed(feed.sub("END:VCALENDAR", "#{past}END:VCALENDAR"))
+
+    described_class.new(connection).call
+
+    # All three rows are stored: the finished one is still inside the 97-day window.
+    expect(connection.calendar_events.count).to eq(3)
+    # Counted: the Greece trip in the future and the scaffolding that is still up today. Not the
+    # bins, which ended on the 9th and today is the 13th.
+    expect(connection.reload.events_count).to eq(2)
+  end
+
   it "reuses the stored verdict and asks Claude nothing on a second sync" do
     stub_feed(feed)
 

@@ -99,7 +99,13 @@ class CalendarSync
       prune(printed)
       relink(printed, verdicts)
     end
-    printed.size
+    # Deliberately NOT printed.size. The stored window reaches PAST_DAYS behind today so that a
+    # trip already under way keeps its row, its fingerprint and its away match, but the settings
+    # card spends this number on the sentence "{n} events in the next 90 days" (spec section 3).
+    # Counting the rows would quietly fold in up to a week of entries that have already finished,
+    # and an admin checking whether the link works would be reading a number nothing else agrees
+    # with. Anything still running counts: it is happening in the next 90 days.
+    printed.count { |occurrence, _| occurrence.ends_on >= group.today }
   end
 
   # Instances that left the feed: deleted, cancelled, retitled onto a new key, or fallen out of the
