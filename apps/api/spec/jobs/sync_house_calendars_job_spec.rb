@@ -55,7 +55,7 @@ RSpec.describe SyncHouseCalendarsJob do
       described_class.perform_now
 
       expect(JobRun.sole).to have_attributes(
-        name: "calendar_sync", succeeded: true, error_class: nil
+        name: "sync_house_calendars", succeeded: true, error_class: nil
       )
     end
 
@@ -67,7 +67,7 @@ RSpec.describe SyncHouseCalendarsJob do
       expect { described_class.perform_now }.to raise_error(ActiveRecord::StatementInvalid)
 
       expect(JobRun.sole).to have_attributes(
-        name: "calendar_sync", succeeded: false, error_class: "ActiveRecord::StatementInvalid"
+        name: "sync_house_calendars", succeeded: false, error_class: "ActiveRecord::StatementInvalid"
       )
     end
   end

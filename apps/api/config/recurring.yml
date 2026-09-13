@@ -48,6 +48,17 @@ default: &default
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12
 
+  # The same housekeeping, for the table that exists BECAUSE of the line above (BLO-1677). The three
+  # jobs here each write a job_runs row every pass — about fifty rows a day — and ninety days of
+  # them is a few thousand: enough to answer "when did this start failing?" across a quarter, and
+  # small enough that the table never needs thinking about again. Shaped as a one-line command like
+  # its neighbour, because the whole job is the one line. 2:20am is clear of the sweep on the hour,
+  # the window top-up at 3am, the price backfill at 4:40am, the calendar sync at minute 27 and the
+  # queue cleanup at minute 12.
+  prune_job_runs:
+    command: "JobRun.prune!"
+    schedule: every day at 2:20am
+
 development:
   <<: *default
 

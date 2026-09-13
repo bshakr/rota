@@ -80,6 +80,9 @@ RSpec.describe SuperAdmin::Overview do
       expect(kpis[:texts_last_7_days]).to eq(8)
       expect(kpis[:texts_delivered_last_7_days]).to eq(5)
       expect(kpis[:texts_failed_last_7_days]).to eq(2)
+      # The rate's denominator: the pending row is in the total above but not in this, so the page
+      # can render "71.4% of 7 settled" and never imply the eighth text failed.
+      expect(kpis[:texts_settled_last_7_days]).to eq(7)
       # 5 of the 7 settled texts arrived. 71.4, never 71 — a rate renders at the precision the data
       # supports (project rule).
       expect(kpis[:delivery_rate_last_7_days]).to eq(71.4)
@@ -91,6 +94,7 @@ RSpec.describe SuperAdmin::Overview do
 
       expect(payload[:kpis][:delivery_rate_last_7_days]).to be_nil
       expect(payload[:kpis][:texts_last_7_days]).to eq(1)
+      expect(payload[:kpis][:texts_settled_last_7_days]).to eq(0)
     end
 
     it "counts cover notices raised since Monday" do
@@ -111,6 +115,7 @@ RSpec.describe SuperAdmin::Overview do
         texts_last_7_days: 0,
         texts_delivered_last_7_days: 0,
         texts_failed_last_7_days: 0,
+        texts_settled_last_7_days: 0,
         covers_this_week: 0,
         delivery_rate_last_7_days: nil
       )
@@ -206,6 +211,23 @@ RSpec.describe SuperAdmin::Overview do
         expect(rows_for(recent)).to be_empty
       end
 
+      # Switching a rota off is somebody deciding they do not want it. That is an answer, not a
+      # stalled onboarding, and nagging about it would train the operator to scroll past this list.
+      it "leaves a house alone when its only empty rota was deactivated" do
+        abandoned = settled_group(created_at: now - 20.days)
+        create(:rota, :inactive, group: abandoned, created_at: now - 10.days)
+
+        expect(rows_for(abandoned)).to be_empty
+      end
+
+      it "still flags a house whose active empty rota sits beside a deactivated one" do
+        half_abandoned = settled_group(created_at: now - 20.days)
+        create(:rota, :inactive, group: half_abandoned, created_at: now - 10.days)
+        create(:rota, group: half_abandoned, created_at: now - 10.days)
+
+        expect(rows_for(half_abandoned).sole).to include(reason: "only_draft_rotas", count: 1)
+      end
+
       it "leaves a house alone once any of its rotas has a roster" do
         running = settled_group(created_at: now - 20.days)
         create(:rota, group: running, created_at: now - 10.days)
@@ -232,6 +254,41 @@ RSpec.describe SuperAdmin::Overview do
 
         expect(rows_for(left)).to be_empty
       end
+    end
+  end
+
+  # A queue nobody could finish is not a queue. One bad week across three hundred houses must not
+  # turn the landing page into a thousand-row scroll.
+  describe "the attention list cap" do
+    it "caps the rows and publishes the true total beside them" do
+      55.times { create(:group, created_at: now - 10.days, timezone_confirmed_at: nil) }
+
+      expect(payload[:attention].length).to eq(50)
+      expect(payload[:attention_total]).to eq(55)
+    end
+
+    it "keeps the total equal to the rows when nothing is capped" do
+      3.times { create(:group, created_at: now - 10.days, timezone_confirmed_at: nil) }
+
+      expect(payload[:attention].length).to eq(3)
+      expect(payload[:attention_total]).to eq(3)
+    end
+
+    # The cap takes the first fifty of the ORDERED list, so what survives it is the work that
+    # matters most, not an arbitrary fifty.
+    it "keeps the worst rows, not the first fifty it happened to find" do
+      50.times { create(:group, created_at: now - 10.days, timezone_confirmed_at: nil) }
+      failing = settled_group(name: "Failing")
+      text_for(failing, status: "failed", created_at: now - 1.day)
+
+      expect(payload[:attention].first).to include(group_id: failing.id, reason: "failed_texts")
+      expect(payload[:attention].length).to eq(50)
+      expect(payload[:attention_total]).to eq(51)
+    end
+
+    it "is empty, with a zero total, when every house is healthy" do
+      expect(payload[:attention]).to be_empty
+      expect(payload[:attention_total]).to eq(0)
     end
   end
 
@@ -334,12 +391,12 @@ RSpec.describe SuperAdmin::Overview do
 
     it "reports every monitored job, in order, even one that has never run" do
       expect(payload[:system_health][:jobs].map { |row| row[:name] })
-        .to eq(%w[reminder_sweep top_up_shift_windows calendar_sync])
+        .to eq(%w[reminder_sweep top_up_shift_windows sync_house_calendars])
     end
 
     # A job that has never finished once is the loudest thing this tile can say.
     it "reports a null finish for a job with no runs" do
-      expect(job("calendar_sync")).to include(last_finished_at: nil, succeeded: nil, error_class: nil)
+      expect(job("sync_house_calendars")).to include(last_finished_at: nil, succeeded: nil, error_class: nil)
     end
 
     it "reads the most recent run of each name" do
@@ -352,9 +409,9 @@ RSpec.describe SuperAdmin::Overview do
     end
 
     it "surfaces a failing job with the class that explains it" do
-      create(:job_run, :failed, name: "calendar_sync", finished_at: now - 1.hour)
+      create(:job_run, :failed, name: "sync_house_calendars", finished_at: now - 1.hour)
 
-      expect(job("calendar_sync")).to include(
+      expect(job("sync_house_calendars")).to include(
         succeeded: false, error_class: "ActiveRecord::StatementInvalid"
       )
     end

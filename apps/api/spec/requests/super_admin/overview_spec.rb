@@ -15,8 +15,9 @@ RSpec.describe "GET /api/super_admin/overview" do
     get_overview
 
     expect(response).to have_http_status(:ok)
-    expect(response.parsed_body.keys)
-      .to contain_exactly("generated_at", "kpis", "attention", "recent_houses", "system_health", "spend")
+    expect(response.parsed_body.keys).to contain_exactly(
+      "generated_at", "kpis", "attention", "attention_total", "recent_houses", "system_health", "spend"
+    )
   end
 
   it "carries the KPI tiles, with rates at one decimal" do
@@ -30,6 +31,7 @@ RSpec.describe "GET /api/super_admin/overview" do
     expect(response.parsed_body["kpis"]).to include(
       "houses_total" => 1,
       "texts_last_7_days" => 2,
+      "texts_settled_last_7_days" => 2,
       "delivery_rate_last_7_days" => 50.0
     )
   end
@@ -43,6 +45,8 @@ RSpec.describe "GET /api/super_admin/overview" do
     body = response.parsed_body
     expect(body["recent_houses"].sole).to include("group_id" => group.id, "name" => "Alma Road")
     expect(body["attention"].sole).to include("group_id" => group.id, "reason" => "unconfirmed_timezone")
+    # The count before the cap, so the page can say "50 of 312" rather than implying fifty is all.
+    expect(body["attention_total"]).to eq(1)
   end
 
   it "reports the health of every recurring job, and the queue's failures" do
@@ -52,7 +56,7 @@ RSpec.describe "GET /api/super_admin/overview" do
 
     health = response.parsed_body["system_health"]
     expect(health["jobs"].map { |job| job["name"] })
-      .to eq(%w[reminder_sweep top_up_shift_windows calendar_sync])
+      .to eq(%w[reminder_sweep top_up_shift_windows sync_house_calendars])
     expect(health["jobs"].first["last_finished_at"]).to be_present
     expect(health["queue_failed_executions"]).to eq(0)
   end

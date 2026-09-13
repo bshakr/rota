@@ -33,6 +33,10 @@ module SuperAdmin
     # house that made a rota this morning is mid-onboarding, not stuck.
     STALE_AFTER = 7.days
     RECENT_HOUSES = 10
+    # The attention list is a queue of work, and a queue nobody could finish is not a queue. One bad
+    # week across three hundred houses must not turn the landing page into a thousand-row scroll, so
+    # the rows are capped and the payload carries the true total beside them.
+    ATTENTION_LIMIT = 50
 
     # Ordered by the cost of ignoring them (plan, Overall dashboard). A house that qualifies under
     # more than one reason appears ONCE, under the first — the list is a queue of things to do, and
@@ -66,10 +70,15 @@ module SuperAdmin
     end
 
     def call
+      flagged = attention_rows
+
       {
         generated_at: now,
         kpis: kpis,
-        attention: attention,
+        # Capped, with the count before the cap beside it, so the page can say "50 of 312" rather
+        # than quietly implying that fifty is all there is.
+        attention: flagged.first(ATTENTION_LIMIT),
+        attention_total: flagged.length,
         recent_houses: recent_houses,
         system_health: system_health,
         # Texts and Claude, this month against last. The collectors landed with BLO-1672 and
@@ -123,6 +132,11 @@ module SuperAdmin
         texts_last_7_days: by_status.values.sum,
         texts_delivered_last_7_days: delivered,
         texts_failed_last_7_days: failed,
+        # The rate's denominator, published beside it so the page can render "96.4% of 412 settled"
+        # and a reader can tell 96.4% of twelve texts from 96.4% of four hundred. Excludes rows
+        # still in flight: `pending`, `sending`, and `sent` rows the carrier has never sent a final
+        # receipt for.
+        texts_settled_last_7_days: delivered + failed,
         delivery_rate_last_7_days: delivery_rate(delivered, failed),
         covers_this_week: SmsMessage.cover_notice.where(created_at: week_start..).count
       }
@@ -152,7 +166,8 @@ module SuperAdmin
     end
 
     # Houses that need a human, in REASONS order, each house once under the first reason it hits.
-    def attention
+    # Uncapped: `call` takes the first ATTENTION_LIMIT and publishes the full length beside them.
+    def attention_rows
       by_reason = {
         "failed_texts" => failed_text_counts,
         "unconfirmed_timezone" => unconfirmed_timezone_ids.index_with(nil),
@@ -195,12 +210,17 @@ module SuperAdmin
       Group.where(timezone_confirmed_at: nil).where(created_at: ...stale_before).pluck(:id)
     end
 
-    # A house with rotas, none of which has anybody on it, and none made recently. That is the
-    # shape of an onboarding that stopped halfway: somebody set up a chore and never added the
-    # housemates, so not one text will ever go out. A house with no rotas at all is NOT here — it
-    # has not started, which is what the recent-houses funnel is for, not a thing to chase.
+    # A house with ACTIVE rotas, none of which has anybody on it, and none made recently. That is
+    # the shape of an onboarding that stopped halfway: somebody set up a chore and never added the
+    # housemates, so not one text will ever go out.
+    #
+    # Two houses are deliberately not here. One with no rotas at all has not started, which is what
+    # the recent-houses funnel is for rather than a thing to chase. And one whose only empty rota is
+    # DEACTIVATED has already been dealt with — switching a rota off is somebody deciding they do
+    # not want it, which is an answer, not a stall, and nagging about it would train the operator to
+    # scroll past this list.
     def draft_only_rota_counts
-      Rota.left_joins(:rota_positions)
+      Rota.active.left_joins(:rota_positions)
         .group(:group_id)
         .having("COUNT(rota_positions.id) = 0")
         .having("MAX(rotas.created_at) < ?", stale_before)

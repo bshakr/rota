@@ -1,3 +1,7 @@
+# One row per pass of a recurring job, so the operator dashboard can say when each of them last
+# finished. Rows are pruned after ninety days by the `prune_job_runs` entry in
+# config/recurring.yml — the same housekeeping `clear_solid_queue_finished_jobs` does next to it
+# for Solid Queue's own tables. See JobRun.
 class CreateJobRuns < ActiveRecord::Migration[8.1]
   def change
     create_table :job_runs do |t|

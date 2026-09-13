@@ -10,18 +10,21 @@
 # way it would have. A job that raises every hour and a job that stopped being scheduled look
 # identical from the outside if only successes are written down; they are very different problems.
 class JobRun < ApplicationRecord
-  # The names the overview's system health tile looks for. Two of the three match their
-  # config/recurring.yml key exactly; `calendar_sync` is the entry scheduled there as
-  # `sync_house_calendars` (class SyncHouseCalendarsJob), named for what it does rather than for
-  # the class, because this string is a contract with the operator dashboard.
+  # The names the overview's system health tile looks for. Each one is EXACTLY its
+  # config/recurring.yml key, so "which job is this row?" is answered by reading the schedule file
+  # and nothing has to be translated in between.
   REMINDER_SWEEP = "reminder_sweep".freeze
   TOP_UP_SHIFT_WINDOWS = "top_up_shift_windows".freeze
-  CALENDAR_SYNC = "calendar_sync".freeze
+  SYNC_HOUSE_CALENDARS = "sync_house_calendars".freeze
 
   # In the order the health tile reads them. A name with no rows yet still appears, reported as
   # "never finished" — a job that has never run once is the loudest thing this tile can say, and it
   # would be invisible if the list were built from the rows that happen to exist.
-  MONITORED = [ REMINDER_SWEEP, TOP_UP_SHIFT_WINDOWS, CALENDAR_SYNC ].freeze
+  MONITORED = [ REMINDER_SWEEP, TOP_UP_SHIFT_WINDOWS, SYNC_HOUSE_CALENDARS ].freeze
+
+  # How long a run is worth keeping. Long enough to answer "when did this start failing?" across a
+  # quarter, short enough that the table never becomes a thing anyone has to think about.
+  RETENTION = 90.days
 
   validates :name, presence: true
   validates :started_at, :finished_at, presence: true
@@ -34,7 +37,7 @@ class JobRun < ApplicationRecord
   # recorded fact).
   #
   #   JobRun.record(JobRun::REMINDER_SWEEP) { sweep_every_rota }
-  #   JobRun.record(JobRun::CALENDAR_SYNC) { |details| details[:connections] = sync_all }
+  #   JobRun.record(JobRun::SYNC_HOUSE_CALENDARS) { |details| details[:connections] = sync_all }
   def self.record(name)
     started_at = Time.current
     details = {}
@@ -78,6 +81,18 @@ class JobRun < ApplicationRecord
     nil
   end
   private_class_method :write
+
+  # Deletes runs older than the retention window, and answers how many it removed. Scheduled daily
+  # as `prune_job_runs` in config/recurring.yml, for exactly the reason
+  # `clear_solid_queue_finished_jobs` sits beside it there: three jobs writing a row per pass is
+  # about fifty rows a day, and a table nothing ever deletes from is one that eventually needs an
+  # outage to fix.
+  #
+  # `delete_all`, not `destroy_all`: there are no callbacks and nothing cascades off a job run, so
+  # instantiating a quarter's worth of rows one at a time would buy nothing.
+  def self.prune!(older_than: RETENTION)
+    where(finished_at: ...older_than.ago).delete_all
+  end
 
   # The most recent finished run of each of the given names, as a Hash keyed by name. DISTINCT ON is
   # Postgres', which this app is on everywhere, and it reads straight down the (name, finished_at)

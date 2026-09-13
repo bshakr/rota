@@ -16,7 +16,7 @@ class SyncHouseCalendarsJob < ApplicationJob
   # which means "it has not run in days" and "nobody has connected one" look the same on the
   # dashboard unless the run itself is written down. See JobRun.
   def perform
-    JobRun.record(JobRun::CALENDAR_SYNC) { sync_every_enabled_connection }
+    JobRun.record(JobRun::SYNC_HOUSE_CALENDARS) { sync_every_enabled_connection }
   end
 
   private
