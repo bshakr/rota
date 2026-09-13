@@ -1,7 +1,5 @@
 require "rails_helper"
 
-RSpec::Matchers.define_negated_matcher :not_change, :change
-
 # The security boundary of the whole product. Rails is stateless: it never asks WorkOS whether a
 # session is real, so a token that gets past this file is believed completely. Everything below
 # is therefore about what must NOT get past it.

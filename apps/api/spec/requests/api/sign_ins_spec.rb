@@ -1,7 +1,5 @@
 require "rails_helper"
 
-RSpec::Matchers.define_negated_matcher :not_change, :change
-
 # The one funnel event we cannot reconstruct afterwards.
 #
 # Everything else on the super admin dashboards is computable from rows the product already writes.
@@ -133,6 +131,27 @@ RSpec.describe "POST /api/sign_ins" do
       }.to not_change(User, :count)
 
       expect(SignIn.sole.user).to eq(user)
+    end
+
+    # Signing in is the only time we ever see the person this endpoint exists for. If the touch
+    # lived only on the authenticated read paths, an admin who signs in and abandons /setup would
+    # read "never seen" on the very dashboard built to notice them.
+    it "records when the admin was last seen" do
+      post "/api/sign_ins", headers: workos_headers(sub: "user_01ALICE")
+
+      expect(User.find_by!(workos_user_id: "user_01ALICE").last_seen_at)
+        .to be_within(1.second).of(Time.current)
+    end
+
+    # The same one-an-hour rule as everywhere else (see LastSeen): a retried callback must not turn
+    # into a write, and the endpoint is reachable by anything holding a valid token.
+    it "does not re-write last_seen_at for a second sign-in within the hour" do
+      post "/api/sign_ins", headers: workos_headers(sub: "user_01ALICE")
+      first_seen = User.find_by!(workos_user_id: "user_01ALICE").last_seen_at
+
+      post "/api/sign_ins", headers: workos_headers(sub: "user_01ALICE")
+
+      expect(User.find_by!(workos_user_id: "user_01ALICE").last_seen_at).to eq(first_seen)
     end
 
     # The endpoint is not tenant-scoped and has no business making a house. A user who signs in

@@ -23,6 +23,10 @@ class Rack::Attack
   CALENDAR_CONNECT_PATH = "/api/group/calendar"
   CALENDAR_SYNC_PATH = "/api/group/calendar/sync"
 
+  # Recording a sign-in (BLO-1671). The only route on the admin API that accepts a token naming
+  # no organization, and the only one whose whole job is to insert a row.
+  SIGN_INS_PATH = "/api/sign_ins"
+
   # Authenticated members: keyed per member, generously. Bounds a single runaway or compromised token
   # without ever punishing a housemate for who else is on their Wi-Fi.
   throttle("member_api/member", limit: 60, period: 60.seconds) do |request|
@@ -49,7 +53,26 @@ class Rack::Attack
   # A token refresh therefore starts a fresh bucket; a WorkOS access token lives minutes, which is
   # long enough for this window to mean something.
   throttle("group_api/calendar_fetch", limit: 5, period: 60.seconds) do |request|
-    Rack::Attack.calendar_caller_for(request) if Rack::Attack.calendar_fetch?(request)
+    Rack::Attack.token_caller_for(request) if Rack::Attack.calendar_fetch?(request)
+  end
+
+  # Recording a sign-in inserts a row, so the question is how many rows one token can ever write.
+  # Api::SignInsController deduplicates by the token's `jti` behind a unique index, which normally
+  # answers that with "one, however often the callback is retried". But Postgres lets NULLs repeat
+  # in a unique index, and nothing in this repo has yet confirmed that a real AuthKit access token
+  # carries a `jti` at all — so a token minted without one would write a row per request, and the
+  # idempotency this leans on would silently not exist. This is the floor under that: whatever the
+  # claim turns out to be, one token can add at most ten rows a minute.
+  #
+  # Ten rather than one, because the limit is a backstop and not the deduplication: a retried
+  # callback must not be answered with a 429 that Next.js would log as a real failure. Ten a minute
+  # is far more sign-ins than one callback can honestly mean, and far fewer than a loop wants.
+  #
+  # Keyed on the hashed token, not the IP, for the same reason the calendar throttle is: two houses
+  # behind one office or café NAT share an IP, and one of them signing in must never lock the
+  # other out.
+  throttle("sign_ins/token", limit: 10, period: 60.seconds) do |request|
+    Rack::Attack.token_caller_for(request) if Rack::Attack.sign_in?(request)
   end
 
   # A throttled caller gets JSON, like every other error on this API, rather than Rack::Attack's
@@ -72,6 +95,13 @@ class Rack::Attack
       ((request.put? || request.patch?) && path == CALENDAR_CONNECT_PATH)
   end
 
+  # Is this the sign-in collector? Matched against the NORMALISED path for the same reason the
+  # calendar check is: `/api/sign_ins.json` and `/api/sign_ins/` both reach the action, and a
+  # throttle that misses either is a throttle a loop walks straight around.
+  def self.sign_in?(request)
+    request.post? && normalised_path(request.path) == SIGN_INS_PATH
+  end
+
   # Trailing slashes first, then a format suffix: `/sync.json/` is a real spelling of `/sync`, and
   # stripping in the other order would leave the dot behind. Neither calendar path contains a dot,
   # so there is nothing here for the format pattern to eat by mistake.
@@ -79,9 +109,11 @@ class Rack::Attack
     path.sub(%r{/+\z}, "").sub(/\.[a-z0-9]+\z/i, "")
   end
 
-  # Who is asking, as far as a throttle needs to know. A request with no Authorization header has
-  # nothing to tell it apart by but its IP, and is about to be refused by JWT verification anyway.
-  def self.calendar_caller_for(request)
+  # Who is asking, as far as a throttle needs to know. Shared by the calendar and sign-in throttles,
+  # which are both keyed on the caller's token rather than their address, and each of which says
+  # above why. A request with no Authorization header has nothing to tell it apart by but its IP, and
+  # is about to be refused by JWT verification anyway.
+  def self.token_caller_for(request)
     authorization = request.env["HTTP_AUTHORIZATION"].to_s
     return "ip:#{request.ip}" if authorization.blank?
 

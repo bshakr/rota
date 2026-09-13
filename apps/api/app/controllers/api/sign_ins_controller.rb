@@ -26,6 +26,13 @@ module Api
     def create
       user = User.provision!(@claims)
 
+      # Signing in IS being seen, and for the person this endpoint exists for — the one who signs
+      # in and abandons /setup — it is the ONLY time we ever see them. Without this line their
+      # `last_seen_at` reads "never" on every super admin surface that shows the column, which is
+      # exactly backwards for the people the funnel is about. Same throttled helper as the two read
+      # paths (see LastSeen), so a burst of retried callbacks still costs one UPDATE an hour.
+      user.touch_last_seen
+
       SignIn.create!(user: user, workos_organization_id: @claims.workos_organization_id, jti: @claims.jti)
 
       head :no_content
@@ -34,8 +41,11 @@ module Api
       # callback is being retried — by a re-request, a double-submit, or Next.js retrying us — and
       # a retry of a sign-in is not a second sign-in. Answer as though we had just written it.
       #
-      # This is also why the endpoint needs no rate limit of its own: a token can only ever produce
-      # one row, and producing another means signing in again for real.
+      # That holds for as long as tokens carry a `jti`, which is what the unique index keys on — and
+      # a token minted without one cannot be deduplicated at all, because Postgres lets NULLs repeat.
+      # Nothing here has confirmed what a real AuthKit token carries, so the row count one token can
+      # write is floored by a throttle as well (see config/initializers/rack_attack.rb) rather than
+      # by this index alone.
       head :no_content
     end
 
