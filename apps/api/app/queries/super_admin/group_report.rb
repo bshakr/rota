@@ -19,13 +19,21 @@ module SuperAdmin
   # did nothing", which is the one thing an operator must never have to wonder about.
   #
   # Bounded queries: everything below is a grouped or preloaded read, so the count is the same for
-  # a house with three members and one with three hundred. spec/requests/super_admin/
-  # group_report_spec.rb asserts exactly that, because "no N+1" is a claim that rots silently.
+  # a house with three members and one with three hundred. spec/queries/super_admin/
+  # group_report_spec.rb asserts exactly that, because "no N+1" is a claim that rots silently — and
+  # it asserts it against this class rather than through the endpoint on purpose, because the
+  # per-request query cache makes a preload that happens to repeat an earlier bind look free, which
+  # is not the same thing as it not having run.
+  #
+  # Every clock question is answered from the `now:` this was given, and never from `Time.current`.
+  # The weekly buckets and the fortnight window have to agree with each other; a payload with two
+  # clocks in it is one that can straddle a boundary and contradict itself.
   class GroupReport
     # The upcoming window, in the house's OWN calendar days: today plus the next thirteen. Today is
-    # included because a turn due this evening is the most actionable row on the page, and the
-    # boundary is `Group#today` — never `Date.current`, which is UTC here and would put a house in
-    # Auckland a day ahead of its own rota and one in Honolulu a day behind it. See Group#today.
+    # included because a turn due this evening is the most actionable row on the page, and the day
+    # boundary is the group's midnight — never `Date.current`, which is UTC here and would put a
+    # house in Auckland a day ahead of its own rota and one in Honolulu a day behind it. See
+    # `upcoming_window` below, and Group#today for why that is not a rounding error.
     UPCOMING_DAYS = 14
 
     # Twelve weeks of sparkline (plan, Group dashboard: "texts per week and covers per week for the
@@ -81,7 +89,9 @@ module SuperAdmin
     def upcoming_shifts
       group.shifts
         .where(due_on: upcoming_window)
-        .includes(:rota, :assigned_member, :covering_member)
+        # The rota's roster comes with it: `Rota#draft?` is "nobody is on it", asked of the
+        # positions, and a row at a time that would be one query per shift.
+        .includes(:assigned_member, :covering_member, rota: :rota_positions)
         .to_a
         # Sorted here rather than in SQL: ordering by the rota's name needs a join that would undo
         # the preload, and a fortnight of one house's shifts is a few dozen rows.
@@ -89,17 +99,33 @@ module SuperAdmin
         .map { |shift| upcoming_shift(shift) }
     end
 
+    # The house's own fortnight, on the house's own clock and on the ONE instant this report was
+    # given. Deliberately not `Group#today`, which would be a third clock in a payload that already
+    # has `@now`: it reads `Time.current` for itself, so a report built for a moment in the past
+    # would date its window from now instead and disagree with its own weekly series. The rule that
+    # method carries is the part that matters, and it is reproduced exactly — the day boundary is
+    # the group's midnight, never the server's. See Group#today for why that is not a rounding error.
     def upcoming_window
-      today = group.today
+      today = now.in_time_zone(group.time_zone).to_date
 
       today..(today + UPCOMING_DAYS - 1)
     end
 
     def upcoming_shift(shift)
+      rota = shift.rota
+
       {
         id: shift.id,
         rota_id: shift.rota_id,
-        rota_name: shift.rota.name,
+        rota_name: rota.name,
+        # Whether anybody will actually be told about this turn. A shift on a PAUSED rota is a real
+        # row with a real person's name on it and the house's own list shows it, but the reminder
+        # sweep only visits active rotas, so nothing will go out for it. An operator answering "why
+        # did nobody hear about Thursday" has to be able to see that on the row rather than by
+        # cross-referencing the rotas table further down the page. Marked, never filtered out:
+        # hiding the turn would answer the question by deleting it.
+        rota_active: rota.active,
+        rota_draft: rota.draft?,
         due_on: shift.due_on,
         covered: shift.covered?,
         # Who is on the hook by the rota, and who actually took it. Both, so the page can say
@@ -209,19 +235,26 @@ module SuperAdmin
           # Throttled to one write an hour on the read path (LastSeen), so this is accurate to the
           # hour, which is the resolution "last seen" is read at anyway.
           last_seen_at: membership.user.last_seen_at,
-          sign_in_count: all_time.fetch(membership.user_id, 0),
-          sign_in_count_30d: recent.fetch(membership.user_id, 0)
+          # `user_` and not `admin_`, because these are facts about the PERSON and not about this
+          # membership — see `sign_in_counts` below. A key named `sign_in_count` on a row that is
+          # otherwise all about one house would read as "signed in to this house", which is exactly
+          # what it is not.
+          user_sign_in_count: all_time.fetch(membership.user_id, 0),
+          user_sign_in_count_30d: recent.fetch(membership.user_id, 0)
         )
       end
     end
 
-    # The PERSON's sign-ins, every organization and none — not this house's.
+    # The PERSON's sign-ins, every organization and none — not this house's. Hence the `user_`
+    # prefix on both keys: they are the only figures on an admin's row that are not about this
+    # house, and a reader must not have to know that from a comment.
     #
-    # Two reasons. A sign-in that names no organization is the funnel step the `sign_ins` table was
-    # added for (somebody signed in and has no house yet), and filtering by organization would drop
-    # exactly those rows. And the question a group page asks of an admin is "is this person still
-    # using Rota Monster", which is answered by their sign-ins wherever they landed. An admin of two
-    # houses therefore shows the same count on both pages, on purpose.
+    # Two reasons for counting them that way. A sign-in that names no organization is the funnel
+    # step the `sign_ins` table was added for (somebody signed in and has no house yet), and
+    # filtering by organization would drop exactly those rows. And the question a group page asks of
+    # an admin is "is this person still using Rota Monster", which is answered by their sign-ins
+    # wherever they landed. An admin of two houses therefore shows the same count on both pages, on
+    # purpose.
     def sign_in_counts(user_ids, since: nil)
       return {} if user_ids.empty?
 

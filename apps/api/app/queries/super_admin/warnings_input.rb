@@ -32,6 +32,14 @@ module SuperAdmin
   # `group.timezone_confirmed`, `group.calendar`, each rota's `name` and `draft`, each member's
   # `name`, `active` and `contactable`, and each failed text's `member.id` and `member.name`.
   # spec/requests/super_admin/redaction_spec.rb greps the whole response for both credentials.
+  #
+  # And one WIDENING, which is worth saying out loud because it is new: `group` here is the house's
+  # own serializer, so the operator now sees the house calendar's STATE — `failing`, `last_error`,
+  # `masked_url`, the event counts — where SuperAdmin::GroupSerializer has no column for any of it.
+  # That is deliberate and unavoidable: "House calendar isn't syncing" is one of the five warnings,
+  # and an operator who could not see it would not be seeing the same alerts as the house admin.
+  # The calendar's URL is a credential and is not part of that: `ical_url` never leaves the server
+  # in any shape but masked, from either serializer (CalendarConnectionSerializer).
   class WarningsInput
     # What the house's own dashboard asks for (`listSmsMessages({ status: "failed", limit: 100 })`).
     # Hard-coded rather than reached for out of SmsMessageFiltering: that is a controller concern
@@ -55,7 +63,7 @@ module SuperAdmin
         # whole point of this class.
         group: ::GroupSerializer.one(group),
         rotas: ::RotaSerializer.many(rotas),
-        members: ::MemberSerializer.many(members).map { |row| row.except(:access_token) },
+        members: ::MemberSerializer.many(members).map { |row| without_magic_link(row) },
         failed_sms: SuperAdmin::SmsMessageSerializer.many(failed_sms)
       }
     end
@@ -63,6 +71,18 @@ module SuperAdmin
     private
 
     attr_reader :group
+
+    # The member's magic link, taken out of the house's own row.
+    #
+    # `fetch` before `except`, and that line is the point of this method rather than a leftover.
+    # `Hash#except` on a key that is not there is a silent no-op: rename the house serializer's key
+    # — `access_token` to `magic_link`, say — and a bare `except` would go on passing every spec in
+    # this file while quietly serving a permanent login to somebody else's house on an operator
+    # path. The fetch turns that rename into a KeyError on the first request instead.
+    def without_magic_link(row)
+      row.fetch(:access_token)
+      row.except(:access_token)
+    end
 
     # Api::RotasController#index, including its preload and its order.
     def rotas

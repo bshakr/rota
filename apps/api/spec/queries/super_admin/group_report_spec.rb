@@ -12,7 +12,14 @@ RSpec.describe SuperAdmin::GroupReport do
 
   subject(:report) { described_class.call(group, now: now) }
 
-  around { |example| travel_to(now) { example.run } }
+  # What the PROCESS thinks the time is, which is a different question from what the report was
+  # told. They agree by default so the factories below can go on using relative times, and the
+  # "upcoming shifts" block deliberately pulls them apart: every window in this report has to be cut
+  # from the injected `now:`, and an example that passes only because the two clocks agree would not
+  # notice a `Time.current` sneaking back in.
+  let(:wall_clock) { now }
+
+  around { |example| travel_to(wall_clock) { example.run } }
 
   # A shift on a given date. `due_on` is unique per rota and a shift may only name members of its
   # rota's own group, so both default to this house's and move together when they don't.
@@ -52,6 +59,12 @@ RSpec.describe SuperAdmin::GroupReport do
     # 2026-09-16 12:00 UTC is still 2026-09-16 in London, so the window is 16 Sept to 29 Sept.
     let(:group) { create(:group, timezone: "Europe/London") }
 
+    # Six years and three months away from every `now` in this block, and in the other hemisphere's
+    # season. The window under test is cut from the instant the report was GIVEN, so nothing here
+    # may come out of the process clock — and if anything does, it lands in 2020 and every example
+    # below fails rather than passing on a coincidence.
+    let(:wall_clock) { Time.utc(2020, 6, 1, 12, 0, 0) }
+
     def due_dates = report.fetch(:upcoming_shifts).map { |row| row.fetch(:due_on) }
 
     it "starts today, because a turn due this evening is the most actionable row on the page" do
@@ -88,15 +101,47 @@ RSpec.describe SuperAdmin::GroupReport do
     end
 
     it "names the rota, the date and who is on the hook" do
+      create(:rota_position, rota: house_rota, member: house_member, position: 0)
       shift = shift_on(Date.new(2026, 9, 18))
 
       expect(report.fetch(:upcoming_shifts)).to eq([ {
-        id: shift.id, rota_id: house_rota.id, rota_name: "Bins", due_on: Date.new(2026, 9, 18),
-        covered: false,
+        id: shift.id, rota_id: house_rota.id, rota_name: "Bins", rota_active: true,
+        rota_draft: false, due_on: Date.new(2026, 9, 18), covered: false,
         assigned_member: { id: house_member.id, name: "Alice" },
         covering_member: nil,
         responsible_member: { id: house_member.id, name: "Alice" }
       } ])
+    end
+
+    # A turn on a switched-off rota is a real row with a real name on it, and the house's own list
+    # shows it — but the reminder sweep only visits active rotas, so nobody will be told about it.
+    # Without this flag the row is indistinguishable from a live turn, and "why did nobody hear
+    # about Thursday" has no answer on the screen that exists to answer it.
+    it "says when a turn belongs to a rota nobody will be texted about" do
+      paused = create(:rota, :inactive, group: group, name: "Paused")
+      create(:rota_position, rota: paused, member: house_member, position: 0)
+      shift_on(Date.new(2026, 9, 18), rota: paused)
+
+      expect(report.fetch(:upcoming_shifts).first).to include(rota_active: false, rota_draft: false)
+    end
+
+    # Draft is derived from the roster (Rota#draft?), never stored — a shift on a rota with nobody
+    # on it is the shape of an onboarding that stalled halfway.
+    it "says when a turn belongs to a rota with nobody on its roster" do
+      shift_on(Date.new(2026, 9, 18))
+
+      expect(report.fetch(:upcoming_shifts).first).to include(rota_active: true, rota_draft: true)
+    end
+
+    # Marked, never filtered: hiding the turn would answer the question by deleting it, and the
+    # fortnight would then disagree with the house's own dashboard about what is coming up.
+    it "still lists a paused rota's turns alongside the live ones" do
+      paused = create(:rota, :inactive, group: group, name: "Paused")
+      shift_on(Date.new(2026, 9, 18), rota: paused)
+      shift_on(Date.new(2026, 9, 19))
+
+      expect(report.fetch(:upcoming_shifts).map { |row| row.values_at(:rota_name, :rota_active) })
+        .to eq([ [ "Paused", false ], [ "Bins", true ] ])
     end
 
     # A cover is the product's one real engagement signal, and the operator's question is always
@@ -291,7 +336,7 @@ RSpec.describe SuperAdmin::GroupReport do
       expect(admin_row).to eq(
         id: membership.id, user_id: user.id, name: "Ada", email: "ada@example.com",
         workos_user_id: "user_01ADA", role: "owner",
-        last_seen_at: now - 2.hours, sign_in_count: 0, sign_in_count_30d: 0
+        last_seen_at: now - 2.hours, user_sign_in_count: 0, user_sign_in_count_30d: 0
       )
     end
 
@@ -310,7 +355,7 @@ RSpec.describe SuperAdmin::GroupReport do
       create(:sign_in, user: user, created_at: now - 29.days)
       create(:sign_in, user: user, created_at: now - 31.days)
 
-      expect(admin_row).to include(sign_in_count: 3, sign_in_count_30d: 2)
+      expect(admin_row).to include(user_sign_in_count: 3, user_sign_in_count_30d: 2)
     end
 
     # A sign-in with no organization is the funnel step the table was added for — somebody signed in
@@ -319,14 +364,30 @@ RSpec.describe SuperAdmin::GroupReport do
       create(:group_admin, group: group, user: user)
       create(:sign_in, :without_organization, user: user, created_at: now - 1.day)
 
-      expect(admin_row).to include(sign_in_count: 1, sign_in_count_30d: 1)
+      expect(admin_row).to include(user_sign_in_count: 1, user_sign_in_count_30d: 1)
     end
 
     it "counts nobody else's sign-ins" do
       create(:group_admin, group: group, user: user)
       create(:sign_in, user: create(:user), created_at: now - 1.day)
 
-      expect(admin_row).to include(sign_in_count: 0)
+      expect(admin_row).to include(user_sign_in_count: 0)
+    end
+
+    # What the `user_` prefix on both keys is warning the reader about, written down as a fact
+    # rather than left in a comment: these figures are the PERSON's and not this house's, so
+    # somebody who runs two houses shows the same number on both of their pages. That is the answer
+    # to "is this person still using Rota Monster", which is the question the group page asks.
+    it "shows the same person the same counts on every house they run" do
+      other = create(:group)
+      create(:group_admin, group: group, user: user)
+      create(:group_admin, group: other, user: user)
+      create(:sign_in, user: user, created_at: now - 1.day,
+        workos_organization_id: other.workos_organization_id)
+
+      expect(admin_row).to include(user_sign_in_count: 1)
+      expect(described_class.call(other, now: now).fetch(:admins).first)
+        .to include(user_sign_in_count: 1)
     end
 
     it "names no admin of another house" do
@@ -425,23 +486,39 @@ RSpec.describe SuperAdmin::GroupReport do
   # two sign-in counts apiece, twelve weeks of texts — and every one of them is a grouped or
   # preloaded read for exactly this reason.
   it "costs the same number of queries for a big house as for a small one" do
-    small = populate(create(:group), members: 2, rotas: 1, weeks: 1)
+    small = populate(create(:group), members: 2, rotas: 1, weeks: 1, admins: 1, failures: 1)
     small_queries = sql_selects_during { described_class.call(small, now: now) }
 
-    big = populate(create(:group), members: 8, rotas: 3, weeks: 4)
+    big = populate(create(:group), members: 8, rotas: 3, weeks: 4, admins: 6, failures: 3)
     big_queries = sql_selects_during { described_class.call(big, now: now) }
 
+    # Every list the report builds is bigger on the second house than the first, or the comparison
+    # above pins nothing: it would be perfectly possible to pass it while doing a query per admin
+    # if no house in the example had more than one.
     payload = described_class.call(big, now: now)
     expect(payload.fetch(:members).length).to eq(8)
+    expect(payload.fetch(:admins).length).to eq(6)
     expect(payload.fetch(:upcoming_shifts).length).to eq(24)
+    expect(payload.dig(:warnings_input, :failed_sms).length).to eq(72)
+    expect(payload.fetch(:weekly).sum { |row| row.fetch(:texts) }).to eq(168)
+
     expect(big_queries.size).to eq(small_queries.size)
   end
 
-  # A house with people, rotas, admins, shifts inside the fortnight and texts across several weeks
-  # — every list the report builds, at whatever size the caller asks for.
-  def populate(house, members:, rotas:, weeks:)
+  # A house with people, rotas, admins with sign-ins behind them, shifts inside the fortnight, texts
+  # across several weeks and failures among them — every list the report builds, at whatever size
+  # the caller asks for.
+  def populate(house, members:, rotas:, weeks:, admins:, failures:)
     people = create_list(:member, members, group: house)
-    2.times { create(:group_admin, group: house, user: create(:user)) }
+
+    admins.times do
+      admin = create(:user)
+      create(:group_admin, group: house, user: admin)
+      # Two apiece, one inside the thirty-day window and one outside it, so both grouped counts have
+      # rows to find rather than returning empty on every house in the example.
+      create(:sign_in, user: admin, created_at: now - 2.days)
+      create(:sign_in, user: admin, created_at: now - 40.days)
+    end
 
     rotas.times do |index|
       rota = create(:rota, group: house, name: "Rota #{index}")
@@ -449,16 +526,28 @@ RSpec.describe SuperAdmin::GroupReport do
 
       people.each_with_index do |member, day|
         shift = create(:shift, rota: rota, assigned_member: member,
-          covering_member: people[(day + 1) % people.length], due_on: house.today + day)
+          covering_member: people[(day + 1) % people.length], due_on: report_today(house) + day)
 
         weeks.times do |week|
           message = create(:sms_message, :sent, shift: shift, member: member, days_before: week)
           moment = now - week.weeks
           message.update_columns(created_at: moment, updated_at: moment)
         end
+
+        # The warnings input's own query and its preloads, which nothing else in this fixture
+        # exercises. Offset past the reminders above so the (shift, days_before) idempotency index
+        # does not refuse them.
+        failures.times { |n| create(:sms_message, :failed, shift: shift, member: member, days_before: weeks + n) }
       end
     end
 
     house
+  end
+
+  # The day the report will cut its fortnight from — the injected clock in the house's zone, not
+  # `Group#today`, which would read the process clock and put these shifts outside the window in any
+  # example that pulls the two apart.
+  def report_today(house)
+    now.in_time_zone(house.time_zone).to_date
   end
 end
