@@ -180,4 +180,86 @@ describe("collectDashboardWarnings", () => {
     const draft = warnings.find((w) => w.id === "draft-rotas");
     expect(draft?.title).toBe("1 rota in draft");
   });
+
+  // The house calendar is the one input that fails invisibly: a dead link leaves
+  // the members' page quietly stale, with nothing on screen to say why.
+  describe("house calendar", () => {
+    const failing = {
+      calendar_name: "Park Vista",
+      masked_url: "calendar.google.com/…f3f9a/basic.ics",
+      events_count: 12,
+      unclassified_count: 0,
+      last_synced_at: "2026-09-13T09:27:00Z",
+      last_error: "Couldn't reach the calendar.",
+      failing: true,
+    };
+
+    it("warns when the sync is failing, after the timezone warning", () => {
+      const warnings = collectDashboardWarnings({
+        group: group({ timezone_confirmed: false, calendar: failing }),
+        rotas: [],
+        members: [],
+        failedSms: [],
+        settingsHref: SETTINGS_HREF,
+      });
+
+      expect(warnings.map((w) => w.id)).toEqual(["timezone", "calendar-sync"]);
+      expect(warnings[1]).toMatchObject({
+        severity: "warning",
+        title: "House calendar isn't syncing",
+        description:
+          "Couldn't reach the calendar. Events and away dates on the members' page may be out of date.",
+        href: `${SETTINGS_HREF}#house-calendar`,
+        action: "Check the calendar link",
+      });
+    });
+
+    it("stays quiet when connected and healthy, or not connected", () => {
+      const healthy = collectDashboardWarnings({
+        group: group({ calendar: { ...failing, failing: false, last_error: null } }),
+        rotas: [],
+        members: [],
+        failedSms: [],
+        settingsHref: SETTINGS_HREF,
+      });
+      const none = collectDashboardWarnings({
+        group: group({ calendar: null }),
+        rotas: [],
+        members: [],
+        failedSms: [],
+        settingsHref: SETTINGS_HREF,
+      });
+
+      expect(healthy).toEqual([]);
+      expect(none).toEqual([]);
+    });
+
+    it("falls back to generic copy when the sync failed without an error message", () => {
+      const warnings = collectDashboardWarnings({
+        group: group({ calendar: { ...failing, last_error: null } }),
+        rotas: [],
+        members: [],
+        failedSms: [],
+        settingsHref: SETTINGS_HREF,
+      });
+
+      expect(warnings[0].description).toBe(
+        "The last few checks failed. Events and away dates on the members' page may be out of date.",
+      );
+    });
+
+    it("anchors the fix at the calendar section when settings is itself a fragment", () => {
+      const warnings = collectDashboardWarnings({
+        group: group({ calendar: failing }),
+        rotas: [],
+        members: [],
+        failedSms: [],
+        // What the dashboard actually passes: an in-page anchor, not a route.
+        settingsHref: "#group-settings",
+      });
+
+      // Appending blindly would give "#group-settings#house-calendar", which goes nowhere.
+      expect(warnings[0].href).toBe("#house-calendar");
+    });
+  });
 });
