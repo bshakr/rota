@@ -1,7 +1,7 @@
 import "server-only";
 
 import { requestJson } from "./http";
-import type { MemberCoverResponse, MemberShiftsResponse } from "./types";
+import type { MemberCoverResponse, MemberScheduleResponse, MemberShiftsResponse } from "./types";
 
 // The member magic-link API client — the second, deliberately narrow way in.
 //
@@ -18,6 +18,15 @@ import type { MemberCoverResponse, MemberShiftsResponse } from "./types";
 // to compile if a Client Component ever imports this module, so the token-handling
 // code can never reach the browser bundle. The token is read and used here, on the
 // server, and only the resulting shifts (which contain no token) cross to the client.
+
+/**
+ * The whole house's upcoming rota: the group's today and timezone, every active
+ * housemate, every active rota, and every upcoming shift across them. One request,
+ * because the page renders it as a single feed and a partial answer would flicker.
+ */
+export function getMemberSchedule(token: string): Promise<MemberScheduleResponse> {
+  return requestJson<MemberScheduleResponse>("/api/member/schedule", token);
+}
 
 /** This member's upcoming shifts across every rota, plus the people they can ask to cover. */
 export function getMemberShifts(token: string): Promise<MemberShiftsResponse> {

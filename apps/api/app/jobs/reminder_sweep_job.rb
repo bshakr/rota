@@ -26,7 +26,7 @@ class ReminderSweepJob < ApplicationJob
       # thing that makes this visible today; `report` is what carries it to Sentry once a subscriber
       # exists.
       Rails.logger.error("ReminderSweepJob failed for rota #{rota.id}: #{e.class}: #{e.message}")
-      Rails.error.report(e, context: { rota_id: rota.id }, source: "houserota.reminder_sweep")
+      Rails.error.report(e, context: { rota_id: rota.id }, source: "rotamonster.reminder_sweep")
     end
   end
 end

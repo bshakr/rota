@@ -10,15 +10,28 @@ import { enGB } from "date-fns/locale";
  * this product is made almost entirely of dates, so it would have surfaced on
  * the dashboard, the shift list, the SMS log and the member page alike.
  *
- * Pinning the locale in one place is the fix. Never call toLocaleDateString(),
- * toLocaleString() or format a date by hand in a component — use these.
+ * Pinning the locale is not enough, which is the second bug and the reason this
+ * module no longer asks Intl for any NAME or SEPARATOR. Node's ICU and a
+ * browser's ICU ship different CLDR revisions, and en-GB's short-date pattern
+ * differs between them: Node renders "Sat 14 Nov", a current browser renders
+ * "Sat, 14 Nov". Same locale, same zone, same instant, two strings — a hydration
+ * mismatch on every date the member feed prints, and these are client
+ * components. So weekday and month names come from the frozen tables below and
+ * the separators are written out here, which makes every formatter a pure
+ * function of the calendar date.
  *
- * TIME ZONE is pinned too, and for the same reason. The Node server runs in UTC
- * and the browser in the visitor's zone; a shift instant at 23:30 UTC is already
+ * Intl is still used for exactly one thing: reading the NUMERIC year, month,
+ * day, hour and minute of an instant as seen in TIME_ZONE. Those are pure
+ * calendar arithmetic over the IANA zone rules, identical in every engine — it
+ * is only the display data that drifts.
+ *
+ * Never call toLocaleDateString(), toLocaleString() or format a date by hand in
+ * a component — use these.
+ *
+ * TIME ZONE is pinned for a related reason. The Node server runs in UTC and the
+ * browser in the visitor's zone; a shift instant at 23:30 UTC is already
  * "tomorrow" in London, so an unpinned formatter renders a DIFFERENT DAY on the
- * server than the client — the very hydration mismatch this module exists to
- * prevent, and worse, a wrong date shown to a member. Every formatter below pins
- * `timeZone`, so server and client always agree.
+ * server than the client — and worse, a wrong date shown to a member.
  *
  * TZ is a module constant today because the product is UK-first. A group has its
  * own `timezone` column (see the data model), and BLO-1053 will thread that
@@ -31,53 +44,119 @@ export const TIME_ZONE = "Europe/London";
 /** react-day-picker / date-fns want the Locale object, not the string code. */
 export const DATE_LOCALE = enGB;
 
-const shiftDate = new Intl.DateTimeFormat(LOCALE, {
-  timeZone: TIME_ZONE,
-  weekday: "short",
-  day: "numeric",
-  month: "short",
-});
+// The en-GB names, frozen. These are the strings the app has always rendered on
+// the server; taking them from a table rather than from CLDR is what makes the
+// output identical in Node and in every browser. Note "Sept", not "Sep": that is
+// en-GB's abbreviation for September and changing it would change every screen.
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const WEEKDAY_LONG = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+const MONTH_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sept",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+const MONTH_LONG = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
 
-const longDate = new Intl.DateTimeFormat(LOCALE, {
+// The ONE Intl call left in this module, and it asks only for numbers. `h23` so
+// midnight reads 0 and not 24, and the locale is irrelevant because every part is
+// read by name from formatToParts — no pattern, no separator, no CLDR string.
+const zoned = new Intl.DateTimeFormat("en-US", {
   timeZone: TIME_ZONE,
-  weekday: "long",
-  day: "numeric",
-  month: "long",
   year: "numeric",
-});
-
-const timestamp = new Intl.DateTimeFormat(LOCALE, {
-  timeZone: TIME_ZONE,
+  month: "numeric",
   day: "numeric",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
+  hour: "numeric",
+  minute: "numeric",
+  hourCycle: "h23",
 });
 
-const dayNumber = new Intl.DateTimeFormat(LOCALE, {
-  timeZone: TIME_ZONE,
-  day: "numeric",
-});
+interface ZonedParts {
+  year: number;
+  /** 1-12. */
+  month: number;
+  day: number;
+  /** 0 = Sunday, derived by arithmetic rather than asked of ICU. */
+  weekday: number;
+  hour: number;
+  minute: number;
+}
 
-const monthShort = new Intl.DateTimeFormat(LOCALE, {
-  timeZone: TIME_ZONE,
-  month: "short",
-});
+/** An instant's calendar fields as seen in TIME_ZONE. Engine-independent. */
+function zonedParts(date: Date): ZonedParts {
+  const found: Record<string, number> = {};
+  for (const { type, value } of zoned.formatToParts(date)) {
+    if (type !== "literal") found[type] = Number(value);
+  }
+  const { year, month, day, hour, minute } = found;
+  return {
+    year,
+    month,
+    day,
+    // Pure arithmetic on the civil date: Date.UTC has no locale and no zone, so
+    // this weekday is the same everywhere the code runs.
+    weekday: new Date(Date.UTC(year, month - 1, day)).getUTCDay(),
+    // h23 should already give 0-23; the modulo costs nothing and makes a
+    // hypothetical h24 engine render "00:30" rather than "24:30".
+    hour: hour % 24,
+    minute,
+  };
+}
+
+const pad = (value: number) => String(value).padStart(2, "0");
 
 /** "Sat 5 Jul" — the shift list, the dashboard, the member page. */
-export const formatShiftDate = (date: Date) => shiftDate.format(date);
+export const formatShiftDate = (date: Date) => {
+  const { weekday, day, month } = zonedParts(date);
+  return `${WEEKDAY_SHORT[weekday]} ${day} ${MONTH_SHORT[month - 1]}`;
+};
 
-/** "5" — the day number on a shift card's date coin. Pinned like the rest. */
-export const formatDayNumber = (date: Date) => dayNumber.format(date);
+/** "5" — the day number on a shift card's date coin. */
+export const formatDayNumber = (date: Date) => String(zonedParts(date).day);
 
-/** "Jul" — the month on a shift card's date coin. Pinned like the rest. */
-export const formatMonthShort = (date: Date) => monthShort.format(date);
+/** "Jul" — the month on a shift card's date coin. */
+export const formatMonthShort = (date: Date) => MONTH_SHORT[zonedParts(date).month - 1];
 
-/** "Saturday 5 July 2026" — confirmation copy, where ambiguity costs. */
-export const formatLongDate = (date: Date) => longDate.format(date);
+/** "Saturday, 5 July 2026" — confirmation copy, where ambiguity costs. */
+export const formatLongDate = (date: Date) => {
+  const { weekday, day, month, year } = zonedParts(date);
+  return `${WEEKDAY_LONG[weekday]}, ${day} ${MONTH_LONG[month - 1]} ${year}`;
+};
 
 /** "5 Jul, 09:00" — the SMS log, where the hour is the point. */
-export const formatTimestamp = (date: Date) => timestamp.format(date);
+export const formatTimestamp = (date: Date) => {
+  const { day, month, hour, minute } = zonedParts(date);
+  return `${day} ${MONTH_SHORT[month - 1]}, ${pad(hour)}:${pad(minute)}`;
+};
 
 /**
  * "today" / "tomorrow" / "in 3 days" / "3 days ago" — the reassurance the member
@@ -107,12 +186,6 @@ function wholeDaysBetween(a: Date, b: Date): number {
 // The civil (Y-M-D) date of an instant AS SEEN in TIME_ZONE, pinned back to a
 // UTC midnight so day differences are exact and DST-safe.
 function midnightUtcFor(date: Date): number {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-  const [y, m, d] = parts.split("-").map(Number);
-  return Date.UTC(y, m - 1, d);
+  const { year, month, day } = zonedParts(date);
+  return Date.UTC(year, month - 1, day);
 }

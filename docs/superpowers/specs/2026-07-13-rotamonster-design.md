@@ -1,4 +1,4 @@
-# HouseRota — Design
+# Rota Monster — Design
 
 **Date:** 2026-07-13
 **Status:** Approved, ready for implementation planning
