@@ -43,6 +43,24 @@ RSpec.describe CalendarSync do
     expect(connection.last_synced_at).to eq(Time.current)
   end
 
+  # The classifier bills whoever it was handed, so this is the example that proves the sync hands it
+  # the house at all (BLO-1673). A second sync asks nothing, because every fingerprint is already
+  # answered, and so spends nothing: a house's Claude bill is front-loaded, not hourly.
+  it "bills the house for the classification, and bills it once" do
+    stub_feed(feed)
+
+    described_class.new(connection).call
+
+    expect(AiCall.sole).to have_attributes(
+      group_id: group.id, calendar_connection_id: connection.id,
+      purpose: "calendar_classify", succeeded: true, items_count: 1
+    )
+
+    described_class.new(connection).call
+
+    expect(AiCall.count).to eq(1)
+  end
+
   it "parses nothing on 304, leaving the stored events and last_synced_at alone" do
     connection.update!(etag: "\"v1\"", last_synced_at: 1.hour.ago)
     stub_feed("", status: 304)

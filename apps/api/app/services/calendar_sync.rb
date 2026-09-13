@@ -81,7 +81,9 @@ class CalendarSync
   # deliberately outside that transaction: it can take twenty seconds.
   def store(occurrences)
     now = Time.current
-    classifier = CalendarClassifier.new(members: group.members.active.to_a)
+    # The connection goes in so every Claude request this pass makes is billed to this house on
+    # the ai_calls table (super admin plan, "where spend is recorded").
+    classifier = CalendarClassifier.new(members: group.members.active.to_a, connection: connection)
     # uniq on the key because the feed is remote input: two VEVENTs sharing a UID and a start are
     # malformed but perfectly possible, and Postgres refuses an ON CONFLICT statement that would
     # touch one row twice. Dropping the second is the only sane reading, and a crash here would
