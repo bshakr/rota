@@ -48,8 +48,14 @@ function NavLinks() {
 
   return (
     // Horizontal, not a sidebar: the house wears a sidebar, and HQ must not be
-    // mistakable for a house at a glance. Scrolls rather than wraps on a phone.
-    <nav aria-label="Super admin" className="flex items-center gap-1 overflow-x-auto py-3">
+    // mistakable for a house at a glance.
+    //
+    // WRAPS rather than scrolls. A horizontally scrolling row put "Spend" off
+    // the right edge at phone width with no way to reach it from a keyboard —
+    // the row has one focusable child and no scroll affordance of its own
+    // (WCAG 2.1.1) — and the scroll box clipped each item's offset focus ring.
+    // Wrapping costs a second line on a narrow screen and nothing anywhere else.
+    <nav aria-label="Super admin" className="flex flex-wrap items-center gap-1 py-3">
       {SUPER_ADMIN_NAV.map(({ href, label, icon: Icon, ready }) => {
         // Overview is the root of the area, so it matches exactly; everything
         // else keeps its child routes lit (/super-admin/groups/12 → Houses).
@@ -59,12 +65,11 @@ function NavLinks() {
             : pathname === href || pathname.startsWith(`${href}/`);
 
         if (!ready) {
+          // No `aria-disabled`: it is not allowed on a generic span, and there
+          // is nothing here to disable. The visible "Soon" chip is the meaning,
+          // and it is read out as part of the text.
           return (
-            <span
-              key={href}
-              aria-disabled="true"
-              className={cn(NAV_ITEM, "text-muted-foreground cursor-default")}
-            >
+            <span key={href} className={cn(NAV_ITEM, "text-muted-foreground cursor-default")}>
               <Icon className="size-[18px] shrink-0" aria-hidden />
               {label}
               <span className="bg-muted text-muted-foreground rounded-full px-1.5 py-px text-[10px] font-semibold tracking-wide uppercase">
@@ -114,8 +119,21 @@ function NavLinks() {
  * There is no account footer and no sign-out here, deliberately: the operator is
  * signed in to their house in the same session, and the band's way back to it is
  * the only exit this area needs.
+ *
+ * `hasHouse` is not cosmetic. /dashboard requires a household, so an operator
+ * with no organization on their token would be bounced from that link to /setup,
+ * where the next thing on screen is a form that creates a house. Offering the
+ * way back only to someone who has one to go back to is the whole point of the
+ * flag.
  */
-export function SuperAdminShell({ children }: { children: React.ReactNode }) {
+export function SuperAdminShell({
+  children,
+  hasHouse,
+}: {
+  children: React.ReactNode;
+  /** Does this operator's session name a household? The layout reads it off the token. */
+  hasHouse: boolean;
+}) {
   return (
     <div className="flex min-h-full flex-1 flex-col">
       {/* bg-plum is theme-independent on purpose (a sticker does not invert), so
@@ -135,14 +153,20 @@ export function SuperAdminShell({ children }: { children: React.ReactNode }) {
           </Link>
 
           <div className="flex items-center gap-1">
-            <Link
-              href="/dashboard"
-              className="hover:bg-lavender/15 flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-colors outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lavender"
-            >
-              <House className="size-4 shrink-0" aria-hidden />
-              Your house
-            </Link>
-            <ThemeToggle />
+            {hasHouse ? (
+              <Link
+                href="/dashboard"
+                className="hover:bg-lavender/15 flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-colors outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lavender"
+              >
+                <House className="size-4 shrink-0" aria-hidden />
+                Your house
+              </Link>
+            ) : null}
+            {/* The toggle is a ghost Button, and ghost's hover tint and focus
+                ring are measured against the PAGE. On plum they are illegible,
+                so the band hands the control its own — the same lavender the
+                links beside it use. */}
+            <ThemeToggle className="hover:bg-lavender/15 hover:text-lavender aria-expanded:bg-lavender/15 aria-expanded:text-lavender focus-visible:outline-lavender" />
           </div>
         </Container>
       </header>

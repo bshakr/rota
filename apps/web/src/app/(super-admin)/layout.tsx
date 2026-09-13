@@ -11,11 +11,16 @@ import { requireSuperAdmin } from "@/lib/auth/super-admin";
  * this guard adds is the allowlist: anyone else gets `notFound()`, so the whole
  * area looks like a URL that does not exist. Rails repeats the check on every
  * request it answers — this one only decides what renders.
+ *
+ * `organizationId` is read for one reason: the shell's "Your house" link points
+ * at /dashboard, which requires a household. An operator whose token names no
+ * organization would be bounced from there to /setup — whose first offer is a
+ * form that CREATES a house — so they are not shown the link at all.
  */
 export default async function SuperAdminLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  await requireSuperAdmin();
+  const { organizationId } = await requireSuperAdmin();
 
-  return <SuperAdminShell>{children}</SuperAdminShell>;
+  return <SuperAdminShell hasHouse={Boolean(organizationId)}>{children}</SuperAdminShell>;
 }
