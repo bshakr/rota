@@ -34,7 +34,7 @@ Four surfaces were asked for:
 
 | Decision | Chosen | Rejected | Why |
 | --- | --- | --- | --- |
-| Who is a super admin | Env allowlist of emails, `SUPER_ADMIN_EMAILS`, read by Rails and by Next from the one root `.env` | A `users.super_admin` column; a "staff" WorkOS organisation; a WorkOS role; an allowlist of WorkOS user ids | Granting god mode should be a deploy, not a click, and never reachable through the API. Emails are readable by a human; ids are not. A staff org would fight the one-org-per-token model. **Prerequisite:** the WorkOS JWT template must add an `email` claim to the access token, which it does not today. A token with no email claim is refused like any other. |
+| Who is a super admin | Env allowlist of WorkOS user ids, `SUPER_ADMIN_WORKOS_USER_IDS`, read by Rails and by Next from the one root `.env` | A `users.super_admin` column; a "staff" WorkOS organisation; a WorkOS role; an allowlist of emails | Granting god mode should be a deploy, not a click, and never reachable through the API. `sub` is in every token already; an email allowlist would first need the WorkOS JWT template changed to add an `email` claim. A staff org would fight the one-org-per-token model. |
 | Enforcement | Rails, in a new `SuperAdmin::BaseController` that verifies the JWT and checks the allowlist. Next repeats the check only to hide the nav and 404 the route | Next-only gating | Rails owns everything that matters. The Next check is cosmetic. |
 | Refused caller sees | 404 | 403 | Matches the tenancy rule: a surface you cannot use should look like one that does not exist. |
 | Scoping | Super admin controllers deliberately do **not** include `TenantScoped`. Cross-tenant reads are the point and are explicit | Reusing `group_scope` with an escape hatch | An escape hatch in the tenant seam is the one bug nobody gets to make quietly. Two base controllers, two invariants, each tested. |
@@ -97,7 +97,7 @@ Controller shape:
 module SuperAdmin
   class BaseController < ApplicationController
     abstract!
-    include SuperAdminAuthenticatable   # verify JWT, allow missing org_id, require email claim in allowlist, else 404
+    include SuperAdminAuthenticatable   # verify JWT, allow missing org_id, require sub in allowlist, else 404
     include ApiErrorRendering
   end
 end
@@ -105,7 +105,7 @@ end
 
 `WorkosAccessToken.verify!` grows an `allow_missing_organization:` keyword. The default stays strict, so nothing about the existing admin path changes.
 
-Emails are compared case-insensitively after trimming. The allowlist is parsed once at boot into a frozen set; an empty or unset variable means nobody.
+The allowlist is parsed once at boot into a frozen set of trimmed ids; an empty or unset variable means nobody.
 
 Serializers are separate from the house-facing ones (`SuperAdmin::GroupSerializer`, `SuperAdmin::MemberSerializer`, `SuperAdmin::SmsMessageSerializer`) so redaction is structural: the house's `MemberSerializer` includes `access_token` on purpose, and the super admin one cannot, because it is a different class.
 
@@ -120,7 +120,7 @@ A new route group `apps/web/src/app/(super-admin)/` with its own layout and shel
 /super-admin/groups/[id]           group dashboard + actions
 ```
 
-- `requireSuperAdmin()` beside `requireHousehold()`: `withAuth()`, then `auth.user.email` in the allowlist, else `notFound()`. No household needed. AuthKit's session already carries the email, so Next does not depend on the JWT template; only Rails does.
+- `requireSuperAdmin()` beside `requireHousehold()`: `withAuth()`, then `auth.user.id` in the allowlist, else `notFound()`. No household needed.
 - `src/lib/api/super-admin.ts`: a second server-only client, same `requestJson`, but it takes the token from `withAuth()` directly rather than `requireHousehold()`.
 - The proxy matcher already covers `/super-admin/*` (everything not excluded is protected), so a logged-out visitor is bounced to WorkOS before the layout renders. `proxy-matcher.test.ts` gets one assertion saying so.
 - The house `AdminShell` shows a "Super admin" link in its footer only when the layout passes `superAdmin: true`. The super admin shell links back to "Your house".
@@ -144,7 +144,7 @@ Filters: status, unconfirmed timezone, has failures. Row click opens the group d
 Actions, all on the group dashboard rather than inline, each behind the existing `ConfirmDialog`:
 
 - **Suspend / Resume.** The dialog names what suspension does: reminders stop, admins see a paused screen, members see a paused page, nothing is deleted.
-- **Rename / set timezone.** Same semantics as the house's own PATCH: sending a timezone stamps `timezone_confirmed_at`, so the house's own "confirm your timezone" warning goes away. A super admin setting it counts as a human confirming it. The audit of *who* set it is the Rails log line, which names the super admin's email.
+- **Rename / set timezone.** Same semantics as the house's own PATCH: sending a timezone stamps `timezone_confirmed_at`, so the house's own "confirm your timezone" warning goes away. A super admin setting it counts as a human confirming it. The audit of *who* set it is the Rails log line, which names the super admin's `sub`.
 - **Notes.** A free-text box only super admins see. "Trial house for the school run", "Bassem's own".
 
 Not in this slice: create a house, add or remove a house admin, delete. See Later.
@@ -212,7 +212,7 @@ The landing page of the super admin area. Answers "is anything wrong, and is any
 
 In priority order, matching the spec's own list.
 
-1. **The allowlist is the boundary.** A request spec walks every `/api/super_admin/*` route with a valid, correctly provisioned house admin token whose email is not allowlisted and asserts 404 on all of them, and that no row changed. Then the same routes with an allowlisted email return 200. Further cases: a token with no `email` claim is 404 even when its `sub` belongs to an allowlisted user; matching ignores case; allowlist unset means nobody, including in development.
+1. **The allowlist is the boundary.** A request spec walks every `/api/super_admin/*` route with a valid, correctly provisioned house admin token whose `sub` is not allowlisted and asserts 404 on all of them, and that no row changed. Then the same routes with an allowlisted `sub` return 200. A third case: allowlist unset means nobody, including in development.
 2. **Redaction is structural.** A spec serialises a group with members and messages through the super admin serializers and asserts the JSON contains no member `access_token` and no `/s/` followed by a token. Phone numbers are expected to be present.
 3. **Suspension.** Suspended house: admin routes 403, `/api/me` 200, sweep creates no `sms_messages` rows for it, top-up creates no shifts, member cover refused, resume restores all four, and no reminder older than 24 hours fires after resume.
 4. **Aggregates.** Each `SuperAdmin::*` query object with factories and `travel_to`: funnel step counts and rates, weekly bucketing across a DST change and a month boundary, active-house definition, attention list ordering.
@@ -225,17 +225,16 @@ Brakeman will flag the cross-tenant queries as mass-lookup patterns. Annotate th
 ## Rollout
 
 1. Migration first, in its own deploy: `suspended_at`, `notes`, `last_seen_at` columns, `sign_ins`, indexes. All additive and nullable. Previous code keeps running against the new schema.
-2. In the WorkOS dashboard, add `email` to the access token's JWT template. Confirm a real token carries it with `bin/rails 'workos:inspect_token[<jwt>]'`. This also fixes the placeholder emails on `users` for everyone, since `GroupAdmin.provision!` already resyncs email from the claim.
-3. Code deploy. `SUPER_ADMIN_EMAILS` unset means the whole area 404s and no nav link shows, so the deploy is inert until the variable is set on Railway.
-4. Set the variable, restart, check `/super-admin` renders and a second (non-allowlisted) account gets the 404.
-5. No real SMS is involved anywhere in this work. Local QA runs on the null adapter and the demo seeds, extended with a second and third demo house so the list, the funnel and the attention list have something to show.
+2. Code deploy. `SUPER_ADMIN_WORKOS_USER_IDS` unset means the whole area 404s and no nav link shows, so the deploy is inert until the variable is set on Railway. Find your own id (it starts with `user_`) in the WorkOS dashboard under Users, at `/api/me` as `workos_user_id`, or with `bin/rails 'workos:inspect_token[<jwt>]'`.
+3. Set the variable, restart, check `/super-admin` renders and a second (non-allowlisted) account gets the 404.
+4. No real SMS is involved anywhere in this work. Local QA runs on the null adapter and the demo seeds, extended with a second and third demo house so the list, the funnel and the attention list have something to show.
 
 ## Phases
 
 Each phase is one PR and leaves `main` shippable. Instrumentation is deliberately early: dashboards can wait, data cannot.
 
 **Phase 0: the seam and the collectors.**
-JWT template updated in WorkOS first (a config change, not code). Allowlist config in Rails and Next. `SuperAdminAuthenticatable`, `SuperAdmin::BaseController`, an empty `overview` endpoint. `(super-admin)` route group, `requireSuperAdmin`, shell with the HQ band, nav link. Migration for `sign_ins` and both `last_seen_at` columns. `POST /api/sign_ins` wired from the AuthKit callback's `onSuccess` (check the exact hook name against the installed `@workos-inc/authkit-nextjs` typings before relying on it). Throttled touches. Tests 1, 5, 6. From this PR on, the funnel is being recorded.
+Allowlist config in Rails and Next. `SuperAdminAuthenticatable`, `SuperAdmin::BaseController`, an empty `overview` endpoint. `(super-admin)` route group, `requireSuperAdmin`, shell with the HQ band, nav link. Migration for `sign_ins` and both `last_seen_at` columns. `POST /api/sign_ins` wired from the AuthKit callback's `onSuccess` (check the exact hook name against the installed `@workos-inc/authkit-nextjs` typings before relying on it). Throttled touches. Tests 1, 5, 6. From this PR on, the funnel is being recorded.
 
 **Phase 1: group management.**
 Migration for `suspended_at` and `notes`. Groups list and show endpoints with the super admin serializers. Suspension enforced in all five places above. The list screen and a first cut of the group page carrying only header, admins, members, rotas, notes and the three actions. Tests 2, 3.
