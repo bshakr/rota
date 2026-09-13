@@ -15,9 +15,19 @@ import { describe, expect, it } from "vitest";
 
 const SRC_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
-// Modules that read the token / JWT / API origin. A Client Component importing any
-// of these is exactly how the credential would end up in a browser chunk.
-const SERVER_ONLY_MODULES = ["lib/api/http", "lib/api/member", "lib/api/admin"];
+// Modules that read the token / JWT / API origin — or, in the super admin case,
+// the operator allowlist. A Client Component importing any of these is exactly
+// how the credential would end up in a browser chunk. The house `AdminShell` and
+// the `SuperAdminShell` are both Client Components, so the allowlist module is
+// on this list for a concrete reason: the shells receive a BOOLEAN from their
+// server layout and must never import the env read themselves.
+const SERVER_ONLY_MODULES = [
+  "lib/api/http",
+  "lib/api/member",
+  "lib/api/admin",
+  "lib/api/super-admin",
+  "lib/auth/super-admin",
+];
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];

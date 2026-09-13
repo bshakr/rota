@@ -10,6 +10,7 @@ import {
   Menu,
   MessageSquare,
   Repeat,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 
@@ -83,6 +84,29 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 /**
+ * The way into HQ, and the only place it is advertised.
+ *
+ * It sits in the account footer rather than the nav: this is not one of the
+ * house's screens, and an operator who also runs a house should not have a sixth
+ * nav item the other admins never see. The (admin) layout decides whether to
+ * render it, server-side, from the env allowlist — the allowlist itself never
+ * reaches the browser, only the boolean does. Hiding it is cosmetic in any case:
+ * Rails 404s the routes and so does the route group's own guard.
+ */
+function SuperAdminLink({ onNavigate }: { onNavigate?: () => void }) {
+  return (
+    <Link
+      href="/super-admin"
+      onClick={onNavigate}
+      className="text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-sidebar-ring mb-1 flex items-center gap-3 rounded-full px-3.5 py-2.5 text-sm font-medium transition-colors outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2"
+    >
+      <ShieldCheck className="size-[18px] shrink-0" aria-hidden />
+      Super admin
+    </Link>
+  );
+}
+
+/**
  * The authenticated admin shell: persistent sidebar on desktop, a drawer behind
  * a hamburger on mobile. Deliberately the opposite of the member layout, which
  * has no navigation at all because members are not logged in and have exactly
@@ -91,10 +115,17 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 export function AdminShell({
   children,
   account,
+  superAdmin = false,
 }: {
   children: React.ReactNode;
   /** The signed-in admin's identity + sign-out, wired by the (admin) layout (BLO-1050). */
   account?: React.ReactNode;
+  /**
+   * True only when the (admin) layout found this user on the super admin
+   * allowlist. Default false, so every house admin's shell is exactly what it
+   * was before this flag existed.
+   */
+  superAdmin?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
 
@@ -121,6 +152,7 @@ export function AdminShell({
               (admin) layout, BLO-1050). The hairline bleeds to the panel edges,
               a card-footer seam rather than a floating rule. */}
           <div className="border-sidebar-border -mx-4 mt-auto border-t px-4 pt-3">
+            {superAdmin ? <SuperAdminLink /> : null}
             {account}
           </div>
         </aside>
@@ -144,8 +176,11 @@ export function AdminShell({
                 </SheetTitle>
               </SheetHeader>
               <NavLinks onNavigate={() => setOpen(false)} />
-              {account ? (
-                <div className="border-sidebar-border mt-6 border-t pt-4">{account}</div>
+              {account || superAdmin ? (
+                <div className="border-sidebar-border mt-6 border-t pt-4">
+                  {superAdmin ? <SuperAdminLink onNavigate={() => setOpen(false)} /> : null}
+                  {account}
+                </div>
               ) : null}
             </SheetContent>
           </Sheet>

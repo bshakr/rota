@@ -47,6 +47,19 @@ describe("AuthKit proxy matcher", () => {
     }
   });
 
+  // The super admin area gets no matcher entry of its own — it is covered
+  // because everything not excluded is. Worth asserting rather than assuming:
+  // `requireSuperAdmin()` calls `withAuth()`, which requires the proxy to have
+  // run, and a logged-out visitor must be sent to WorkOS before the layout
+  // renders. The nested route is the one a narrower pattern would drop, so it is
+  // the one the plan names.
+  it("protects the super admin area, nested routes included", () => {
+    expect(proxyMatches("/super-admin/groups/1")).toBe(true);
+    expect(proxyMatches("/super-admin")).toBe(true);
+    expect(proxyMatches("/super-admin/traffic")).toBe(true);
+    expect(proxyMatches("/super-admin/spend")).toBe(true);
+  });
+
   it("exposes the matcher as a string for Next's config", () => {
     expect(typeof PROXY_MATCHER).toBe("string");
     expect(PROXY_MATCHER.startsWith("/(")).toBe(true);

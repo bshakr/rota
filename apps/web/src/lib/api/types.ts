@@ -470,3 +470,18 @@ export interface MemberScheduleResponse {
    */
   events: CalendarEventItem[];
 }
+
+// ---------------------------------------------------------------------------
+// Super admin
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/super_admin/overview.
+ *
+ * Deliberately open-ended for now: the endpoint answers `{}` until the query
+ * object behind it lands (https://linear.app/bloombase/issue/BLO-1677), and
+ * inventing field names here before Rails has them would be a shape the
+ * serializer then has to live up to. Narrow this to the real payload in that
+ * ticket rather than adding speculative keys now.
+ */
+export type SuperAdminOverview = Record<string, unknown>;

@@ -40,15 +40,25 @@ import { fileURLToPath } from "node:url";
 const WEB_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const STATIC_DIR = join(WEB_ROOT, ".next", "static");
 
-// Strings that appear ONLY in the server-only token-handling modules
-// (src/lib/api/http.ts and src/lib/api/member.ts). String literals survive
-// minification verbatim, so if either module is bundled client-side, one of these
-// lands in a `.next/static` chunk. Chosen to be specific enough that no legitimate
-// client code contains them: the browser reaches the member API exclusively through
-// Server Actions, never a `/api/member/*` fetch of its own.
+// Strings that appear ONLY in the server-only modules — the token-handling pair
+// (src/lib/api/http.ts, src/lib/api/member.ts) and the super admin seam
+// (src/lib/auth/super-admin.ts, src/lib/api/super-admin.ts). String literals
+// survive minification verbatim, so if any of them is bundled client-side, one of
+// these lands in a `.next/static` chunk. Chosen to be specific enough that no
+// legitimate client code contains them: the browser reaches the member API
+// exclusively through Server Actions, never a `/api/member/*` fetch of its own,
+// and it reaches the super admin API not at all.
 const FORBIDDEN = [
   "/api/member/", // member API client request paths
   "cannot reach the Rails API", // http.ts apiBaseUrl() error sentinel — the Bearer builder
+  // The operator allowlist. It is read by name in src/lib/auth/super-admin.ts,
+  // and `process.env.SUPER_ADMIN_WORKOS_USER_IDS` is left intact for the server
+  // runtime (Next inlines only NEXT_PUBLIC_* vars), so the variable name riding
+  // into a client chunk means the module itself went with it — and with it the
+  // question of who can open HQ. The shells take a boolean from their layout
+  // precisely so this never happens.
+  "SUPER_ADMIN_WORKOS_USER_IDS",
+  "/api/super_admin/", // super admin API client request paths
 ];
 
 /** Every `.js` the browser actually downloads (never `.map`, which isn't served). */
