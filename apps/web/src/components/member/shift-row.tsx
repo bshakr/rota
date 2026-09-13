@@ -15,10 +15,14 @@ import { cn } from "@/lib/utils";
  * One shift on one day of the feed: the job, who is on it, and what the viewer can do
  * about it.
  *
- * A row the viewer is on is LIT — the lemon "now" wash plus a grape outline, the two
+ * A row the viewer is on is LIT — the lemon "now" wash plus a grape edge, the two
  * colours the system already uses for "this is the thing in front of you" — and wears
  * a YOU tag, so a member scanning the whole house's rota finds their own turns without
  * reading a single name. Everyone else's rows stay quiet.
+ *
+ * Rows live inside a rounded, overflow-hidden <Card>, so the first and last rows take
+ * the card's inner corner radius. Without it a lit row's edge is drawn square and the
+ * card clips it at each corner, leaving four flat notches where the curve should be.
  *
  * Presentational. The two actions are callbacks; this component never calls the API.
  */
@@ -46,9 +50,13 @@ export function ShiftRow({
       data-shift-row={shift.id}
       className={cn(
         "flex flex-wrap items-start gap-x-3 gap-y-2 px-4 py-3",
+        // The card is rounded-2xl with a 1px border, so the radius the rows sit inside
+        // is one pixel tighter than the card's own. Only the outer rows have corners.
+        "first:rounded-t-[calc(var(--radius-2xl)_-_1px)] last:rounded-b-[calc(var(--radius-2xl)_-_1px)]",
         // The lemon "now" wash at a quarter strength, like every other tint in the
-        // system, with the grape outline inset so it never shifts the row's height.
-        mine && "bg-lemon/25 outline-2 -outline-offset-2 outline-primary/40",
+        // system. The grape edge is an INSET ring (a box-shadow, not an outline): it
+        // follows the row's corners in every browser and never shifts the row's height.
+        mine && "bg-lemon/25 ring-2 ring-inset ring-primary/40",
       )}
     >
       <Avatar size="sm" className="mt-0.5">
