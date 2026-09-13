@@ -528,6 +528,13 @@ RSpec.describe SuperAdmin::Spend do
     it "refuses an unknown range before it reaches the cache" do
       expect { described_class.cached(range: "6m") }.to raise_error(described_class::UnknownRange)
     end
+
+    # Solid Cache outlives a deploy, so a payload whose shape has changed would be served to the new
+    # page for a minute if the key were not versioned. Asserted rather than trusted, because the
+    # suffix reads as clutter to anyone who does not know what it is for.
+    it "versions the key, so a deploy that changes the payload cannot serve the old shape" do
+      expect(described_class.cache_key("30d")).to eq("super_admin/spend/v1/30d")
+    end
   end
 
   describe "the shape it returns" do

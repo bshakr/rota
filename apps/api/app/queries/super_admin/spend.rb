@@ -6,6 +6,12 @@ module SuperAdmin
   # reads those two tables across every house, which is why it lives under SuperAdmin:: and why
   # nothing here is tenant-scoped: reading across houses is the entire point of the surface.
   #
+  # A query object, on the convention SuperAdmin::Overview's own comment sets out: app/queries is
+  # for reads across every tenant that change nothing, and app/services stays for the things that
+  # change one house. Nothing in this file writes. The one parameter it takes is a range key checked
+  # against a fixed list before anything is read, so there is no id here for a house admin to
+  # smuggle across the boundary either — the allowlist is the only gate, and it runs first.
+  #
   # Three things this deliberately refuses to do:
   #
   #   * Blend a settled charge with an estimate. Twilio settles a price minutes after delivery, so
@@ -35,6 +41,12 @@ module SuperAdmin
 
     RANGES = %w[30d 90d 12m].freeze
     DEFAULT_RANGE = "30d"
+
+    # Versioned for the same reason SuperAdmin::Overview's key is: Solid Cache survives a deploy, so
+    # without the suffix the first minute after shipping a change to this payload would serve the
+    # OLD shape to the NEW page, which is a confusing way to break a dashboard. Bump it whenever the
+    # shape changes. The range is appended to it, so each window is its own entry.
+    CACHE_KEY = "super_admin/spend/v1".freeze
 
     # The same 60 seconds the rest of the operator console caches at. Tens of houses, live SQL, and
     # a page nobody reloads twice a second — see the plan's "Aggregation" decision.
@@ -164,7 +176,7 @@ module SuperAdmin
       end
 
       def cache_key(range)
-        "super_admin/spend/#{range}"
+        "#{CACHE_KEY}/#{range}"
       end
 
       # The window, resolved against the clock now, and inclusive at both ends: a row stamped
