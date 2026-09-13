@@ -17,6 +17,33 @@ RSpec.describe CalendarConnection do
     expect(connection.masked_url).to eq("outlook.office365.com/…house.ics")
   end
 
+  it "masks the secret when a trailing slash leaves it last" do
+    connection = create(:calendar_connection, group: group, ical_url: url.delete_suffix("basic.ics"))
+
+    expect(connection.masked_url).to eq("calendar.google.com/…3f9a")
+    expect(connection.masked_url).not_to include("0123456789abcdef")
+  end
+
+  it "masks an Apple feed, which ends on the token itself" do
+    connection = create(:calendar_connection, group: group,
+                        ical_url: "https://p12-caldav.icloud.com/published/2/MTU0NzY4NDQyMTU0NzY4NDR6cMR9Yt7m")
+
+    expect(connection.masked_url).to eq("p12-caldav.icloud.com/…Yt7m")
+    expect(connection.masked_url).not_to include("MTU0NzY4NDQy")
+  end
+
+  it "masks a Nextcloud feed, whose token is followed by a query string" do
+    connection = create(:calendar_connection, group: group,
+                        ical_url: "https://cloud.example.com/remote.php/dav/public-calendars/Hs8Kq3Zx9Lm2Rt7v?export")
+
+    expect(connection.masked_url).to eq("cloud.example.com/…Rt7v")
+    expect(connection.masked_url).not_to include("Hs8Kq3Zx9Lm2")
+  end
+
+  it "returns a placeholder rather than raising when there is no link yet" do
+    expect(described_class.new.masked_url).to eq("")
+  end
+
   it "allows one calendar per group" do
     create(:calendar_connection, group: group)
 

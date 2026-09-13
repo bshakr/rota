@@ -6,6 +6,9 @@ class CalendarConnection < ApplicationRecord
   # How much of the secret survives masking. Four characters are enough to tell two calendars
   # apart and far too few to guess the rest.
   SECRET_TAIL = 4
+  # What a file name at the end of a feed path looks like. Deliberately narrow: a segment that does
+  # not match is masked, so the cost of being wrong here is a duller display, never a leak.
+  FILE_SEGMENT = /\.ics\z/i
 
   belongs_to :group
   has_many :calendar_events, dependent: :delete_all
@@ -14,10 +17,14 @@ class CalendarConnection < ApplicationRecord
 
   scope :enabled, -> { where(disabled_at: nil) }
 
-  # Host plus the tail of the path: enough to recognise the link, not enough to use it. In a Google
-  # private address the secret is the folder before the file name, so that folder is the one thing
-  # cut down, and the file name is kept whole because it names the calendar rather than unlocking it.
+  # Host plus the tail of the path: enough to recognise the link, not enough to use it. Providers
+  # disagree about where the secret sits. Google and Outlook bury it in a folder above `basic.ics`,
+  # while Apple, Nextcloud and Radicale end the path on the token itself, so there is no position
+  # that is reliably safe to print. The rule is therefore the other way round: every segment is a
+  # secret unless it is named like a file, and only the last four characters of a secret survive.
   def masked_url
+    return "" if ical_url.blank?
+
     uri = URI.parse(ical_url)
     "#{uri.host}/…#{masked_path(uri.path)}"
   rescue URI::InvalidURIError
@@ -44,10 +51,12 @@ class CalendarConnection < ApplicationRecord
 
   private
 
-  # A link with no folder above the file name has no secret to cut down, so only the file name is
-  # rendered. Nothing here ever returns a whole path segment except the file name.
+  # Renders at most four characters of the secret, plus a file name when the path ends in one. A
+  # trailing slash is not a segment, so it cannot shift which segment is read as the secret, and the
+  # query string never arrives here at all because the caller passes `uri.path`.
   def masked_path(path)
-    *folders, file = path.to_s.split("/").reject(&:empty?)
-    [ folders.last&.last(SECRET_TAIL), file ].compact.join("/")
+    segments = path.to_s.split("/").reject(&:empty?)
+    file = segments.pop if segments.last&.match?(FILE_SEGMENT)
+    [ segments.last&.last(SECRET_TAIL), file ].compact.join("/")
   end
 end
