@@ -31,12 +31,13 @@ class CalendarFetch
 
   def call
     fetch(@uri, redirects_left: MAX_REDIRECTS)
-  # URI::InvalidURIError belongs here with the network failures: it is what a Location header full
-  # of junk raises, and letting it escape would both break the promise that every failure is a
-  # CalendarFetch::Error and put a string the remote server chose into our logs.
-  rescue Timeout::Error, SocketError, Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::EHOSTUNREACH,
-         OpenSSL::SSL::SSLError, Net::HTTPBadResponse, Net::ProtocolError, URI::InvalidURIError,
-         IOError => e
+  # SystemCallError rather than a list of Errno constants: every Errno is one of its subclasses, so
+  # ETIMEDOUT, ENETUNREACH and EPIPE are covered without the list going stale as new failure modes
+  # turn up. URI::InvalidURIError belongs here too: it is what a Location header full of junk
+  # raises. Letting any of these escape would break the promise that every failure is a
+  # CalendarFetch::Error, and their messages name the host besides.
+  rescue Timeout::Error, SocketError, SystemCallError, OpenSSL::SSL::SSLError,
+         Net::HTTPBadResponse, Net::ProtocolError, URI::InvalidURIError, IOError => e
     raise Unreachable, "#{e.class.name.demodulize} while fetching the calendar"
   end
 
@@ -66,8 +67,11 @@ class CalendarFetch
         when Net::HTTPRedirection
           raise Unreachable, "too many redirects" if redirects_left.zero?
 
+          # The same guard as the initial parse, and for the same reason. URI.join is happy to
+          # return an https URI with an empty host for "https:///path", and an empty host is
+          # loopback: a feed the user chose could otherwise aim a request at this worker.
           location = URI.join(uri, response["Location"].to_s)
-          raise Unreachable, "redirected off https" unless location.is_a?(URI::HTTPS)
+          raise Unreachable, "redirected off https" unless location.is_a?(URI::HTTPS) && location.host.present?
 
           return fetch(location, redirects_left: redirects_left - 1)
         when Net::HTTPSuccess
@@ -88,6 +92,8 @@ class CalendarFetch
       body << chunk
       raise TooLarge, "calendar feed exceeds #{MAX_BYTES} bytes" if body.bytesize > MAX_BYTES
     end
-    body.force_encoding(Encoding::UTF_8)
+    # force_encoding relabels without checking, so scrub drops any byte the label is a lie about.
+    # RFC 5545 mandates UTF-8, but a feed that breaks that rule must not make the parser raise.
+    body.force_encoding(Encoding::UTF_8).scrub
   end
 end

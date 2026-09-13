@@ -53,10 +53,31 @@ RSpec.describe CalendarFetch do
     expect { described_class.call(url) }.to raise_error(described_class::Unreachable)
   end
 
+  it "raises Unreachable for any system call error, without the host in the message" do
+    stub_request(:get, url).to_raise(Errno::EPIPE)
+
+    expect { described_class.call(url) }.to raise_error(described_class::Unreachable) { |e| expect(e.message).not_to include("calendar.google.com") }
+  end
+
+  it "refuses a redirect to a link with no host" do
+    stub_request(:get, url).to_return(status: 302, headers: { "Location" => "https:///basic.ics" })
+
+    expect { described_class.call(url) }.to raise_error(described_class::Unreachable)
+  end
+
   it "raises Unreachable when a redirect points somewhere unparsable" do
     stub_request(:get, url).to_return(status: 302, headers: { "Location" => "http://[nonsense" })
 
     expect { described_class.call(url) }.to raise_error(described_class::Unreachable) { |e| expect(e.message).not_to include("nonsense") }
+  end
+
+  it "returns a valid utf-8 body even when the feed serves invalid bytes" do
+    stub_request(:get, url).to_return(status: 200, body: "BEGIN:VCALENDAR\r\nX-JUNK:\xFF\r\nEND:VCALENDAR\r\n".b)
+
+    body = described_class.call(url).body
+
+    expect(body.encoding).to eq(Encoding::UTF_8)
+    expect(body).to be_valid_encoding
   end
 
   it "aborts past the byte cap" do
