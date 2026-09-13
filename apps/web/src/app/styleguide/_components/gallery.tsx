@@ -20,7 +20,8 @@ import { Demo, Registers, Section } from "@/app/styleguide/_components/spec";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { InvalidLink } from "@/components/member/invalid-link";
-import { ShiftCard } from "@/components/member/shift-card";
+import { NextShiftCard } from "@/components/member/next-shift-card";
+import { ShiftRow } from "@/components/member/shift-row";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -90,6 +91,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { MemberShift } from "@/lib/api/types";
 import { formatLongDate, formatShiftDate, formatTimestamp } from "@/lib/date";
 import { initials } from "@/lib/format";
 
@@ -101,6 +103,52 @@ const MEMBERS = ["Bass", "Eliza", "Raph", "Ciara"] as const;
 // every day is a styleguide you cannot diff, and "today" evaluated on the server
 // and the client can differ by a day across midnight.
 const TODAY = new Date(2026, 6, 2);
+
+// The member vocabulary is no longer a presentational card with loose props: the
+// feed renders whole `MemberShift` records straight from the API, so the gallery
+// exercises that real shape rather than a mock of it. Same 2 July 2026 as TODAY,
+// as a CIVIL date, which is the only kind the member page deals in.
+const MEMBER_TODAY = "2026-07-02";
+const CIARA = { id: 1, name: "Ciara" };
+const BASS = { id: 2, name: "Bass" };
+
+function memberShift(
+  shift: Partial<MemberShift> & { id: number; rota_name: string; due_on: string },
+): MemberShift {
+  const assigned = shift.assigned_member ?? CIARA;
+  const covering = shift.covering_member ?? null;
+  return {
+    rota_id: 1,
+    covered: covering !== null,
+    assigned_member: assigned,
+    covering_member: covering,
+    responsible_member: covering ?? assigned,
+    can_assign_cover: false,
+    can_cancel_cover: false,
+    ...shift,
+  };
+}
+
+const MY_TURN = memberShift({
+  id: 1,
+  rota_name: "Kitchen deep clean",
+  due_on: "2026-07-11",
+  can_assign_cover: true,
+});
+const MY_NEXT_ONE = memberShift({ id: 2, rota_name: "Bathroom", due_on: "2026-07-18" });
+const HANDED_OFF = memberShift({
+  id: 3,
+  rota_name: "Bins",
+  due_on: "2026-07-07",
+  covering_member: BASS,
+  can_cancel_cover: true,
+});
+const SOMEONE_ELSES = memberShift({
+  id: 4,
+  rota_name: "Hoovering",
+  due_on: "2026-07-07",
+  assigned_member: BASS,
+});
 const SAMPLE_DAY = new Date(2026, 6, 4);
 const SAMPLE_SENT_AT = new Date(2026, 6, 1, 9, 0);
 
@@ -890,54 +938,51 @@ export function Gallery() {
           <div>
             <p className="font-heading text-2xl font-semibold">Hi Ciara</p>
             <p className="text-muted-foreground text-sm">
-              Here&apos;s what&apos;s coming up for you, across every rota.
+              2 July 2026. Here&apos;s what the whole house is up to.
             </p>
           </div>
 
           <div>
             <p className="text-muted-foreground mb-2 text-xs font-medium">
-              Your turn, with the offer to hand it on
+              Your next turn, with the offer to hand it on
             </p>
-            <ShiftCard
-              rota="Kitchen deep clean"
-              date={new Date(2026, 6, 11)}
-              today={TODAY}
-              state={{ kind: "yours" }}
-              action={
-                <Button size="lg" variant="outline" className="w-full">
-                  Can&apos;t make it? Ask someone to cover
-                </Button>
-              }
+            <NextShiftCard
+              shifts={[MY_TURN, MY_NEXT_ONE]}
+              viewerId={CIARA.id}
+              today={MEMBER_TODAY}
+              onHandOff={(shift) => toast(`Hand off ${shift.rota_name}`)}
             />
           </div>
 
           <div>
             <p className="text-muted-foreground mb-2 text-xs font-medium">
-              You handed it on, and you can take it back
+              Nothing on your plate, which is a reassurance and not an error
             </p>
-            <ShiftCard
-              rota="Bins"
-              date={new Date(2026, 6, 7)}
-              today={TODAY}
-              state={{ kind: "handed-off", to: "Bass" }}
-              action={
-                <Button size="sm" variant="ghost">
-                  Actually, I can make it. Take it back
-                </Button>
-              }
+            <NextShiftCard
+              shifts={[]}
+              viewerId={CIARA.id}
+              today={MEMBER_TODAY}
+              onHandOff={(shift) => toast(`Hand off ${shift.rota_name}`)}
             />
           </div>
 
           <div>
             <p className="text-muted-foreground mb-2 text-xs font-medium">
-              You&apos;re covering for someone
+              A day in the feed: your row is lit, the rest of the house stays quiet
             </p>
-            <ShiftCard
-              rota="Bathroom"
-              date={new Date(2026, 6, 9)}
-              today={TODAY}
-              state={{ kind: "covering", forName: "Eliza" }}
-            />
+            <Card className="gap-0 overflow-hidden py-0">
+              <ul className="divide-border divide-y">
+                {[MY_TURN, HANDED_OFF, SOMEONE_ELSES].map((shift) => (
+                  <ShiftRow
+                    key={shift.id}
+                    shift={shift}
+                    viewerId={CIARA.id}
+                    onHandOff={(handed) => toast(`Hand off ${handed.rota_name}`)}
+                    onTakeBack={(taken) => toast(`Take back ${taken.rota_name}`)}
+                  />
+                ))}
+              </ul>
+            </Card>
           </div>
 
           <div>

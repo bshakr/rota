@@ -1,0 +1,200 @@
+"use client";
+
+import * as React from "react";
+import { CalendarX, Filter } from "lucide-react";
+import { toast } from "sonner";
+
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { EmptyState } from "@/components/empty-state";
+import { FilterChips } from "@/components/member/filter-chips";
+import { HandOffSheet } from "@/components/member/hand-off-sheet";
+import { NextShiftCard } from "@/components/member/next-shift-card";
+import { PeopleCard } from "@/components/member/people-card";
+import { PeopleStrip } from "@/components/member/people-strip";
+import { WeekSection } from "@/components/member/week-section";
+import { Button } from "@/components/ui/button";
+import { toastApiError } from "@/lib/api/toast";
+import type { MemberScheduleResponse, MemberShift } from "@/lib/api/types";
+import { formatShiftDate, relativeDay } from "@/lib/date";
+import { civilDate } from "@/lib/group-dates";
+
+import type { RotaFilter } from "./schedule-view";
+import { ALL_SHIFTS, buildFeed, nextShiftByMember, responsibleShifts } from "./schedule-view";
+import type { AssignAction, CancelAction } from "./use-shift-updates";
+import { runAction, useShiftUpdates } from "./use-shift-updates";
+
+// The interactive half of the member page: the whole house's rota, the filters over
+// it, and the one thing a member came to do — hand a shift on, or take it back.
+//
+// It never sees the magic-link token. The two mutations arrive already bound to it
+// (server-side, in page.tsx), so this component supplies only shift and member ids.
+// Each successful mutation returns the shift resolved for THIS member, and the row
+// re-renders from that one authoritative value.
+
+// Four weeks up front. The payload covers the generator's whole 90-day window, so
+// "Show more weeks" reveals the rest with no request — a member on a train should not
+// need a second round trip to see October.
+const INITIAL_WEEKS = 4;
+
+export function MemberFeed({
+  schedule,
+  assignAction,
+  cancelAction,
+}: {
+  schedule: MemberScheduleResponse;
+  assignAction: AssignAction;
+  cancelAction: CancelAction;
+}) {
+  const { shifts, applyUpdate } = useShiftUpdates(schedule.shifts);
+  // One schedule object carrying the LIVE shifts, so every derived view (the feed, the
+  // "You" card, the people card, the hand-off ranking) reads the same array after a
+  // cover lands, rather than some of them reading the server's first answer.
+  const live = React.useMemo<MemberScheduleResponse>(
+    () => ({ ...schedule, shifts }),
+    [schedule, shifts],
+  );
+
+  const [rotaFilter, setRotaFilter] = React.useState<RotaFilter>(ALL_SHIFTS.rota);
+  const [personId, setPersonId] = React.useState<number | null>(null);
+  const [expanded, setExpanded] = React.useState(false);
+  const [handingOff, setHandingOff] = React.useState<MemberShift | null>(null);
+  const [takingBack, setTakingBack] = React.useState<MemberShift | null>(null);
+
+  const filter = React.useMemo(() => ({ rota: rotaFilter, personId }), [rotaFilter, personId]);
+  const weeks = React.useMemo(() => buildFeed(live, filter), [live, filter]);
+  const mine = React.useMemo(() => responsibleShifts(live), [live]);
+  const nextByMember = React.useMemo(() => nextShiftByMember(live), [live]);
+
+  const filtered = rotaFilter.kind !== "everyone" || personId !== null;
+  const visible = expanded ? weeks : weeks.slice(0, INITIAL_WEEKS);
+
+  function clearFilters() {
+    setRotaFilter(ALL_SHIFTS.rota);
+    setPersonId(null);
+  }
+
+  async function takeBack(shift: MemberShift) {
+    const result = await runAction(() => cancelAction(shift.id));
+    if (!result.ok) {
+      toastApiError(result.error, "Couldn't take it back just now. Try again.");
+      // Re-throw so ConfirmDialog stays OPEN (its contract: a rejected onConfirm leaves
+      // the dialog up to retry or cancel). Returning would close it right after the
+      // error toast, stranding a network blip.
+      throw new Error("cancel-cover-failed");
+    }
+    applyUpdate(result.shift);
+    setTakingBack(null);
+    toast.success("Got it. You're back down for this one.");
+  }
+
+  const feed =
+    weeks.length === 0 ? (
+      filtered ? (
+        <EmptyState
+          icon={Filter}
+          title="No shifts for this filter"
+          description="Nothing matches that just now."
+          action={
+            <Button size="lg" onClick={clearFilters}>
+              Show everyone
+            </Button>
+          }
+        />
+      ) : (
+        <EmptyState
+          icon={CalendarX}
+          title="Nothing on the rota yet"
+          description="Whoever runs your rota has not set anything up. We'll text you as soon as they do."
+        />
+      )
+    ) : (
+      <>
+        <div className="space-y-8">
+          {visible.map((week) => (
+            <WeekSection
+              key={week.weekStart}
+              week={week}
+              today={schedule.today}
+              viewerId={schedule.member.id}
+              onHandOff={setHandingOff}
+              onTakeBack={setTakingBack}
+            />
+          ))}
+        </div>
+        {!expanded && weeks.length > INITIAL_WEEKS ? (
+          <Button variant="secondary" size="lg" className="w-full" onClick={() => setExpanded(true)}>
+            Show more weeks
+          </Button>
+        ) : null}
+      </>
+    );
+
+  return (
+    <>
+      <div className="lg:flex lg:items-start lg:gap-8">
+        <div className="min-w-0 flex-1 space-y-6">
+          {/* Phone lead card. On desktop the same card is the sidebar's "You" card. */}
+          <div className="lg:hidden">
+            <NextShiftCard
+              shifts={mine}
+              viewerId={schedule.member.id}
+              today={schedule.today}
+              onHandOff={setHandingOff}
+            />
+          </div>
+
+          <div className="lg:hidden">
+            <PeopleStrip
+              members={schedule.members}
+              viewerId={schedule.member.id}
+              selectedId={personId}
+              onSelect={setPersonId}
+            />
+          </div>
+
+          <FilterChips rotas={schedule.rotas} value={rotaFilter} onChange={setRotaFilter} />
+
+          {feed}
+        </div>
+
+        <aside className="hidden w-[360px] shrink-0 space-y-4 lg:block">
+          <NextShiftCard
+            shifts={mine.slice(0, 3)}
+            viewerId={schedule.member.id}
+            today={schedule.today}
+            onHandOff={setHandingOff}
+          />
+          <PeopleCard
+            members={schedule.members}
+            viewerId={schedule.member.id}
+            nextShifts={nextByMember}
+            selectedId={personId}
+            onSelect={setPersonId}
+          />
+        </aside>
+      </div>
+
+      <HandOffSheet
+        shift={handingOff}
+        schedule={live}
+        open={handingOff !== null}
+        onOpenChange={(open) => setHandingOff(open ? handingOff : null)}
+        assignAction={assignAction}
+        onUpdated={applyUpdate}
+      />
+
+      {takingBack && takingBack.covering_member ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => setTakingBack(open ? takingBack : null)}
+          title="Take this shift back?"
+          description={`${takingBack.covering_member.name} is covering ${takingBack.rota_name} on ${formatShiftDate(
+            civilDate(takingBack.due_on),
+          )} (${relativeDay(civilDate(takingBack.due_on), civilDate(schedule.today))}). Take it back and you're down for it again. We'll let ${takingBack.covering_member.name} know.`}
+          confirmLabel="Take it back"
+          onConfirm={() => takeBack(takingBack)}
+        />
+      ) : null}
+    </>
+  );
+}

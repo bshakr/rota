@@ -1,4 +1,4 @@
-import type { MemberRef, MemberShift } from "@/lib/api/types";
+import type { MemberShift } from "@/lib/api/types";
 
 // The one pure decision the member page makes about a shift: what is this to ME?
 // It lived alongside the old shift card; the card is going and the feed asks the same
@@ -35,18 +35,4 @@ export function shiftStateFor(shift: MemberShift, memberId: number): ShiftState 
     return { kind: "covering", forName: shift.assigned_member.name };
   }
   return null;
-}
-
-/**
- * Who this member can hand a given shift to. `coverable_members` already excludes the
- * member themselves (the API resolves it); this drops the shift's original assignee
- * too, since offering them their own shift back is the `already_assignee` rejection.
- *
- * SUPERSEDED by rankCoverCandidates in ./cover-ranking, which answers the same question
- * from the whole-house schedule and groups the answer by who is actually free. This
- * stays only because ./shift-list.tsx, the last caller, is deleted in the integration
- * step; delete this function and its describe block in shift-view.test.ts with it.
- */
-export function coverTargetsFor(shift: MemberShift, coverable: MemberRef[]): MemberRef[] {
-  return coverable.filter((member) => member.id !== shift.assigned_member.id);
 }

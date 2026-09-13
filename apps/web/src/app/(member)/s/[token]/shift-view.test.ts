@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { MemberRef, MemberShift } from "@/lib/api/types";
 
 import type { ShiftState } from "./shift-view";
-import { coverTargetsFor, shiftStateFor } from "./shift-view";
+import { shiftStateFor } from "./shift-view";
 
 // The member is always id 1 ("me") in these fixtures; everyone else is a housemate.
 const ME = 1;
@@ -65,20 +65,3 @@ describe("shiftStateFor", () => {
   });
 });
 
-describe("coverTargetsFor", () => {
-  const coverable = [ref(2, "Bob"), ref(3, "Cara"), ref(4, "Dev")];
-
-  it("offers every coverable member for my own uncovered shift", () => {
-    const targets = coverTargetsFor(shift({ assigned_member: ref(ME, "Alice") }), coverable);
-    expect(targets).toEqual(coverable);
-  });
-
-  it("excludes the original assignee when I'm handing on a shift I'm covering", () => {
-    // I (Alice) am covering Bob's shift; offering Bob back would be rejected as already_assignee.
-    const targets = coverTargetsFor(
-      shift({ assigned_member: ref(2, "Bob"), covering_member: ref(ME, "Alice") }),
-      coverable,
-    );
-    expect(targets).toEqual([ref(3, "Cara"), ref(4, "Dev")]);
-  });
-});
