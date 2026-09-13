@@ -7,13 +7,32 @@
 # interpolated anywhere except a `reason` that is truncated and rendered as text. And a title is the
 # house's own business: it never reaches a log line or an exception message, so a Failed carries the
 # cause's class and error type and nothing else.
+#
+# Failures are partial rather than all-or-nothing. Every chunk is attempted even after one fails,
+# and the verdicts that did come back ride out on Failed#verdicts, so CalendarSync can store those
+# and leave the rest pending:
+#
+#   begin
+#     verdicts = classifier.classify(items)
+#   rescue CalendarClassifier::Failed => e
+#     verdicts = e.verdicts   # a Hash, empty when nothing succeeded
+#   end
 class CalendarClassifier
   Verdict = Struct.new(:kind, :member_ids, :reason, keyword_init: true)
 
-  class Failed < StandardError; end
+  # `verdicts` carries whatever came back before the failure, so a caller never has to throw away
+  # answers it has already paid for. Empty when nothing succeeded.
+  class Failed < StandardError
+    attr_reader :verdicts
+
+    def initialize(message, verdicts: {})
+      super(message)
+      @verdicts = verdicts
+    end
+  end
 
   BATCH_SIZE = 50
-  MAX_TOKENS = 4096
+  MAX_TOKENS = 8192
   REASON_LIMIT = 120
   TIMEOUT_SECONDS = 20
   MAX_RETRIES = 2
@@ -67,8 +86,8 @@ class CalendarClassifier
     Only ever return member ids that appear in the roster below. An away verdict must name at least
     one of them.
 
-    Give a reason of one short clause, the kind of thing an admin can read next to the title:
-    "Alfie, three nights in Carlisle", or "a birthday, not a trip".
+    Give a reason of one short clause, under fifteen words, the kind of thing an admin can read
+    next to the title: "Alfie, three nights in Carlisle", or "a birthday, not a trip".
 
     The housemates who live here:
   PROMPT
@@ -94,10 +113,29 @@ class CalendarClassifier
   # items: [{ ref:, summary:, all_day:, starts_on:, ends_on: }, ...] where ref is the fingerprint.
   # Returns { ref => Verdict } holding only what survived validation; a ref with no valid verdict is
   # simply absent, and the caller leaves that occurrence pending.
+  #
+  # A chunk that fails does not discard the ones that already worked. Every chunk is attempted, and
+  # if any failed the Failed raised afterwards carries the rest on #verdicts: a 429 on the last
+  # chunk of a first sync no longer throws away the hundred verdicts before it.
   def classify(items)
     return {} if items.empty?
 
-    items.each_slice(BATCH_SIZE).reduce({}) { |found, chunk| found.merge(classify_chunk(chunk)) }
+    # Resolve the key before spending anything. A missing key is a configuration failure rather than
+    # a per-chunk one, so it should surface as one clear Failed instead of once per chunk.
+    client
+
+    earned = {}
+    failure = nil
+
+    items.each_slice(BATCH_SIZE) do |chunk|
+      earned.merge!(classify_chunk(chunk))
+    rescue Failed => e
+      failure ||= e
+    end
+
+    raise Failed.new(failure.message, verdicts: earned) if failure
+
+    earned
   end
 
   private
@@ -126,37 +164,65 @@ class CalendarClassifier
   end
 
   def classify_chunk(chunk)
-    message = request(chunk)
-    raise Failed, "the model stopped on #{message.stop_reason}" unless message.stop_reason == :end_turn
+    refs = wire_refs(chunk)
 
-    accept(JSON.parse(text_of(message))["verdicts"], chunk)
+    stop_reason, text = read_reply(JSON.generate(payload_for(chunk, refs.keys)))
+    raise Failed, "the model stopped on #{stop_reason}" unless stop_reason == :end_turn
+    raise Failed, "the reply carried no text block" if text.nil?
+
+    accept(JSON.parse(text)["verdicts"], refs)
   rescue JSON::ParserError
     raise Failed, "the reply was not the JSON the schema asked for"
   end
 
-  def request(chunk)
+  # The whole of the SDK boundary: making the call and reading the reply's fields. Everything of
+  # ours is assembled before this is entered, so the blanket rescue below cannot hide our own bugs.
+  #
+  # Spec 7.4 is absolute: a failed call never fails the sync, and CalendarSync's only handle on that
+  # is CalendarClassifier::Failed. Three separate kinds of failure have to arrive as one. Status and
+  # connection errors are the obvious ones. Then the SDK coerces response fields lazily inside its
+  # accessors, so a body it cannot convert raises ConversionError, which descends from
+  # Anthropic::Errors::Error and not from APIError. And `messages.create` walks the reply's content
+  # eagerly to unwrap tool schemas, so a body whose content is not an array raises a plain
+  # NoMethodError from inside the gem, which is not an Anthropic error at all. Hence StandardError
+  # last: whatever class the gem throws over the wall, it means the call did not produce an answer.
+  def read_reply(user_message)
+    message = request(user_message)
+    block = message.content.find { |candidate| candidate.type == :text }
+
+    [ message.stop_reason, block&.text ]
+  rescue Anthropic::Errors::APIStatusError => e
+    # The class already names the status (RateLimitError is the 429, InternalServerError the 5xx)
+    # and `.type` adds the API's own label when the body carried one. A bodyless 429 carries none,
+    # so do not trail an empty pair of brackets.
+    raise Failed, e.type.present? ? "#{e.class} (#{e.type})" : e.class.to_s
+  rescue StandardError => e
+    raise Failed, e.class.to_s
+  end
+
+  def request(user_message)
     client.messages.create(
       model: model,
       max_tokens: MAX_TOKENS,
       system_: system_prompt,
-      messages: [ { role: "user", content: JSON.generate(payload_for(chunk)) } ],
+      messages: [ { role: "user", content: user_message } ],
       output_config: { format_: { type: "json_schema", schema: SCHEMA } }
     )
-  # Every HTTP failure the SDK raises lands in one of these two. APIStatusError covers the statuses
-  # by subclass (RateLimitError is the 429, InternalServerError the 5xx) and its `.type` adds the
-  # API's own label; APIConnectionError covers the ones with no response at all, APITimeoutError
-  # among them. The class and the type are enough to diagnose either, so the message takes nothing
-  # from the request.
-  rescue Anthropic::Errors::APIStatusError => e
-    raise Failed, "#{e.class} (#{e.type})"
-  rescue Anthropic::Errors::APIConnectionError => e
-    raise Failed, e.class.to_s
   end
 
-  def payload_for(chunk)
-    chunk.map do |item|
+  # The model echoes a position within the chunk, "1" to "50", never a fingerprint. A 64-character
+  # hex string costs roughly 25 output tokens to echo, so fifty of them would spend a quarter of the
+  # budget before a single verdict was written, and one mistyped hex character would silently drop a
+  # verdict forever. This is the only place the numbering is decided; payload_for is handed the keys
+  # rather than working them out again, so the two cannot drift apart.
+  def wire_refs(chunk)
+    chunk.each_with_index.to_h { |item, index| [ (index + 1).to_s, item[:ref].to_s ] }
+  end
+
+  def payload_for(chunk, refs)
+    chunk.zip(refs).map do |item, ref|
       {
-        ref: item[:ref],
+        ref: ref,
         title: item[:summary],
         all_day: item[:all_day],
         starts_on: item[:starts_on].iso8601,
@@ -166,28 +232,21 @@ class CalendarClassifier
     end
   end
 
-  # content is an array of block objects, and `type` is a Symbol rather than a String.
-  def text_of(message)
-    block = message.content.find { |candidate| candidate.type == :text }
-    raise Failed, "the reply carried no text block" if block.nil?
-
-    block.text
-  end
-
   # Spec 7.2. Anything that fails a check is dropped rather than argued with; the next sync asks
   # again, which is cheaper than a repair path nobody will ever read.
-  def accept(verdicts, chunk)
-    refs = chunk.map { |item| item[:ref].to_s }
-
+  def accept(verdicts, refs)
     Array(verdicts).each_with_object({}) do |raw, accepted|
-      ref = raw["ref"].to_s
-      next unless refs.include?(ref)
+      # refs maps the positional ref the model was given back to the caller's ref. A ref we never
+      # sent has no entry, so an invented one is dropped here.
+      ref = refs[raw["ref"].to_s]
+      next if ref.nil?
 
       kind = raw["kind"].to_s
       next unless KINDS.include?(kind)
 
       member_ids = Array(raw["member_ids"]).map(&:to_i).uniq.select { |id| roster_ids.include?(id) }
       kind = "event" if kind == "away" && member_ids.empty?
+      # Not in 7.2: an event marks nobody away, so ids on one are noise the store should not keep.
       member_ids = [] if kind == "event"
 
       accepted[ref] = Verdict.new(kind: kind, member_ids: member_ids,

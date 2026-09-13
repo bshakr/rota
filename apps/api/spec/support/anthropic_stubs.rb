@@ -29,8 +29,7 @@ module AnthropicStubs
     end
   end
 
-  private
-
+  # Public so a spec can hand several replies to one `to_return` and fail only the second chunk.
   def claude_reply(verdicts, stop_reason: "end_turn")
     {
       status: 200,
