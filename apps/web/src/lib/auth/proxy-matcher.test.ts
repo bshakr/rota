@@ -91,6 +91,20 @@ describe("AuthKit proxy matcher", () => {
     expect(paths).not.toContain('"/setup"');
   });
 
+  // The public footer links to both from every page, including the landing page
+  // a logged-out visitor is reading. `unauthenticatedPaths` is only consulted for
+  // paths the matcher covers, so both halves have to hold: the proxy runs on
+  // them, and it is told not to demand a session.
+  it("lets a logged-out visitor read the privacy and terms pages", () => {
+    expect(proxyMatches("/privacy")).toBe(true);
+    expect(proxyMatches("/terms")).toBe(true);
+
+    const source = readFileSync(fileURLToPath(new URL("../../proxy.ts", import.meta.url)), "utf8");
+    const paths = source.match(/unauthenticatedPaths:\s*\[([^\]]*)\]/)?.[1];
+    expect(paths).toContain('"/privacy"');
+    expect(paths).toContain('"/terms"');
+  });
+
   // Next requires `config.matcher` to be an inline literal (it is statically
   // parsed), so proxy.ts can't import PROXY_MATCHER. This keeps the two honest:
   // the literal shipped to Next must be exactly the pattern these tests exercise.

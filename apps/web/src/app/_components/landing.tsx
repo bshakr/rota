@@ -22,6 +22,11 @@ import { initials } from "@/lib/format";
 import { SITE_TAGLINE, SITE_TITLE } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
+import { Faq } from "./faq";
+import { HousemateCard } from "./housemate-card";
+import { HowItWorks } from "./how-it-works";
+import { SiteFooter } from "./site-footer";
+
 /**
  * Every lucide glyph shares one type, so naming a single icon is enough to type
  * the whole sheet. Saves importing `LucideIcon` just to describe a prop.
@@ -415,6 +420,11 @@ export function Landing() {
           </div>
         </section>
 
+        {/* The three steps, straight after the pitch: somebody who has just
+            decided they want this needs to know what the next ten minutes look
+            like before they meet the proof below. */}
+        <HowItWorks />
+
         {/* Where the two halves meet, which is the only claim on this page that
             neither a rota app nor a calendar can make on its own. */}
         <section className="pt-6">
@@ -491,6 +501,10 @@ export function Landing() {
           </div>
         </section>
 
+        {/* The page has been talking to the admin throughout. This is the one
+            card that answers the question the admin gets asked back. */}
+        <HousemateCard />
+
         {/* Nothing to install. Three quiet lines with hairline rules, no cards:
             these are objections being closed, not features being sold. */}
         <section className="pt-10 md:pt-12">
@@ -514,6 +528,10 @@ export function Landing() {
             ))}
           </div>
         </section>
+
+        {/* Everything still unanswered, answered, before the last call to
+            action rather than after it. */}
+        <Faq />
 
         {/* One last nudge, on the same lavender pane as the hero. No blobs here:
             they belong to the hero only, and a band this short has no corner
@@ -545,16 +563,7 @@ export function Landing() {
         </section>
       </main>
 
-      <footer className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-5 py-8 md:px-8">
-        <Link
-          href="/"
-          aria-label="Rota Monster home"
-          className="rounded-md outline-hidden focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-solid focus-visible:outline-ring"
-        >
-          <Wordmark muted />
-        </Link>
-        <p className="text-xs text-muted-foreground">{SITE_TAGLINE}</p>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

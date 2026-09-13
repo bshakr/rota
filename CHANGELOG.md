@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.0.2.6] - 2026-09-14
+
+### Added
+
+- The homepage answers its objections. "How it works" lays out the three steps after
+  the pair, a "What a housemate gets" card follows the hand-off card, and a six
+  question "Questions" block sits before the closing panel. The questions block also
+  emits a FAQPage JSON-LD graph built from the same array as the visible copy, so the
+  structured data cannot drift from the page.
+- Public /privacy and /terms pages, the first legal documents the app has had. They
+  describe what the code actually does: disconnecting the calendar deletes the link
+  and every event it brought, removing a housemate stops their link but keeps their
+  name and number, nothing is deleted on a timer, there is no self-serve house delete,
+  and Twilio, WorkOS and Anthropic each see a defined slice. Both paths are in the
+  AuthKit proxy's unauthenticatedPaths so a logged-out visitor can read them.
+
+### Changed
+
+- The landing page's inline footer becomes a shared site footer, carrying the
+  wordmark, the tagline, privacy, terms, a contact address and a "Made by
+  bloombase.studio" link. The legal pages use the same footer at the prose measure.
+  Design record: docs/superpowers/specs/2026-09-13-homepage-whose-turn-whos-home.md
+  section 8.
+
 ## [0.0.2.5] - 2026-09-13
 
 ### Added
@@ -9,6 +33,7 @@
   `?ref=member`. A housemate is added by somebody else and only ever sees their own
   rota, so that page had no route back to the site and no name to pass on.
 
+||||||| parent of 6b5f386 (v0.0.2.4 feat: homepage how it works, questions, housemate card, footer, privacy and terms)
 ## [0.0.2.3] - 2026-09-13
 
 ### Changed
