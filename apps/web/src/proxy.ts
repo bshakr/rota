@@ -31,7 +31,18 @@ export default authkitProxy({
     enabled: true,
     // The sign-in handler owns PKCE initiation; don't bounce it back to itself
     // through proxy-initiated login. The reauth prompt must also remain readable.
-    unauthenticatedPaths: ["/", "/styleguide", "/auth/sign-in", "/auth/reauth"],
+    // "/opengraph-image" is not a page but it IS a path without a dot, so the
+    // matcher below runs the proxy over it and a logged-out crawler — every
+    // crawler — would be 307'd to WorkOS instead of getting the card image.
+    // Facebook, Slack and X all fetch it anonymously. robots.txt and sitemap.xml
+    // need no entry: they carry a dot, so the matcher already skips them.
+    unauthenticatedPaths: [
+      "/",
+      "/opengraph-image",
+      "/styleguide",
+      "/auth/sign-in",
+      "/auth/reauth",
+    ],
   },
 });
 

@@ -60,6 +60,24 @@ describe("AuthKit proxy matcher", () => {
     expect(proxyMatches("/super-admin/spend")).toBe(true);
   });
 
+  // The SEO surface, and the one trap in it. `/robots.txt` and `/sitemap.xml`
+  // carry a dot, so the matcher skips them and they answer 200 to anyone.
+  // `/opengraph-image` does NOT: it is matched like any page, so without an
+  // entry in unauthenticatedPaths every anonymous scraper that fetches the card
+  // image — Slack, Facebook, X, and every search crawler — gets a 307 to WorkOS.
+  it("serves robots.txt and sitemap.xml without the proxy", () => {
+    expect(proxyMatches("/robots.txt")).toBe(false);
+    expect(proxyMatches("/sitemap.xml")).toBe(false);
+  });
+
+  it("runs on /opengraph-image, which is why it must be an unauthenticated path", () => {
+    expect(proxyMatches("/opengraph-image")).toBe(true);
+
+    const source = readFileSync(fileURLToPath(new URL("../../proxy.ts", import.meta.url)), "utf8");
+    const paths = source.match(/unauthenticatedPaths:\s*\[([^\]]*)\]/)?.[1];
+    expect(paths).toContain('"/opengraph-image"');
+  });
+
   it("exposes the matcher as a string for Next's config", () => {
     expect(typeof PROXY_MATCHER).toBe("string");
     expect(PROXY_MATCHER.startsWith("/(")).toBe(true);
