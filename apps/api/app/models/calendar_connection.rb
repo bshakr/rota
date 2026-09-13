@@ -14,7 +14,7 @@ class CalendarConnection < ApplicationRecord
   has_many :calendar_events, dependent: :delete_all
 
   # Anchored at BOTH ends on purpose. `\A` alone accepts "https://ok.example\nanything-at-all",
-  # because a Ruby regex without `\z` stops caring at the first newline — and this column is a
+  # because a Ruby regex without `\z` stops caring at the first newline, and this column is a
   # credential that is later handed to Net::HTTP, printed masked, and stored. `\S+` rather than `.+`
   # so the tail cannot be whitespace either. CalendarFetch re-checks the shape before it fetches;
   # this is the check that decides what may be written down.

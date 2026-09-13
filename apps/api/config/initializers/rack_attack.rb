@@ -45,7 +45,7 @@ class Rack::Attack
   # Keyed on the bearer token rather than the IP, for the same reason the member throttle is keyed
   # per member: two houses behind one office or café NAT share an IP, and one of them syncing must
   # never lock the other out. The token is hashed because the key is written to the cache store and
-  # a WorkOS access token is a credential — the digest tells two callers apart without keeping one.
+  # a WorkOS access token is a credential, and the digest tells two callers apart without keeping one.
   # A token refresh therefore starts a fresh bucket; a WorkOS access token lives minutes, which is
   # long enough for this window to mean something.
   throttle("group_api/calendar_fetch", limit: 5, period: 60.seconds) do |request|
@@ -89,7 +89,7 @@ class Rack::Attack
   end
 
   # The member a request's bearer token names, resolved once and memoised on the Rack env so the two
-  # member throttles share ONE indexed lookup. Only ACTIVE members resolve — a deactivated token
+  # member throttles share ONE indexed lookup. Only ACTIVE members resolve, so a deactivated token
   # authenticates as nobody (see MemberAuthenticatable), so it falls to the IP throttle like any other
   # bad token. A token-less request never touches the database.
   def self.member_id_for(request)

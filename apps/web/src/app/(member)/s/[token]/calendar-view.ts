@@ -9,8 +9,8 @@ import { civilDate, compareCivil } from "@/lib/group-dates";
 //
 // Every date here is a CIVIL date (YYYY-MM-DD) in the group's calendar and every
 // comparison goes through group-dates.ts. `lib/date.ts` formats INSTANTS, so a civil
-// date is handed to it through `civilDate`, which pins it to noon UTC — no formatter
-// can then land on the day before or after.
+// date is handed to it through `civilDate`, which pins it to noon UTC, so no
+// formatter can then land on the day before or after.
 //
 // A calendar entry's `starts_on`/`ends_on` are INCLUSIVE of both ends: a trip that
 // reads 25 Sept to 1 Oct covers the 1st, and someone is home again on the 2nd.
@@ -67,7 +67,7 @@ export function eventRangeLabel(event: CalendarEventItem): string | null {
 }
 
 /**
- * "Bass and Ciara away" — how an away row names the people it is about.
+ * "Bass and Ciara away": how an away row names the people it is about.
  *
  * The API matches a calendar title to housemates and can legitimately match none (a
  * trip nobody in the house is on, or a name it could not resolve). "away" on its own
@@ -123,7 +123,7 @@ function memberNames(event: CalendarEventItem, members: ScheduleMember[]): strin
     .filter((name): name is string => Boolean(name));
 }
 
-/** "Bass", "Bass and Ciara", "Bass, Ciara and Alfie" — the house's own plain English. */
+/** "Bass", "Bass and Ciara", "Bass, Ciara and Alfie": the house's own plain English. */
 function joinNames(names: string[]): string {
   if (names.length <= 1) return names[0] ?? "";
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;

@@ -1,5 +1,5 @@
-# The admin's view of the house calendar link. The link itself is never here — `masked_url` is enough
-# to recognise it — and `failing` is the one flag the dashboard warning hangs off.
+# The admin's view of the house calendar link. The link itself is never here, since `masked_url` is
+# enough to recognise it, and `failing` is the one flag the dashboard warning hangs off.
 class CalendarConnectionSerializer < ApplicationSerializer
   def as_json
     {

@@ -23,7 +23,7 @@ Rails.application.routes.draw do
     # ids are always the caller's own house's; a cross-tenant id resolves to 404, never a leak.
     resource :group, only: %i[show update], controller: "group" do
       # The house calendar link (BLO-1667). Singular, like the group: there is one per house and the
-      # token names it, so no id ever appears in these paths — and the link itself is a credential
+      # token names it, so no id ever appears in these paths, and the link itself is a credential
       # that must never become one.
       resource :calendar, only: %i[update destroy], controller: "group_calendar" do
         post :sync

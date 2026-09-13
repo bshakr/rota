@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
  * happening here.
  *
  * It sits in the same list as the day's shifts and reads deliberately quieter than
- * them — no avatar, no action — because nobody is on the hook for it. A shift is a
+ * them, with no avatar and no action, because nobody is on the hook for it. A shift is a
  * job; this is context for the jobs around it.
  *
  * Presentational, and there is no interactive control on it: the calendar is read
@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
  */
 export function EventRow({ event }: { event: FeedEvent }) {
   const away = event.kind === "away";
-  // "until Thu 1 Oct" for a trip, "19:00" for a dinner — the half of the line that
+  // "until Thu 1 Oct" for a trip, "19:00" for a dinner: the half of the line that
   // says when, kept muted so the names stay the thing you scan for.
   const meta = eventMetaLabel(event);
 
