@@ -11,9 +11,11 @@ require "rails_helper"
 #   4. the member magic-link path     — 200 `{ paused: true }`, covers refused 403   (here)
 #   5. the public household entry     — 200 `{ paused: true }`, no text sent          (here)
 #
-# and one thing it deliberately does NOT do: Twilio's delivery receipts still land, because a receipt
-# for a text that already went out is a fact about the past and dropping it would leave the house's
-# log wrong forever.
+# and three things it deliberately does NOT do: Twilio's delivery receipts still land, because a
+# receipt for a text that already went out is a fact about the past and dropping it would leave the
+# house's log wrong forever; `POST /api/sign_ins` still answers 204, because it is the AuthKit
+# callback and signing in is a fact about a person rather than about a house; and `/api/me` still
+# answers 200, because the paused screen has to be able to name the house.
 #
 # Nothing is deleted by any of it. The last section proves resume puts every one of them back.
 RSpec.describe "A suspended house" do
@@ -99,6 +101,76 @@ RSpec.describe "A suspended house" do
       get "/api/group", headers: workos_headers(sub: "user_01BOB", org_id: other.workos_organization_id)
 
       expect(response).to have_http_status(:ok)
+    end
+  end
+
+  # `POST /api/sign_ins` is the second deliberate exemption, and a different one from /api/me's.
+  # It inherits ApplicationController rather than Api::BaseController on purpose (BLO-1671): it is
+  # the AuthKit callback, it accepts a token that names no organization at all, and it records
+  # "somebody signed in" — a fact about a person, not about a house. Gating it on a house would
+  # break the callback for an operator with no house and stop the funnel recording the very step it
+  # exists for.
+  describe "the sign-in the AuthKit callback records" do
+    it "still answers 204 for an admin of a paused house" do
+      suspend!
+
+      post "/api/sign_ins", headers: admin_headers
+
+      expect(response).to have_http_status(:no_content)
+      expect(SignIn.sole.workos_organization_id).to eq(group.workos_organization_id)
+    end
+  end
+
+  # The operator's list renders "last activity" on a paused row, so a paused house's clock has to
+  # stop. A house whose admins keep loading the paused screen, or whose housemates keep reloading
+  # the paused notice, would otherwise look busier by the hour while nothing at all happened in it.
+  describe "the last-seen clocks" do
+    let!(:admin_user) { create(:user, workos_user_id: "user_01ALICE", last_seen_at: nil) }
+
+    it "stops moving for an admin, even on the one route that is still allowed through" do
+      suspend!
+
+      get "/api/me", headers: admin_headers
+
+      expect(response).to have_http_status(:ok)
+      expect(admin_user.reload.last_seen_at).to be_nil
+    end
+
+    it "stops moving for a housemate reloading the paused notice" do
+      suspend!
+
+      get "/api/member/schedule", headers: member_headers(member)
+
+      expect(response).to have_http_status(:ok)
+      expect(member.reload.last_seen_at).to be_nil
+    end
+
+    # Not one row, on either path. Provisioning is warmed up first so what is measured is the
+    # steady-state refusal and not the admin's first-ever request, which legitimately writes.
+    it "does not even write, so a paused house costs nothing to keep refusing" do
+      member
+      get "/api/me", headers: admin_headers
+      suspend!
+
+      writes = sql_writes_during do
+        get "/api/group", headers: admin_headers
+        get "/api/member/schedule", headers: member_headers(member)
+      end
+
+      expect(writes).to be_empty
+    end
+
+    it "starts moving again on resume" do
+      suspend!
+      get "/api/me", headers: admin_headers
+      get "/api/member/schedule", headers: member_headers(member)
+
+      group.update!(suspended_at: nil)
+      get "/api/me", headers: admin_headers
+      get "/api/member/schedule", headers: member_headers(member)
+
+      expect(admin_user.reload.last_seen_at).to be_within(1.second).of(Time.current)
+      expect(member.reload.last_seen_at).to be_within(1.second).of(Time.current)
     end
   end
 

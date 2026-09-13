@@ -69,6 +69,10 @@ module SuperAdmin
       # that has already run by the time this line does.
       group = Group.find(params[:id])
 
+      # Read before the write: an audit that only says which fields were touched cannot answer the
+      # question anyone actually asks of it afterwards, which is what the timezone used to be.
+      was = group.slice(:name, :timezone)
+
       group.assign_attributes(group_params)
       group.timezone_confirmed_at = Time.current if group_params.key?(:timezone)
       # Bang, so a name the model rejects renders ApiErrorRendering's `validation_failed` with the
@@ -76,12 +80,28 @@ module SuperAdmin
       group.save!
 
       logger.info("Super admin #{Current.super_admin_workos_user_id} updated group #{group.id} " \
-                  "(#{group.slug}): #{group_params.keys.sort.join(', ')}")
+                  "(#{group.slug}): #{audit_summary(was, group)}")
 
       render json: { group: GroupSerializer.solo(group, now: now) }
     end
 
     private
+
+    # What changed, in the words an operator would use to explain it later: the name and the timezone
+    # as transitions, because "timezone" alone cannot answer "what was it before you touched it?".
+    #
+    # The note's CONTENT is never logged, only that it was written or cleared. It is free text about
+    # a house and the people in it — "chasing them about the card that keeps declining" — and the
+    # application log is neither the place for it nor covered by the same handling the column is.
+    def audit_summary(was, group)
+      changes = []
+      changes << "name #{was['name'].inspect} -> #{group.name.inspect}" if group_params.key?(:name)
+      if group_params.key?(:timezone)
+        changes << "timezone #{was['timezone'].inspect} -> #{group.timezone.inspect} (confirmed)"
+      end
+      changes << (group.notes.nil? ? "notes cleared" : "notes replaced") if group_params.key?(:notes)
+      changes.presence&.join("; ") || "nothing"
+    end
 
     # `notes` is operator-only and appears in no house-facing serializer — the two are separate
     # classes precisely so that cannot drift. A cleared box is no note rather than an empty one, so

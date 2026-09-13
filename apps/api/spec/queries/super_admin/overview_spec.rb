@@ -197,6 +197,38 @@ RSpec.describe SuperAdmin::Overview do
       expect(failing_rows.first[:group_id]).to eq(worse.id)
     end
 
+    # A paused house is not a thing to chase (BLO-1675). Its texts are stopped, its timezone does not
+    # matter until somebody resumes it, and the operator who paused it does not want their own
+    # decision back on the list of things to do. One `Group.live` in `group_names` takes it out of
+    # all four reasons at once, and out of the total beside them.
+    describe "a house an operator has paused" do
+      it "drops out of every reason it would otherwise appear under" do
+        [ failing, drifting, stalled, muted ].each { |group| group.update!(suspended_at: now - 1.hour) }
+
+        expect(payload[:attention]).to be_empty
+      end
+
+      it "is taken out of the total as well as the rows, so the two cannot disagree" do
+        before_pausing = payload[:attention_total]
+        expect(before_pausing).to eq(4)
+
+        failing.update!(suspended_at: now - 1.hour)
+
+        fresh = described_class.new.call
+        expect(fresh[:attention_total]).to eq(3)
+        expect(fresh[:attention].map { |row| row[:group_id] }).not_to include(failing.id)
+      end
+
+      it "comes back the moment it is resumed" do
+        failing.update!(suspended_at: now - 1.hour)
+        expect(described_class.new.call[:attention].map { |row| row[:group_id] }).not_to include(failing.id)
+
+        failing.update!(suspended_at: nil)
+
+        expect(described_class.new.call[:attention].map { |row| row[:group_id] }).to include(failing.id)
+      end
+    end
+
     describe "what it deliberately leaves alone" do
       it "gives a young house time before asking about its timezone" do
         create(:group, created_at: now - 2.days, timezone_confirmed_at: nil)

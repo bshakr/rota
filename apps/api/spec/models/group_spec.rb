@@ -179,6 +179,48 @@ RSpec.describe Group do
       end
     end
 
+    # Suspension is the abuse-and-cost lever, reached for when a house is doing something that has to
+    # stop NOW. A `save` would validate the whole record, so any unrelated bad value — a timezone a
+    # tzdata update no longer recognises, here written past the validation the way a migration or a
+    # bad backfill would — could refuse to let the operator pause the house at all.
+    describe "a house whose record would not otherwise validate" do
+      before { group.update_column(:timezone, "Mars/Olympus") }
+
+      it "can still be paused" do
+        expect(group).not_to be_valid
+
+        expect(group.suspend!).to be(true)
+        expect(group.reload.suspended_at).to be_present
+      end
+
+      it "can still be let go again" do
+        group.suspend!
+
+        expect(group.resume!).to be(true)
+        expect(group.reload.suspended_at).to be_nil
+      end
+
+      # Skipping validation is not licence to skip the bookkeeping: a paused house whose row looks
+      # untouched would be its own small lie.
+      it "still stamps updated_at" do
+        expect { group.suspend! }.to change { group.reload.updated_at }
+      end
+    end
+
+    # A note is rendered in full on the group page, and a column with no ceiling is one somebody
+    # eventually pastes a log file into. Same precedent as Rota#message_template.
+    it "refuses a note longer than the ceiling" do
+      group.notes = "x" * (described_class::NOTES_MAX + 1)
+
+      expect(group).not_to be_valid
+      expect(group.errors[:notes]).to be_present
+    end
+
+    it "is happy with no note at all, and with one right up to the ceiling" do
+      expect(build(:group, notes: nil)).to be_valid
+      expect(build(:group, notes: "x" * described_class::NOTES_MAX)).to be_valid
+    end
+
     it "says so plainly when nothing named the operator" do
       allow(Rails.logger).to receive(:info)
 

@@ -233,10 +233,15 @@ module SuperAdmin
       Member.active.where.not(sms_opted_out_at: nil).group(:group_id).count
     end
 
+    # `live` only (BLO-1675). A paused house is not a thing to chase — its texts are stopped, its
+    # timezone does not matter until somebody resumes it, and the operator who paused it does not
+    # want their own decision back on the list of things to do. `attention_rows` drops any id this
+    # does not name, so one `live` here takes a suspended house out of all four reasons AND out of
+    # `attention_total`, rather than leaving the count disagreeing with the rows beneath it.
     def group_names(ids)
       return {} if ids.empty?
 
-      Group.where(id: ids).pluck(:id, :name, :slug)
+      Group.live.where(id: ids).pluck(:id, :name, :slug)
         .to_h { |id, name, slug| [ id, { name: name, slug: slug } ] }
     end
 

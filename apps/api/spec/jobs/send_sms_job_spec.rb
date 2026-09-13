@@ -95,6 +95,81 @@ RSpec.describe SendSmsJob do
     end
   end
 
+  # The gap the sweep's own skip cannot close (BLO-1675): the operator pauses a house in the minutes
+  # between a reminder being claimed and this job running, and the text would otherwise go out after
+  # the pause. A suspension that still texts people is not a suspension.
+  describe "a house paused after the reminder was claimed" do
+    before { group.update!(suspended_at: 1.minute.ago) }
+
+    it "sends nothing" do
+      described_class.perform_now(sms_message.id)
+
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).not_to have_been_made
+    end
+
+    # Left `pending`, NOT `failed`, and that is the deliberate part. `failed` is what the groups list
+    # and the overview's attention list count as a delivery incident, so marking it would make a
+    # house appear to start failing on the day we paused it — by us, about texts nobody tried to
+    # send. The row stays exactly as the sweep left it.
+    it "leaves the row exactly as it found it" do
+      expect { described_class.perform_now(sms_message.id) }
+        .not_to change { sms_message.reload.attributes.except("updated_at") }
+
+      expect(sms_message.reload).to have_attributes(
+        status: "pending", error_code: nil, twilio_sid: nil, sent_at: nil
+      )
+    end
+
+    it "says so in the log, so a stranded pending row has an explanation" do
+      allow(Rails.logger).to receive(:info).and_call_original
+
+      described_class.perform_now(sms_message.id)
+
+      expect(Rails.logger).to have_received(:info).with(/SendSmsJob\(#{sms_message.id}\) skipped: house paused/)
+    end
+
+    it "skips a personal link the same way" do
+      login = create(:sms_message, member: member, kind: :member_login, shift: nil, days_before: nil)
+
+      described_class.perform_now(login.id)
+
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).not_to have_been_made
+      expect(login.reload.status).to eq("pending")
+    end
+  end
+
+  # Nothing re-enqueues the skipped row on resume, and that is the right answer rather than a gap:
+  # the reminder is still CLAIMED, so the sweep raises no second one for the same (shift, offset),
+  # and its send moment is by then far enough in the past that ReminderSweep's 24-hour staleness
+  # guard would have buried it anyway. Resuming a house texts nobody about the days it was paused.
+  describe "and then resumed, two days later" do
+    include ActiveJob::TestHelper
+
+    it "leaves the sweep nothing to re-claim, and sends no backlog" do
+      rota = create(:rota, group: group, send_hour: 9, reminder_offsets: [ 0 ])
+      shift = create(:shift, rota: rota, assigned_member: member, due_on: Date.new(2026, 7, 15))
+      stub_twilio_send
+
+      travel_to(Time.utc(2026, 7, 15, 8, 0)) { ReminderSweepJob.perform_now } # 09:00 BST
+      claimed = shift.sms_messages.reminder.sole
+      expect(claimed.status).to eq("pending")
+
+      group.update!(suspended_at: Time.utc(2026, 7, 15, 8, 1))
+      described_class.perform_now(claimed.id)
+      expect(claimed.reload.status).to eq("pending")
+
+      travel_to(Time.utc(2026, 7, 17, 8, 0)) do
+        group.update!(suspended_at: nil)
+
+        expect { ReminderSweepJob.perform_now }.not_to have_enqueued_job(described_class)
+      end
+
+      expect(shift.sms_messages.reminder.count).to eq(1)
+      expect(claimed.reload.status).to eq("pending")
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).not_to have_been_made
+    end
+  end
+
   describe "a Twilio failure that will not fix itself" do
     it "records the carrier error code, the rendered body, and does not retry" do
       stub_twilio_error(status: 400, code: 21_610, message: "Attempt to send to unsubscribed recipient")

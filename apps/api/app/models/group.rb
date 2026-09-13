@@ -31,6 +31,13 @@ class Group < ApplicationRecord
   validates :timezone, presence: true
   validate :timezone_must_be_recognised
 
+  # The operator's note about the house. A bound rather than free text without one, for the same
+  # reason Rota#message_template has one: a column with no ceiling is a column somebody eventually
+  # pastes a log file into, and this one is rendered in full on the group page. Generous enough for
+  # a paragraph of context and a support thread's worth of dates.
+  NOTES_MAX = 2_000
+  validates :notes, length: { maximum: NOTES_MAX }, allow_nil: true
+
   # Every house that is not paused. NULL `suspended_at` is the live state, so this is what the
   # recurring jobs merge in — `Rota.active.joins(:group).merge(Group.live)` — and it is deliberately
   # a scope here rather than a condition spelled out at each call site. There is one definition of
@@ -99,9 +106,17 @@ class Group < ApplicationRecord
   #
   # The no-op is logged too. "Suspend this house" was asked for either way, and an operator who
   # clicked twice should find both requests in the log rather than one of them silently missing.
+  #
+  # `update_columns`, not `update!`, and this is the one place in the model where skipping
+  # validation is the safer choice. Suspension is the abuse-and-cost lever, reached for when a house
+  # is doing something that has to stop NOW; a `save` would run every validation on the record,
+  # so an unrelated bad value in some other column — a timezone a deleted tzdata entry no longer
+  # recognises, say — would refuse to let the operator pause the house at all. `updated_at` is set
+  # by hand because `update_columns` will not do it, and a paused house whose row looks untouched
+  # would be its own small lie.
   def change_suspension(at, verb:, already:)
     changed = suspended? != at.present?
-    update!(suspended_at: at) if changed
+    update_columns(suspended_at: at, updated_at: Time.current) if changed
 
     operator = Current.super_admin_workos_user_id || "an unidentified caller"
     outcome = changed ? verb : "re-#{verb} a house that was #{already}"

@@ -86,6 +86,26 @@ RSpec.describe "PATCH /api/super_admin/groups/:id" do
       expect(group.reload.notes).to be_nil
     end
 
+    # A column with no ceiling is one somebody eventually pastes a log file into, and this one is
+    # rendered in full on the group page. Same precedent as Rota#message_template.
+    it "refuses a note longer than the model allows, and keeps the old one" do
+      group.update!(notes: "Short")
+
+      body = update(notes: "x" * (Group::NOTES_MAX + 1))
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(body).to include("error" => "validation_failed")
+      expect(body.fetch("fields")).to have_key("notes")
+      expect(group.reload.notes).to eq("Short")
+    end
+
+    it "accepts a note right up to the ceiling" do
+      update(notes: "x" * Group::NOTES_MAX)
+
+      expect(response).to have_http_status(:ok)
+      expect(group.reload.notes.length).to eq(Group::NOTES_MAX)
+    end
+
     it "leaves an existing note alone when the request does not mention it" do
       group.update!(notes: "Bassem's own")
 
@@ -127,13 +147,45 @@ RSpec.describe "PATCH /api/super_admin/groups/:id" do
 
   # The audit of who renamed a house, or confirmed its timezone, is the log line — there is no row
   # for a super admin to point a foreign key at.
-  it "names the operator in the log" do
-    allow(Rails.logger).to receive(:info).and_call_original
+  describe "the line it writes to the log" do
+    before { allow(Rails.logger).to receive(:info).and_call_original }
 
-    update(name: "Renamed", timezone: "Europe/London")
+    def logged = Rails.logger
 
-    expect(Rails.logger).to have_received(:info)
-      .with(/Super admin #{operator} updated group #{group.id} \(#{group.slug}\): name, timezone/)
+    # A list of field names cannot answer the question anyone actually asks of an audit afterwards,
+    # which is what the value used to be.
+    it "names the operator, the house, and both transitions" do
+      update(name: "Renamed", timezone: "Europe/London")
+
+      expect(logged).to have_received(:info).with(
+        Regexp.new(%(Super admin #{operator} updated group #{group.id} \\(#{group.slug}\\): ) +
+                   %(name "Alma Road" -> "Renamed"; timezone "UTC" -> "Europe/London" \\(confirmed\\)))
+      )
+    end
+
+    it "mentions only the fields the request actually carried" do
+      update(name: "Renamed")
+
+      expect(logged).to have_received(:info).with(/updated group .*: name "Alma Road" -> "Renamed"\z/)
+    end
+
+    # A note is free text about a house and the people in it — "chasing them about the card that
+    # keeps declining". The application log is neither the place for that nor covered by the same
+    # handling the column is, so the line says only that a note was written.
+    it "says a note changed, and never what it says" do
+      update(notes: "Chasing them about the card that keeps declining")
+
+      expect(logged).to have_received(:info).with(/updated group .*: notes replaced\z/)
+      expect(logged).not_to have_received(:info).with(/declining/)
+    end
+
+    it "says so when a note was cleared" do
+      group.update!(notes: "Something")
+
+      update(notes: "")
+
+      expect(logged).to have_received(:info).with(/updated group .*: notes cleared\z/)
+    end
   end
 
   # Every row on the list, including the ones the operator cannot change here, so the page merges
