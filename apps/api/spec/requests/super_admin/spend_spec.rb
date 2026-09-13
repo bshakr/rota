@@ -28,12 +28,12 @@ RSpec.describe "Super admin spend" do
 
     expect(response).to have_http_status(:ok)
     expect(response.parsed_body["range"]).to eq("30d")
-    expect(response.parsed_body["months_in_range"]).to eq(1)
+    expect(response.parsed_body["months_in_range"]).to eq(0.985626)
     expect(response.parsed_body["currency"]).to eq("USD")
   end
 
-  it "accepts each range it documents" do
-    { "30d" => 1, "90d" => 3, "12m" => 12 }.each do |range, months|
+  it "accepts each range it documents, each measured in real months" do
+    { "30d" => 0.985626, "90d" => 2.956879, "12m" => 11.991786 }.each do |range, months|
       get "/api/super_admin/spend", params: { range: range }, headers: operator_headers
 
       expect(response).to have_http_status(:ok), "#{range} was not accepted"
@@ -61,7 +61,7 @@ RSpec.describe "Super admin spend" do
 
     body = response.parsed_body
     expect(body["houses"].map { |house| house["name"] }).to eq([ "Bell Street", "Alma Road" ])
-    expect(body["houses_active"]).to eq(2)
+    expect(body["houses_with_spend"]).to eq(2)
     expect(body["totals"]["sms_cost_settled"]).to eq(0.51)
     expect(body["totals"]["claude_cost"]).to eq(0.03)
     expect(body["totals"]["titles_classified"]).to eq(20)

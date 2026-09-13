@@ -37,18 +37,38 @@ module SuperAdmin
     class UnknownRange < ArgumentError; end
 
     # `months` is what "per month" divides by, and what the fixed monthly cost is multiplied by to
-    # cover the whole window. It is declared rather than derived: 30 days is charged as one month,
-    # 90 as three, and a derived 30/30.437 would make every per-month figure quietly 1.5% high.
+    # cover the whole window. It is the window's real length in average calendar months, carried as
+    # a BigDecimal and never rounded before it is used.
+    #
+    # It used to be a declared whole number — 1, 3, 12 — and that was wrong in the direction nobody
+    # would notice: the 12m window is 365 days, which is 11.99 average months, not 12, so every
+    # per-month figure read about 5% low and the allocated fixed cost about 5% high. A divisor that
+    # is almost right is worse than an awkward one, because the page looks fine.
     Window = Data.define(:key, :starts_at, :ends_at, :months)
 
-    RANGES = %w[30d 90d 12m].freeze
+    # Each range is an exact number of days ending now. Uniform on purpose: three windows measured
+    # the same way, none of them snapped to a calendar boundary, so `months` below is a true
+    # division rather than three special cases.
+    RANGE_DAYS = { "30d" => 30, "90d" => 90, "12m" => 365 }.freeze
+    RANGES = RANGE_DAYS.keys.freeze
     DEFAULT_RANGE = "30d"
 
+    # The average calendar month, 365.25 / 12. The divisor for every per-month figure, so a month
+    # means the same length whichever range is asked for and whichever months it happens to cover.
+    AVERAGE_MONTH_DAYS = "30.4375".to_d
+
     # Versioned for the same reason SuperAdmin::Overview's key is: Solid Cache survives a deploy, so
-    # without the suffix the first minute after shipping a change to this payload would serve the
-    # OLD shape to the NEW page, which is a confusing way to break a dashboard. Bump it whenever the
-    # shape changes. The range is appended to it, so each window is its own entry.
-    # v2: texts_unpriceable joined the payload, and money went from 4 decimals to 6.
+    # without the suffix the first minute after shipping a change would serve the OLD payload to the
+    # NEW page, which is a confusing way to break a dashboard. The range is appended, so each window
+    # is its own entry.
+    #
+    # Bump it whenever the payload changes — its SHAPE or its VALUES. A field added or renamed is
+    # the obvious case; a figure that now renders to six decimals instead of four, or divides by a
+    # different number of months, is the one worth naming, because the old entry stays perfectly
+    # parseable and is simply wrong.
+    #
+    # v2: texts_unpriceable added, houses_active renamed to houses_with_spend, money at 6 decimals
+    # rather than 4, and months_in_range became the window's true length rather than a whole number.
     CACHE_KEY = "super_admin/spend/v2".freeze
 
     # The same 60 seconds the rest of the operator console caches at. Tens of houses, live SQL, and
@@ -149,6 +169,10 @@ module SuperAdmin
         price_unit,
         COUNT(*) FILTER (WHERE accepted) AS texts_sent,
         COALESCE(SUM(segments) FILTER (WHERE accepted), 0) AS segments,
+        -- settled, estimated and unpriceable partition `accepted` exactly, so the three of them sum
+        -- to texts_sent and none can exceed it. That holds because a price is only ever written by
+        -- Sms::PriceBackfill, which walks SmsMessage.awaiting_price — a scope that requires a SID.
+        -- A settled row therefore always has one. The page can safely render "N of M" from these.
         COUNT(*) FILTER (WHERE settled) AS texts_settled,
         COALESCE(SUM(price) FILTER (WHERE settled), 0) AS sms_cost_settled,
         COUNT(*) FILTER (WHERE accepted AND NOT settled AND NOT asked) AS texts_estimated,
@@ -207,19 +231,25 @@ module SuperAdmin
       # The ranges are relative to the operator's UTC clock rather than to any house's, because
       # this is a cross-house total and there is no one house whose midnight it could belong to.
       # The monthly buckets are UTC calendar months for the same reason.
+      #
+      # No range is snapped to a month boundary, so the oldest entry of the `months` series is a
+      # partial month in all three — a 365-day window opened mid-September reaches back to the
+      # middle of the previous September and draws thirteen bars, the first of them short. That is
+      # the honest shape: the alternative was a 12m window that claimed twelve whole months and
+      # then divided by a divisor that did not match its own length.
       def window_for(range)
         key = range.presence || DEFAULT_RANGE
-        raise UnknownRange, "#{key.inspect} is not a known range (#{RANGES.join(', ')})" unless RANGES.include?(key)
+        raise UnknownRange, "#{key.inspect} is not a known range (#{RANGES.join(', ')})" unless RANGE_DAYS.key?(key)
 
+        days = RANGE_DAYS.fetch(key)
         ends_at = Time.current
-        case key
-        when "30d" then Window.new(key: key, starts_at: ends_at - 30.days, ends_at: ends_at, months: 1)
-        when "90d" then Window.new(key: key, starts_at: ends_at - 90.days, ends_at: ends_at, months: 3)
-        else
-          # Twelve whole calendar months, this one included, so the monthly series has no half month
-          # at its far end to mislead a bar chart.
-          Window.new(key: key, starts_at: (ends_at - 11.months).beginning_of_month, ends_at: ends_at, months: 12)
-        end
+
+        Window.new(
+          key: key,
+          starts_at: ends_at - days.days,
+          ends_at: ends_at,
+          months: BigDecimal(days) / AVERAGE_MONTH_DAYS
+        )
       end
     end
 
@@ -254,16 +284,18 @@ module SuperAdmin
         currency: CURRENCY,
         starts_at: window.starts_at.iso8601,
         ends_at: window.ends_at.iso8601,
-        # NOT `months.length`, and the two disagree on purpose. This is the elapsed months the range
-        # covers — the divisor for every "per month" figure and the multiplier for the fixed cost —
-        # so a 30-day range is 1. `months` below is the calendar series, and a 30-day window that
-        # straddles a month boundary has two entries in it, the older of them a partial month.
-        # Anything dividing by "how many months am I looking at" wants this; anything drawing bars
-        # wants that.
-        months_in_range: window.months,
+        # NOT `months.length`, and the two disagree on purpose. This is the window's true length in
+        # average calendar months — the divisor for every "per month" figure and the multiplier for
+        # the fixed cost — so 30 days is 0.985626, not 1. `months` below is the calendar series a
+        # bar chart draws, and a 30-day window straddling a boundary has two entries in it, the
+        # older a partial month. Anything dividing by "how long am I looking at" wants this figure;
+        # anything drawing bars wants that array. Not money, so not `money()`, but rendered to the
+        # same six decimals — and rounded here and only here: every division above used the
+        # full-precision value.
+        months_in_range: window.months.round(MONEY_PRECISION).to_f,
         fixed_monthly_cost_usd: money(fixed_monthly_cost),
         sms_estimated_segment_cost_usd: money(segment_cost),
-        houses_active: houses.length,
+        houses_with_spend: houses.length,
         houses_total: Group.count,
         totals: figures(total),
         months: month_rows(cells),

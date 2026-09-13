@@ -72,7 +72,7 @@ RSpec.describe SuperAdmin::Spend do
   describe "the range" do
     it "defaults to 30 days, so a caller that passes nothing still gets an answer" do
       expect(result[:range]).to eq("30d")
-      expect(result[:months_in_range]).to eq(1)
+      expect(result[:months_in_range]).to eq(0.985626)
     end
 
     it "accepts a blank range the same way, because a bare query string is not a bad one" do
@@ -83,13 +83,19 @@ RSpec.describe SuperAdmin::Spend do
       expect { result(range: "6m") }.to raise_error(described_class::UnknownRange, /6m/)
     end
 
-    it "counts 90d as three months and 12m as twelve, which is what per-month divides by" do
-      expect(result(range: "90d")[:months_in_range]).to eq(3)
-      expect(result(range: "12m")[:months_in_range]).to eq(12)
+    # The window's true length in average calendar months (365.25 / 12 = 30.4375 days each), not a
+    # whole number. 12m is 365 days, which is 11.99 months and not 12 — rounding it up made every
+    # per-month figure read about 5% low and the allocated fixed cost about 5% high.
+    it "measures each range in real months rather than rounding to a whole number" do
+      expect(result(range: "30d")[:months_in_range]).to eq(0.985626)
+      expect(result(range: "90d")[:months_in_range]).to eq(2.956879)
+      expect(result(range: "12m")[:months_in_range]).to eq(11.991786)
     end
 
-    it "starts 12m at the first of the month eleven months back, so the series is whole months" do
-      expect(result(range: "12m")[:starts_at]).to eq(Time.utc(2025, 10, 1).iso8601)
+    it "measures every range as an exact run of days ending now" do
+      expect(result(range: "30d")[:starts_at]).to eq((now - 30.days).iso8601)
+      expect(result(range: "90d")[:starts_at]).to eq((now - 90.days).iso8601)
+      expect(result(range: "12m")[:starts_at]).to eq((now - 365.days).iso8601)
     end
   end
 
@@ -288,7 +294,7 @@ RSpec.describe SuperAdmin::Spend do
 
       economics = result[:unit_economics]
       expect(economics[:cost_per_title_classified]).to eq(0.000125)
-      expect(economics[:cost_per_house_per_month][:median]).to eq(0.000125)
+      expect(economics[:cost_per_house_per_month][:median]).to eq(0.000127)
     end
 
     it "renders a settled Twilio price at the five decimals its column holds" do
@@ -390,7 +396,7 @@ RSpec.describe SuperAdmin::Spend do
       settled_text(spender)
 
       expect(result[:houses].map { |house| house[:group_id] }).to eq([ spender.id ])
-      expect(result[:houses_active]).to eq(1)
+      expect(result[:houses_with_spend]).to eq(1)
       expect(result[:houses_total]).to eq(2)
     end
 
@@ -441,18 +447,21 @@ RSpec.describe SuperAdmin::Spend do
       with_env("FIXED_MONTHLY_COST_USD" => "120") do
         ninety = result(range: "90d")
 
+        # 120 a month over 2.956879 months, split two ways.
         expect(ninety[:fixed_monthly_cost_usd]).to eq(120.0)
-        expect(ninety[:houses].map { |house| house[:allocated_fixed_cost] }).to eq([ 180.0, 180.0 ])
+        expect(ninety[:houses].map { |house| house[:allocated_fixed_cost] })
+          .to eq([ 177.412731, 177.412731 ])
       end
     end
 
-    it "gives the whole month's cost to the one house that was active" do
+    it "gives the whole range's cost to the one house that spent anything" do
       group = create(:group)
       create(:group)
       settled_text(group)
 
       with_env("FIXED_MONTHLY_COST_USD" => "120") do
-        expect(result[:houses].first[:allocated_fixed_cost]).to eq(120.0)
+        # 120 a month over the 30-day window's 0.985626 months, undivided.
+        expect(result[:houses].first[:allocated_fixed_cost]).to eq(118.275154)
       end
     end
 
@@ -472,6 +481,34 @@ RSpec.describe SuperAdmin::Spend do
       with_env("FIXED_MONTHLY_COST_USD" => "$120/mo") do
         expect(result[:fixed_monthly_cost_usd]).to be_nil
         expect(result[:houses].first[:allocated_fixed_cost]).to be_nil
+      end
+    end
+
+    # A negative fixed cost is a typo, not a credit. Parsing it would subtract hosting from what
+    # the houses cost and make the cheapest of them look free.
+    it "ignores a negative value and says so in the log" do
+      group = create(:group)
+      settled_text(group)
+
+      expect(Rails.logger).to receive(:warn).with(/FIXED_MONTHLY_COST_USD.*negative/)
+
+      with_env("FIXED_MONTHLY_COST_USD" => "-120") do
+        answer = result
+
+        expect(answer[:fixed_monthly_cost_usd]).to be_nil
+        expect(answer[:houses].first[:allocated_fixed_cost]).to be_nil
+      end
+    end
+
+    it "accepts zero, which is a figure rather than a typo" do
+      group = create(:group)
+      settled_text(group)
+
+      with_env("FIXED_MONTHLY_COST_USD" => "0") do
+        answer = result
+
+        expect(answer[:fixed_monthly_cost_usd]).to eq(0.0)
+        expect(answer[:houses].first[:allocated_fixed_cost]).to eq(0.0)
       end
     end
   end
@@ -496,6 +533,21 @@ RSpec.describe SuperAdmin::Spend do
         expect(result[:sms_estimated_segment_cost_usd]).to eq(segment_rate.to_f)
       end
     end
+
+    # A negative rate would make every unsettled text reduce the bill it belongs to.
+    it "falls back to the default when the override is negative" do
+      group = create(:group)
+      text(group, num_segments: 2)
+
+      expect(Rails.logger).to receive(:warn).with(/SMS_ESTIMATED_SEGMENT_COST_USD.*negative/)
+
+      with_env("SMS_ESTIMATED_SEGMENT_COST_USD" => "-0.01") do
+        answer = result
+
+        expect(answer[:sms_estimated_segment_cost_usd]).to eq(segment_rate.to_f)
+        expect(answer[:totals][:sms_cost_estimated]).to eq((segment_rate * 2).to_f)
+      end
+    end
   end
 
   describe "unit economics" do
@@ -509,9 +561,10 @@ RSpec.describe SuperAdmin::Spend do
         settled_text(group, amount: format("%.4f", dollars))
       end
 
+      # Five dollars and nine dollars over a 30-day window, which is 0.985626 months.
       economics = result[:unit_economics][:cost_per_house_per_month]
-      expect(economics[:median]).to eq(5.0)
-      expect(economics[:p90]).to eq(9.0)
+      expect(economics[:median]).to eq(5.072917)
+      expect(economics[:p90]).to eq(9.13125)
       expect(result[:unit_economics][:houses_measured]).to eq(10)
     end
 
@@ -520,8 +573,8 @@ RSpec.describe SuperAdmin::Spend do
       settled_text(group, amount: "0.2500")
 
       economics = result[:unit_economics][:cost_per_house_per_month]
-      expect(economics[:median]).to eq(0.25)
-      expect(economics[:p90]).to eq(0.25)
+      expect(economics[:median]).to eq(0.253646)
+      expect(economics[:p90]).to eq(0.253646)
     end
 
     it "takes the lower of two houses as the median, which is what nearest rank means" do
@@ -530,15 +583,15 @@ RSpec.describe SuperAdmin::Spend do
       end
 
       economics = result[:unit_economics][:cost_per_house_per_month]
-      expect(economics[:median]).to eq(0.1)
-      expect(economics[:p90]).to eq(0.9)
+      expect(economics[:median]).to eq(0.101458)
+      expect(economics[:p90]).to eq(0.913125)
     end
 
     it "divides a house's spend by the months in the range" do
       group = create(:group)
       settled_text(group, amount: "0.9000")
 
-      expect(result(range: "90d")[:unit_economics][:cost_per_house_per_month][:median]).to eq(0.3)
+      expect(result(range: "90d")[:unit_economics][:cost_per_house_per_month][:median]).to eq(0.304375)
     end
 
     it "measures cost per active member per month over the houses that have members" do
@@ -551,7 +604,7 @@ RSpec.describe SuperAdmin::Spend do
       settled_text(empty, amount: "9.0000", member: lapsed)
 
       economics = result[:unit_economics]
-      expect(economics[:cost_per_active_member_per_month][:median]).to eq(0.2)
+      expect(economics[:cost_per_active_member_per_month][:median]).to eq(0.202917)
       expect(economics[:houses_with_active_members]).to eq(1)
     end
 
@@ -579,11 +632,14 @@ RSpec.describe SuperAdmin::Spend do
   describe "the monthly series" do
     let(:group) { create(:group) }
 
+    # Thirteen, not twelve: 365 days back from mid-September reaches the middle of the previous
+    # September, so the oldest bar is a partial month. No range snaps to a calendar boundary, so
+    # every one of them can open on a part-month, and a chart should label the first bar as such.
     it "runs one entry per calendar month the range touches, in order, gaps filled" do
       months = result(range: "12m")[:months]
 
-      expect(months.length).to eq(12)
-      expect(months.first[:month]).to eq("2025-10")
+      expect(months.length).to eq(13)
+      expect(months.first[:month]).to eq("2025-09")
       expect(months.last[:month]).to eq("2026-09")
       expect(months.first[:total]).to eq(0.0)
     end
@@ -602,12 +658,12 @@ RSpec.describe SuperAdmin::Spend do
     end
 
     # months_in_range and months.length are different numbers on purpose, and this is the range
-    # where they visibly disagree: 30 days is one elapsed month of spend, spread over two calendar
-    # months. Dividing per-month figures by months.length here would halve every one of them.
-    it "counts a 30-day range as one month even though it draws two calendar bars" do
+    # where they visibly disagree: 30 days is 0.985626 average months of spend, spread over two
+    # calendar bars. Dividing per-month figures by months.length here would halve every one of them.
+    it "measures a 30-day range as under one month even though it draws two calendar bars" do
       answer = result
 
-      expect(answer[:months_in_range]).to eq(1)
+      expect(answer[:months_in_range]).to eq(0.985626)
       expect(answer[:months].map { |month| month[:month] }).to eq(%w[2026-08 2026-09])
     end
 
