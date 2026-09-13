@@ -92,6 +92,7 @@ RSpec.describe "Api::GroupCalendar" do
         "code" => "not_a_calendar", "fields" => { "ical_url" => [ "That link isn't a calendar feed." ] }
       )
       expect(response.body).not_to include(secret)
+      expect(CalendarConnection.count).to eq(0)
     end
 
     it "rejects a link Google has stopped answering, without echoing it back" do
@@ -183,6 +184,7 @@ RSpec.describe "Api::GroupCalendar" do
 
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body["events"].map { |event| event["title"] }).to eq([ "Soon" ])
+      expect(response.body).not_to include(connection.ical_url)
     end
 
     it "carries the model's reason, so a wrong verdict can be spotted" do
@@ -241,6 +243,7 @@ RSpec.describe "Api::GroupCalendar" do
       delete "/api/group/calendar", headers: headers
 
       expect(response).to have_http_status(:no_content)
+      expect(response.body).not_to include(connection.ical_url)
       expect(CalendarConnection.count).to eq(0)
       expect(CalendarEvent.count).to eq(0)
     end
@@ -320,6 +323,44 @@ RSpec.describe "Api::GroupCalendar" do
     end
   end
 
+  # Rack::Test normalises a trailing slash out of the path before the app sees it, so the request
+  # spec below cannot reach that case even though a real HTTP client can send it. These go straight
+  # at the predicate with a raw Rack env, which is the only place the unnormalised path exists.
+  describe "which requests the calendar throttle counts" do
+    def rack_request(method, path)
+      Rack::Attack::Request.new(Rack::MockRequest.env_for(path, method: method))
+    end
+
+    it "counts every spelling of a path that reaches the two fetching actions" do
+      [
+        [ "POST", "/api/group/calendar/sync" ],
+        [ "POST", "/api/group/calendar/sync.json" ],
+        [ "POST", "/api/group/calendar/sync/" ],
+        [ "POST", "/api/group/calendar/sync//" ],
+        [ "PUT", "/api/group/calendar" ],
+        [ "PUT", "/api/group/calendar.json" ],
+        [ "PUT", "/api/group/calendar/" ],
+        [ "PATCH", "/api/group/calendar.json" ]
+      ].each do |method, path|
+        expect(Rack::Attack.calendar_fetch?(rack_request(method, path))).to be(true), "#{method} #{path} was not counted"
+      end
+    end
+
+    it "leaves alone the reads, the other verbs and the rest of the API" do
+      [
+        [ "GET", "/api/group/calendar/events" ],
+        [ "GET", "/api/group/calendar" ],
+        [ "DELETE", "/api/group/calendar" ],
+        [ "POST", "/api/group/calendar" ],
+        [ "PUT", "/api/group/calendar/sync" ],
+        [ "PUT", "/api/group" ],
+        [ "POST", "/api/member/shifts" ]
+      ].each do |method, path|
+        expect(Rack::Attack.calendar_fetch?(rack_request(method, path))).to be(false), "#{method} #{path} was counted"
+      end
+    end
+  end
+
   # The connect and sync endpoints both fetch a third-party URL on the caller's behalf, which is the
   # one thing on this API worth looping. The test env cache is null (so the throttle never interferes
   # with any other spec); here a real store is swapped in so the limit can be reached.
@@ -373,6 +414,33 @@ RSpec.describe "Api::GroupCalendar" do
       5.times { post "/api/group/calendar/sync", headers: one_admin }
 
       put "/api/group/calendar", params: { ical_url: url }, headers: one_admin
+
+      expect(response).to have_http_status(:too_many_requests)
+    end
+
+    # Rails routes `(.:format)` and a trailing slash to the same action, so a throttle that compared
+    # the raw path string would be five characters away from useless: an admin appending `.json`
+    # would get unlimited syncs, each one a third-party download and a paid model call.
+    it "counts a sync that appends a format suffix" do
+      5.times { post "/api/group/calendar/sync", headers: one_admin }
+
+      post "/api/group/calendar/sync.json", headers: one_admin
+
+      expect(response).to have_http_status(:too_many_requests)
+    end
+
+    it "counts a sync that carries a trailing slash" do
+      5.times { post "/api/group/calendar/sync", headers: one_admin }
+
+      post "/api/group/calendar/sync/", headers: one_admin
+
+      expect(response).to have_http_status(:too_many_requests)
+    end
+
+    it "counts a connect that appends a format suffix" do
+      5.times { post "/api/group/calendar/sync", headers: one_admin }
+
+      put "/api/group/calendar.json", params: { ical_url: url }, headers: one_admin
 
       expect(response).to have_http_status(:too_many_requests)
     end

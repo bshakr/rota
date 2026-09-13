@@ -34,6 +34,15 @@ RSpec.describe CalendarEventSerializer do
     expect(described_class.one(timed)).to include(all_day: false, start_time: "19:00")
   end
 
+  # `starts_at` is nullable and no constraint ties it to `all_day`, so a row claiming to be timed
+  # while carrying no clock is reachable from the database even though CalendarSync never writes
+  # one. It must read as "no time", not raise inside a serializer.
+  it "renders no start time for a timed row that has no clock" do
+    clockless = create(:calendar_event, calendar_connection: connection, all_day: false, starts_at: nil, ends_at: nil)
+
+    expect(described_class.one(clockless)).to include(all_day: false, start_time: nil)
+  end
+
   describe CalendarEventPreviewSerializer do
     it "adds the reason the admin needs to check a verdict, and nothing else" do
       expect(described_class.one(event)).to eq(CalendarEventSerializer.one(event).merge(reason: "Alfie, six nights in Greece"))

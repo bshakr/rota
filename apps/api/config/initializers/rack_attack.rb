@@ -58,13 +58,25 @@ class Rack::Attack
     [ 429, { "Content-Type" => "application/json" }, [ { error: "too_many_requests" }.to_json ] ]
   end
 
-  # The member a request's bearer token names, resolved once and memoised on the Rack env so the two
-  # throttles above share ONE indexed lookup. Only ACTIVE members resolve — a deactivated token
-  # authenticates as nobody (see MemberAuthenticatable), so it falls to the IP throttle like any other
-  # bad token. A token-less request never touches the database.
+  # Does this request make the server go and download a calendar?
+  #
+  # The comparison is against the NORMALISED path, not `request.path`. Rails routes `(.:format)` and
+  # any number of trailing slashes to the same action, so `/api/group/calendar/sync.json` and
+  # `/api/group/calendar/sync/` both reach #sync while being unequal to the route as written. A
+  # throttle matching the raw string is therefore five characters away from not existing, and what
+  # it would be failing to limit is a 5 MB third-party download and a paid model call. Prefix
+  # matching, as the two member throttles use, would have been immune for the same reason.
   def self.calendar_fetch?(request)
-    (request.post? && request.path == CALENDAR_SYNC_PATH) ||
-      ((request.put? || request.patch?) && request.path == CALENDAR_CONNECT_PATH)
+    path = normalised_path(request.path)
+    (request.post? && path == CALENDAR_SYNC_PATH) ||
+      ((request.put? || request.patch?) && path == CALENDAR_CONNECT_PATH)
+  end
+
+  # Trailing slashes first, then a format suffix: `/sync.json/` is a real spelling of `/sync`, and
+  # stripping in the other order would leave the dot behind. Neither calendar path contains a dot,
+  # so there is nothing here for the format pattern to eat by mistake.
+  def self.normalised_path(path)
+    path.sub(%r{/+\z}, "").sub(/\.[a-z0-9]+\z/i, "")
   end
 
   # Who is asking, as far as a throttle needs to know. A request with no Authorization header has
@@ -76,6 +88,10 @@ class Rack::Attack
     "token:#{OpenSSL::Digest::SHA256.hexdigest(authorization)}"
   end
 
+  # The member a request's bearer token names, resolved once and memoised on the Rack env so the two
+  # member throttles share ONE indexed lookup. Only ACTIVE members resolve — a deactivated token
+  # authenticates as nobody (see MemberAuthenticatable), so it falls to the IP throttle like any other
+  # bad token. A token-less request never touches the database.
   def self.member_id_for(request)
     request.env.fetch("member_api.member_id") do
       token = request.env["HTTP_AUTHORIZATION"].to_s[/\ABearer\s+(.+)\z/i, 1]
