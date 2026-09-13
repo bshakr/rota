@@ -20,6 +20,10 @@ RUN apt-get update -qq && \
     ln -s /usr/lib/$(uname -m)-linux-gnu/libjemalloc.so.2 /usr/local/lib/libjemalloc.so && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
+# Pinned because iCal parsing reads the host zone when a feed omits one, so an unpinned container
+# would read a house's calendar differently depending on where it happened to be built or run.
+ENV TZ="UTC"
+
 # Set production environment variables and enable jemalloc for reduced memory usage and latency.
 ENV RAILS_ENV="production" \
     BUNDLE_DEPLOYMENT="1" \
