@@ -40,7 +40,7 @@ export interface DayRow {
   due_on: string;
   shifts: MemberShift[];
   /**
-   * House calendar entries that BEGIN this day — a trip, a dinner. Always present
+   * House calendar entries the feed shows on this day: a trip, a dinner. Always present
    * and often empty, so a row never has to ask whether a calendar is connected.
    */
   events: FeedEvent[];
@@ -125,13 +125,13 @@ function upcoming(schedule: MemberScheduleResponse): MemberShift[] {
 /**
  * Whether the house calendar shows through the current filter.
  *
- * A rota chip means "just the bins, please", and a trip belongs to no rota — so the
+ * A rota chip means "just the bins, please", and a trip belongs to no rota, so the
  * chips hide events entirely rather than showing a bin day under a heading that says
  * otherwise. "Everyone" and "Just me" both show them (spec section 9): a trip is as
  * much a part of your own week as your turns are.
  *
  * The PERSON half is deliberately not consulted. It narrows who the shifts are about,
- * and what the house is doing stays true whoever you are looking at — the day you
+ * and what the house is doing stays true whoever you are looking at: the day you
  * pick someone to ask is exactly the day you need to see they are in Greece.
  */
 function showsEvents(filter: FeedFilter): boolean {
@@ -139,22 +139,28 @@ function showsEvents(filter: FeedFilter): boolean {
 }
 
 /**
- * House calendar entries that begin today or later, as feed rows keyed by their day.
+ * House calendar entries that have not finished, as feed rows keyed by their day.
  *
- * An entry already under way when the payload was built has no row of its own: the
- * feed only ever renders forwards, and a trip that started on Friday would otherwise
- * reappear above today every time the page loaded. Who is away RIGHT NOW is answered
- * by `awayMemberIdsOn` on the people strip, which reads the whole range.
+ * An entry that is already UNDER WAY lands on today rather than on the day it began.
+ * The API sends these deliberately (`ends_on >= today`): a housemate who flew out last
+ * Friday and is back on Thursday is away today, and that is the fact the hand-off
+ * screen exists to show. The feed only ever renders forwards, so the row cannot sit
+ * above today where the trip actually started, and the "until {weekday}" label already
+ * carries how much of it is left. A plain multi-day entry (guests staying, building
+ * work) reaches no other surface at all, so dropping it lost it entirely.
+ *
+ * An entry that ENDED before today is gone, the same as a past shift.
  */
 function eventsByDay(schedule: MemberScheduleResponse): Map<string, FeedEvent[]> {
   const days = new Map<string, FeedEvent[]>();
 
   for (const event of schedule.events) {
-    if (compareCivil(event.starts_on, schedule.today) < 0) continue;
-    const day = days.get(event.starts_on);
+    if (compareCivil(event.ends_on, schedule.today) < 0) continue;
+    const starts = compareCivil(event.starts_on, schedule.today) < 0 ? schedule.today : event.starts_on;
+    const day = days.get(starts);
     const feedEvent = toFeedEvent(event, schedule.members);
     if (day) day.push(feedEvent);
-    else days.set(event.starts_on, [feedEvent]);
+    else days.set(starts, [feedEvent]);
   }
 
   return days;
@@ -165,9 +171,9 @@ function eventsByDay(schedule: MemberScheduleResponse): Map<string, FeedEvent[]>
  * calendar entries.
  *
  * Weeks and days with nothing in them are omitted rather than rendered empty, so a
- * fortnightly rota does not leave a blank card every other week — but a day carrying
+ * fortnightly rota does not leave a blank card every other week, but a day carrying
  * only a trip IS a day worth rendering, which is why the days are assembled from both
- * sources rather than walked off the shifts alone. Past shifts and past entries are
+ * sources rather than walked off the shifts alone. Past shifts and finished entries are
  * dropped here as well as on the server: the function is then total, and a stale
  * payload after midnight cannot render yesterday.
  */
@@ -199,6 +205,20 @@ export function buildFeed(schedule: MemberScheduleResponse, filter: FeedFilter):
   }
 
   return weeks;
+}
+
+/**
+ * Does this feed carry any SHIFT, as opposed to house calendar entries alone?
+ *
+ * The empty state has to be decided from the shift side. A person filter narrows who
+ * the shifts are about but deliberately admits every house entry (`showsEvents`), so a
+ * housemate with nothing on still produces a feed full of event rows. Counting weeks
+ * would read that as "there is something here", and the member would be left staring
+ * at the house's dinners with no signal that this person has no turns and no way back
+ * to everyone.
+ */
+export function hasShifts(weeks: WeekSection[]): boolean {
+  return weeks.some((week) => week.days.some((day) => day.shifts.length > 0));
 }
 
 /**
