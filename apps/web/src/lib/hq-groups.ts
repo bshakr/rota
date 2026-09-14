@@ -421,6 +421,8 @@ export interface AdminLabel {
   headingIsPlaceholder: boolean;
   /** The line under it: the address, or the phrase for whichever half is missing. */
   note: string;
+  /** The note is the address — it breaks anywhere, and it is not a phrase. */
+  noteIsEmail: boolean;
 }
 
 /**
@@ -434,7 +436,9 @@ export interface AdminLabel {
  *
  * A name that is present but blank (`""`, or spaces WorkOS was handed by a signup
  * form) is treated exactly as a missing one. It would otherwise render as an
- * empty heading, which is the one outcome worse than saying so.
+ * empty heading, which is the one outcome worse than saying so. The address gets
+ * the same treatment: a whitespace-only email is a gap, not a fact, so it must
+ * never become the heading either.
  */
 export function adminLabel({
   name,
@@ -444,18 +448,32 @@ export function adminLabel({
   email: string | null;
 }): AdminLabel {
   const given = name?.trim();
+  const address = email?.trim() || null;
   if (given) {
     return {
       heading: given,
       headingIsEmail: false,
       headingIsPlaceholder: false,
-      note: email ?? NO_EMAIL,
+      note: address ?? NO_EMAIL,
+      noteIsEmail: address != null,
     };
   }
-  if (email) {
-    return { heading: email, headingIsEmail: true, headingIsPlaceholder: false, note: NO_NAME };
+  if (address) {
+    return {
+      heading: address,
+      headingIsEmail: true,
+      headingIsPlaceholder: false,
+      note: NO_NAME,
+      noteIsEmail: false,
+    };
   }
-  return { heading: NO_NAME, headingIsEmail: false, headingIsPlaceholder: true, note: NO_EMAIL };
+  return {
+    heading: NO_NAME,
+    headingIsEmail: false,
+    headingIsPlaceholder: true,
+    note: NO_EMAIL,
+    noteIsEmail: false,
+  };
 }
 
 /** Where an operator goes to impersonate or reset — deliberately not built here. */

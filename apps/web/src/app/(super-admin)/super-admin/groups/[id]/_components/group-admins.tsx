@@ -93,9 +93,7 @@ function AdminRow({ admin, now }: { admin: ReportAdmin; now: Date }) {
         >
           {label.heading}
         </p>
-        <p
-          className={cn("text-muted-foreground text-xs", label.note === admin.email && "break-all")}
-        >
+        <p className={cn("text-muted-foreground text-xs", label.noteIsEmail && "break-all")}>
           {label.note}
         </p>
         <p className="text-muted-foreground text-xs text-pretty">

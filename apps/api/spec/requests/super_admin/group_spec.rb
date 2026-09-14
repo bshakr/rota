@@ -82,8 +82,8 @@ RSpec.describe "GET /api/super_admin/groups/:id" do
     # it holds instead of the API asserting something it was never told.
     # https://linear.app/bloombase/issue/BLO-1694
     it "shows no name at all where WorkOS never sent one" do
-      user = create(:user, name: nil, email: "noname@example.com", workos_user_id: "user_01NONAME")
-      create(:group_admin, group: group, user: user)
+      nameless = create(:user, name: nil, email: "noname@example.com", workos_user_id: "user_01NONAME")
+      create(:group_admin, group: group, user: nameless)
 
       row = show.fetch("admins").first
       expect(row.fetch("name")).to be_nil

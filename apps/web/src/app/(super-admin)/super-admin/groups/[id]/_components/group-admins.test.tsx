@@ -53,7 +53,9 @@ describe("GroupAdmins", () => {
   });
 
   it("never renders an empty heading", () => {
-    for (const heading of headings(markup())) expect(heading.trim()).not.toBe("");
+    const html = markup();
+    expect(headings(html)).toHaveLength(4);
+    for (const heading of headings(html)) expect(heading.trim()).not.toBe("");
   });
 
   // The phrase is a stand-in, not a fact about the person; an address is a fact,

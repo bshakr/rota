@@ -315,6 +315,7 @@ describe("people", () => {
         headingIsEmail: false,
         headingIsPlaceholder: false,
         note: "ada@example.com",
+        noteIsEmail: true,
       });
     });
 
@@ -324,6 +325,7 @@ describe("people", () => {
         headingIsEmail: false,
         headingIsPlaceholder: false,
         note: NO_EMAIL,
+        noteIsEmail: false,
       });
     });
 
@@ -335,6 +337,7 @@ describe("people", () => {
         headingIsEmail: true,
         headingIsPlaceholder: false,
         note: NO_NAME,
+        noteIsEmail: false,
       });
     });
 
@@ -344,6 +347,7 @@ describe("people", () => {
         headingIsEmail: false,
         headingIsPlaceholder: true,
         note: NO_EMAIL,
+        noteIsEmail: false,
       });
     });
 
@@ -359,9 +363,18 @@ describe("people", () => {
         { name: null, email: "ada@example.com" },
         { name: "  ", email: null },
         { name: null, email: null },
+        { name: null, email: "   " },
       ];
 
       for (const admin of cases) expect(adminLabel(admin).heading.trim()).not.toBe("");
+
+      // A whitespace-only address is a gap, not a fact, so it must fall all the
+      // way through to the no-name-and-no-address case rather than becoming the
+      // heading itself.
+      expect(adminLabel({ name: null, email: "   " })).toMatchObject({
+        heading: NO_NAME,
+        note: NO_EMAIL,
+      });
     });
   });
 
