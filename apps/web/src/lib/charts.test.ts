@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { barPercents, formatCount, sparklineGeometry, stackShares } from "./charts";
+import { MIN_STACK_SHARE, barPercents, formatCount, sparklineGeometry, stackShares } from "./charts";
 
 /** Every number in a `d` attribute, so a NaN cannot hide inside a path string. */
 function numbersIn(d: string): number[] {
@@ -55,6 +55,31 @@ describe("stackShares", () => {
     const shares = stackShares([0, 0, 0]);
     expect(shares).toEqual([0, 0, 0]);
     expect(shares.every(Number.isFinite)).toBe(true);
+  });
+
+  // The finding this floor exists for: one cover notice in a week of four
+  // thousand reminders is 0.02%, which rounds to 0.0 — and the caller drops
+  // zero-width segments, so the cover that DID happen would draw the same row as
+  // a week with no covers in it.
+  it("never rounds something that happened down to nothing", () => {
+    const shares = stackShares([4000, 1]);
+
+    expect(shares[1]).toBe(MIN_STACK_SHARE);
+    expect(shares[1]).toBeGreaterThan(0);
+  });
+
+  it("keeps zero for zero, so a caller can still tell the two apart", () => {
+    expect(stackShares([4000, 0, 1])).toEqual([100, 0, MIN_STACK_SHARE]);
+  });
+
+  // The cost of the floor, stated rather than discovered: a very lopsided row
+  // can sum to a tenth or two over 100. The track absorbs it; a vanishing
+  // segment would not be absorbed by anything.
+  it("may overshoot 100 by a rounding step rather than lose a segment", () => {
+    const total = stackShares([4000, 1, 1]).reduce((sum, share) => sum + share, 0);
+
+    expect(total).toBeGreaterThanOrEqual(100);
+    expect(total).toBeLessThan(100.5);
   });
 
   it("has nothing to split in an empty set", () => {

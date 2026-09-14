@@ -80,9 +80,12 @@ export function TrafficScreen({ traffic, now }: { traffic: SuperAdminTraffic; no
       </div>
 
       <p className="text-muted-foreground mt-8 text-xs text-pretty">
-        Weeks begin on a Monday, UTC, and the oldest bucket is a partial week in every range —
-        nothing here is snapped to a Monday, and a bar that claimed to be a whole week would be
-        lying. Every figure is counted live across all houses and cached for a minute.
+        Weeks begin on a Monday, UTC, and <strong className="font-semibold">both ends of every
+        range are partial buckets</strong>: no range is snapped to a Monday, so the oldest bucket
+        starts mid-week, and the newest runs from Monday to now rather than to Sunday. Every chart
+        here headlines that newest bucket, so it is always a week in progress — a bar or a figure
+        that claimed either end was a whole week would be lying. Every figure is counted live across
+        all houses and cached for a minute.
       </p>
     </>
   );

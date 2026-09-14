@@ -23,6 +23,10 @@ import { weekLabel, weekOfLabel } from "@/lib/hq-traffic";
  * with its denominator: 96.4% of twelve texts and 96.4% of four hundred are
  * different facts. No range-wide average is invented here — every figure on this
  * page is one Rails computed.
+ *
+ * And if that week is the NEWEST bucket it is marked "so far", because the newest
+ * bucket runs from its Monday to now rather than to Sunday. A rate off two days
+ * of a week is a rate off two days of a week, and it will move.
  */
 export function DeliveryRate({ weeks }: { weeks: readonly TrafficWeek[] }) {
   const points = weeks.map((week) => ({
@@ -34,6 +38,10 @@ export function DeliveryRate({ weeks }: { weeks: readonly TrafficWeek[] }) {
   const quiet = weeks.filter((week) => week.delivery_rate === null).length;
   const first = weeks.at(0);
   const last = weeks.at(-1);
+  // Only the newest bucket is still running. An older week that happens to be the
+  // last one to settle anything is finished, and saying "so far" about it would
+  // be wrong in the other direction.
+  const inProgress = latest !== null && latest.week_starting === last?.week_starting;
 
   return (
     <Card>
@@ -59,7 +67,7 @@ export function DeliveryRate({ weeks }: { weeks: readonly TrafficWeek[] }) {
           <span className="text-muted-foreground text-xs">
             {latest === null
               ? "nothing has settled in this window"
-              : `of ${formatCount(latest.texts_settled)} settled, week of ${weekLabel(latest.week_starting)}`}
+              : `of ${formatCount(latest.texts_settled)} settled, week of ${weekLabel(latest.week_starting)}${inProgress ? " so far" : ""}`}
           </span>
         </p>
 

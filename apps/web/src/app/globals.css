@@ -327,7 +327,15 @@
      sky against peach at delta E 12.6 for NORMAL vision, under the floor of 15 —
      two segments of one stacked bar that a full-colour reader cannot separate.
      The -500 cuts clear 3:1 on the night card and every adjacent pair clears the
-     floor. Only chart-1 stays a -300: grape-500 is too dark to read on plum. */
+     floor. Only chart-1 stays a -300: grape-500 is too dark to read on plum.
+
+     One honest note on the validator's own dark check: these cuts sit ABOVE its
+     dark lightness band (L 0.48-0.67) at L 0.70-0.80. That band assumes a
+     near-black chart surface, and this one is plum-850 at L 0.29 — mid-dark, not
+     black — so a mark inside the band would be the thing at risk here, not a
+     mark above it. Above is the safe side on this surface, and the contrast
+     check against the real card colour is what confirms it: all five pass 3:1
+     where the -300 stickers passed contrast but failed to be distinguishable. */
   --chart-1: var(--grape-300);
   --chart-2: var(--mint-500);
   --chart-3: var(--peach-500);

@@ -56,6 +56,17 @@ export function barPercents(values: readonly (number | null)[]): (number | null)
 }
 
 /**
+ * The smallest share this function will report for something that really
+ * happened: one step of the single decimal place it rounds to.
+ *
+ * It exists because rounding can erase a fact. One cover notice in a week of
+ * four thousand reminders is 0.02%, which rounds to 0.0 — and a caller that
+ * drops zero-width segments would then draw no segment at all for a cover that
+ * did happen, which is the same picture as a week with no covers in it.
+ */
+export const MIN_STACK_SHARE = 0.1;
+
+/**
  * Each value as a percentage of the row's own total — the segments of one
  * stacked bar.
  *
@@ -63,6 +74,15 @@ export function barPercents(values: readonly (number | null)[]): (number | null)
  * there is nothing to divide by, and every segment is zero-width. The row still
  * renders (an empty track), because a missing row would make the x-axis change
  * shape between two ranges.
+ *
+ * ZERO IS RESERVED FOR ZERO. Anything that actually happened comes back at
+ * `MIN_STACK_SHARE` or more, so a caller can branch on the share alone and
+ * still never lose a real segment. The cost is that a row of very lopsided
+ * values can sum to a tenth or two over 100, which the track absorbs — far
+ * cheaper than a cover notice that vanishes. `Bars` makes the same promise at
+ * the other end, in CSS: a non-zero bar keeps a 4px floor so it cannot shrink
+ * into its track. Two charts on one page should not disagree about whether a
+ * small number is visible.
  */
 export function stackShares(values: readonly number[]): number[] {
   const positive = values.map((value) => Math.max(0, value));
@@ -70,7 +90,10 @@ export function stackShares(values: readonly number[]): number[] {
 
   if (total <= 0) return positive.map(() => 0);
 
-  return positive.map((value) => round((value / total) * 100));
+  return positive.map((value) => {
+    if (value <= 0) return 0;
+    return Math.max(MIN_STACK_SHARE, round((value / total) * 100));
+  });
 }
 
 export type SparklineGeometry = {

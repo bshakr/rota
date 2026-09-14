@@ -77,8 +77,15 @@ export function WeeklyTexts({ weeks }: { weeks: readonly TrafficWeek[] }) {
 
                 <span className="bg-muted flex h-2.5 w-full overflow-hidden rounded-full" aria-hidden>
                   {TEXT_KIND_SERIES.map((series, index) => {
-                    const share = shares[index];
-                    if (share <= 0) return null;
+                    // Branch on the COUNT, not the share. A kind that sent one
+                    // text in a week of four thousand is a fact about that week,
+                    // and a row that drops it draws the same picture as a week
+                    // the kind never happened in. `stackShares` floors it at a
+                    // tenth of a percent for the same reason, and the CSS floor
+                    // below finishes the job at 4px — which is what `Bars` gives
+                    // a small bar, so the page's two charts agree about when a
+                    // small number is visible.
+                    if (week.texts_by_kind[series.kind] <= 0) return null;
 
                     return (
                       <span
@@ -87,7 +94,7 @@ export function WeeklyTexts({ weeks }: { weeks: readonly TrafficWeek[] }) {
                           "border-card block h-full border-r-2 last:border-r-0",
                           BAR_TONE_FILL[series.tone],
                         )}
-                        style={{ width: `${share}%` }}
+                        style={{ width: `${shares[index]}%`, minWidth: "0.25rem" }}
                       />
                     );
                   })}

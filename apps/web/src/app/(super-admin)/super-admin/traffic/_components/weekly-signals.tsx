@@ -1,5 +1,13 @@
 import { Sparkline } from "@/components/charts/sparkline";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { TrafficWeek } from "@/lib/api/super-admin-traffic";
 import { formatCount } from "@/lib/charts";
 import { plural } from "@/lib/hq-overview";
@@ -19,6 +27,11 @@ import { WEEKLY_SIGNALS, weekLabel, weekOfLabel } from "@/lib/hq-traffic";
  * of these five are distinct counts that cannot be added up: the same house
  * active every week is one house, not thirteen. The two that are genuine event
  * counts — covers and new houses — do print a range total, and say so.
+ *
+ * That newest week is marked "so far" on every panel, and in the table. It runs
+ * from its Monday to NOW rather than to Sunday, so it is a week in progress in
+ * every range the picker offers, and a headline figure that did not say so would
+ * read as a finished week that had collapsed.
  *
  * `members_last_seen` is the panel that needs its words most. It counts members
  * in the week they were LAST seen, one moving column with no history behind it,
@@ -62,7 +75,9 @@ export function WeeklySignals({ weeks }: { weeks: readonly TrafficWeek[] }) {
                     {formatCount(latest)}
                   </span>
                   <span className="text-muted-foreground text-xs">
-                    {latestWeek ? `week of ${weekLabel(latestWeek.week_starting)}` : "no weeks"}
+                    {latestWeek
+                      ? `week of ${weekLabel(latestWeek.week_starting)} so far`
+                      : "no weeks"}
                   </span>
                 </p>
 
@@ -85,6 +100,52 @@ export function WeeklySignals({ weeks }: { weeks: readonly TrafficWeek[] }) {
             );
           })}
         </ul>
+
+        {/* The table view for these five lines, and the reason it is here rather
+            than folded into the texts table one card up: that one covers the
+            kinds, the delivery and the rate, and NONE of these. Four of these
+            five series appear nowhere else on the page as numbers, so without
+            this the only way to read one would be to see its shape — no use to
+            a reader who cannot separate two line shapes, or who is on a phone
+            with no hover. A <details> rather than a tab, so it costs no
+            JavaScript. */}
+        <details className="mt-6">
+          <summary className="text-link marker:text-muted-foreground focus-visible:outline-ring inline-flex cursor-pointer items-center py-1 text-xs font-medium focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2">
+            Show every signal as numbers
+          </summary>
+
+          <div className="mt-3">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Week</TableHead>
+                  {WEEKLY_SIGNALS.map((signal) => (
+                    <TableHead key={signal.key} className="text-right">
+                      {signal.label}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {weeks.map((week) => (
+                  <TableRow key={week.week_starting}>
+                    <TableCell className="whitespace-nowrap">
+                      {weekOfLabel(week.week_starting)}
+                      {week.week_starting === latestWeek?.week_starting ? (
+                        <span className="text-muted-foreground"> so far</span>
+                      ) : null}
+                    </TableCell>
+                    {WEEKLY_SIGNALS.map((signal) => (
+                      <TableCell key={signal.key} className="text-right" data-numeric>
+                        {formatCount(week[signal.key])}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </details>
       </CardContent>
     </Card>
   );
