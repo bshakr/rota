@@ -95,8 +95,8 @@ RSpec.describe AnalyticsEvent do
     end
   end
 
-  # The three coarse facts about a visit, added with the traffic page's "Where visits come from"
-  # panel. Each has a SHAPE as well as a length, and a value of the wrong shape costs the event that
+  # The six coarse facts about a visit, drawn by the traffic page's "Where visits come from" panel.
+  # Each has a SHAPE as well as a length, and a value of the wrong shape costs the event that
   # property rather than the event: a chart an operator reads must not be able to grow a bar labelled
   # with whatever a stranger posted.
   describe "the visit properties" do
@@ -145,9 +145,48 @@ RSpec.describe AnalyticsEvent do
       expect(properties_for(device: "Mobile")).to eq({})
     end
 
+    it "keeps a city, a browser family and a system family" do
+      expect(properties_for(city: "London", browser: "safari", os: "ios"))
+        .to eq("city" => "London", "browser" => "safari", "os" => "ios")
+    end
+
+    # Written exactly as the header sent them. There is no case-folding rule that is right for the
+    # names of every place on earth, and title-casing would make "Saint-étienne" of the first of
+    # these.
+    it "keeps the accents, hyphens, apostrophes and full stops a city name really has" do
+      [ "Saint-Étienne", "St. Albans", "N'Djamena", "Ciudad Juárez", "Stratford-upon-Avon" ].each do |city|
+        expect(properties_for(city: city)).to eq("city" => city)
+      end
+    end
+
+    # The column is read by a person, so a value that is really an id or a sentence somebody chose is
+    # how a dashboard becomes a noticeboard. Same argument as the referrer host above.
+    it "drops a city that is an id, a sentence or markup rather than a name" do
+      expect(properties_for(city: "8675309")).to eq({})
+      expect(properties_for(city: "London<script>alert(1)</script>")).to eq({})
+      expect(properties_for(city: "51.50853,-0.12574")).to eq({})
+    end
+
+    it "drops a city that is only a name until the first newline" do
+      expect(properties_for(city: "London\nand a second line")).to eq({})
+    end
+
+    # A family, never a version. A stored "Chrome 141.0.7390.55" would be most of a fingerprint, and
+    # the only reliable way not to store one is for the shape to have no room for it.
+    it "drops a browser or a system that is a version, a spelling or a name nobody defined" do
+      expect(properties_for(browser: "Chrome")).to eq({})
+      expect(properties_for(browser: "chrome 141")).to eq({})
+      expect(properties_for(browser: "netscape")).to eq({})
+      expect(properties_for(os: "macOS")).to eq({})
+      expect(properties_for(os: "windows 11")).to eq({})
+      expect(properties_for(os: "haiku")).to eq({})
+    end
+
     it "keeps the properties that were fine and drops only the one that was not" do
       expect(properties_for(utm_source: "reddit", country: "nonsense", device: "desktop"))
         .to eq("utm_source" => "reddit", "device" => "desktop")
+      expect(properties_for(city: "London", browser: "netscape", os: "macos"))
+        .to eq("city" => "London", "os" => "macos")
     end
 
     # `clean_value` lets an Integer and a boolean through untouched, because `member_id` needs that,
@@ -158,6 +197,13 @@ RSpec.describe AnalyticsEvent do
     it "drops a number where a country or a host belongs, and still writes the event" do
       expect(described_class.record(described_class::LANDING_VIEW,
         path: "/", country: 44, referrer_host: 1234, device: true)).to be(true)
+
+      expect(described_class.last.properties).to eq("path" => "/")
+    end
+
+    it "drops a number where a city, a browser or a system belongs, and still writes the event" do
+      expect(described_class.record(described_class::LANDING_VIEW,
+        path: "/", city: 8675309, browser: 141, os: false)).to be(true)
 
       expect(described_class.last.properties).to eq("path" => "/")
     end

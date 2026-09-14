@@ -50,20 +50,26 @@ class AnalyticsEvent < ApplicationRecord
 
   # Every property any event may carry, and there will never be one that is not on this list. A
   # campaign label, a CTA position, a path, the member id that makes "two housemates opened"
-  # countable, and three coarse facts about a visit: the HOST that linked to us, the visitor's
-  # COUNTRY as two letters, and whether they came on a phone, a tablet or a computer. No names, no
-  # phone numbers, no tokens, no calendar URLs, no free text.
+  # countable, and six coarse facts about a visit: the HOST that linked to us, the visitor's COUNTRY
+  # as two letters and their CITY by name, whether they came on a phone, a tablet or a computer, and
+  # which family of BROWSER on which family of OPERATING SYSTEM. No names, no phone numbers, no
+  # tokens, no calendar URLs, no free text.
   #
-  # Those last three are the ones worth being explicit about, because they are the ones that sound
-  # like tracking and are not. Each is COARSE and IDENTIFIER-FREE: a host is a site rather than a
-  # person, a country is one of about two hundred buckets, and a device class is one of three words.
+  # Those last six are the ones worth being explicit about, because they are the ones that sound like
+  # tracking and are not. Each is COARSE and IDENTIFIER-FREE: a host is a site rather than a person, a
+  # country is one of about two hundred buckets, a city is a place half a million people live in, and
+  # a device class, a browser family and an OS family are one word each from a closed set. NO VERSION
+  # OF ANYTHING IS KEPT, which is the line between a family and a fingerprint: "Chrome on macOS" is
+  # most of the internet, and "Chrome 141.0.7390.55 on macOS 15.6.1" is a handful of people.
   # None of them arrives with anything to join on — this table holds no visitor id, no session id, no
   # cookie and no IP address — so two rows written by one person still cannot be told apart from two
-  # rows written by two, however many of the three each carries. The referring URL's path and query
+  # rows written by two, however many of the six each carries. The referring URL's path and query
   # are dropped in the browser before the event is sent, because those are where a search term or an
-  # email address would be; a host cannot hold either.
+  # email address would be; a host cannot hold either. The finer location a network can report — a
+  # postcode, a region, a latitude and longitude — is never read at all, one layer up in
+  # apps/web/src/lib/analytics.ts, which is the only way to be sure it is never written here.
   PROPERTY_KEYS = %w[position path ref utm_source utm_medium utm_campaign utm_content member_id
-                     referrer_host country device].freeze
+                     referrer_host country city device browser os].freeze
 
   # Long enough for any real campaign name, short enough that the column can never become storage.
   MAX_VALUE_LENGTH = 200
@@ -77,6 +83,16 @@ class AnalyticsEvent < ApplicationRecord
   # from the request headers; analytics.test.ts asserts the two lists have not drifted apart.
   DEVICE_CLASSES = %w[mobile tablet desktop].freeze
 
+  # Which browser and which operating system, to six buckets each and never to a version. Decided in
+  # apps/web/src/lib/analytics.ts from the client hints on the request, and checked again here;
+  # analytics.test.ts reads this file and fails if a family is ever added to one side only.
+  #
+  # `other` is a real bucket rather than a dumping ground: an engine nobody listed is counted rather
+  # than silently missed, and the column growing an "Other" bar is itself the signal that these lists
+  # are due a look.
+  BROWSER_FAMILIES = %w[chrome safari firefox edge samsung other].freeze
+  OS_FAMILIES = %w[ios android macos windows linux other].freeze
+
   # A hostname, and nothing that is merely shaped like one: labels of letters, digits and hyphens,
   # each starting and ending in an alphanumeric, joined by dots, with the optional port that
   # JavaScript's `URL.host` leaves on. Anchored with \A and \z rather than ^ and $, which in Ruby
@@ -86,6 +102,13 @@ class AnalyticsEvent < ApplicationRecord
 
   # ISO 3166-1 alpha-2, as Cloudflare's `cf-ipcountry` sends it.
   COUNTRY_CODE = /\A[A-Z]{2}\z/
+
+  # A city name, as Cloudflare's `cf-ipcity` sends it: a letter, then letters, combining marks,
+  # spaces, hyphens, apostrophes and full stops. Wide enough for "Saint-Étienne", "St. Albans" and
+  # "N'Djamena"; narrow enough that the column an operator reads cannot grow a row that is really an
+  # id or a sentence somebody chose. No digits, because no city has one and allowing them would admit
+  # exactly the junk this check exists for. Anchored with \A and \z for the reason HOSTNAME is.
+  CITY_NAME = /\A\p{L}[\p{L}\p{M} .'’-]*\z/
 
   # Cloudflare's own words for "could not tell" and "came out of Tor". Neither is a country, and a
   # bar labelled with one on the traffic page would be a bar about nothing. The web route drops them
@@ -164,6 +187,13 @@ class AnalyticsEvent < ApplicationRecord
     # One storage form per key, decided here rather than trusted from the sender. Two rows saying
     # "Reddit.com" and "reddit.com" are one referrer and must not draw two bars, and the same goes
     # for "gb" and "GB".
+    #
+    # `city` is deliberately left exactly as it arrived. There is no case-folding rule that is right
+    # for the names of every place on earth — title-casing would turn "Saint-Étienne" into
+    # "Saint-étienne" and "Isle Of Man" into something nobody writes — and the value comes from one
+    # header written by one system, so the drift this method exists to stop cannot happen to it.
+    # `browser`, `os` and `device` are left alone for the opposite reason: each is a closed set of
+    # lowercase words and anything else is not a wrong spelling, it is a value to drop.
     def normalise(key, value)
       return value unless value.is_a?(String)
 
@@ -178,13 +208,22 @@ class AnalyticsEvent < ApplicationRecord
     #
     # `position` is deliberately not here. Its allowlist lives on the Next route, where a CTA press is
     # made, and a second copy of a closed set of three is two lists to keep in step for no gain. The
-    # three below are different: they arrive from the open internet and land on a chart an operator
+    # six below are different: they arrive from the open internet and land on a chart an operator
     # reads, so the shape is checked on both sides of the hop.
+    #
+    # One rule about these values is NOT checked here, on purpose: the web route only sets a `city`
+    # when it also has a `country`, because a city with no country is not the output of a working
+    # location lookup. That is a rule about how a value was OBTAINED and it needs a view across two
+    # keys; this method sees one key at a time and knows only what a row may contain. Enforcing it
+    # here would mean making the result depend on the order PROPERTY_KEYS happens to be written in.
     def permitted?(key, value)
       case key
       when "referrer_host" then string_matching?(value, HOSTNAME)
       when "country" then string_matching?(value, COUNTRY_CODE) && NON_COUNTRIES.exclude?(value)
+      when "city" then string_matching?(value, CITY_NAME)
       when "device" then DEVICE_CLASSES.include?(value)
+      when "browser" then BROWSER_FAMILIES.include?(value)
+      when "os" then OS_FAMILIES.include?(value)
       else true
       end
     end
