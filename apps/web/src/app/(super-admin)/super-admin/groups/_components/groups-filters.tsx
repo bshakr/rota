@@ -24,8 +24,12 @@ import {
 // The list is fetched server-side (the operator client is `server-only`), so a
 // filter is nothing but a change to the URL: pick a value, the query string
 // updates, the server re-fetches and re-renders. That keeps the token off the
-// client, makes a filtered view shareable and bookmarkable, and means back and
-// forward move between filters — the same arrangement the house's SMS log uses.
+// client and makes a filtered view shareable and bookmarkable.
+//
+// `router.replace`, not `push`, exactly as the house's SMS log does it: narrowing
+// a list is not navigation, so it leaves no history entry and Back takes the
+// operator off the list rather than walking them back out through every filter
+// they tried on the way in.
 //
 // The current state arrives as a PROP rather than out of `useSearchParams`. The
 // server has already parsed and validated it (`parseGroupsFilters`), so reading

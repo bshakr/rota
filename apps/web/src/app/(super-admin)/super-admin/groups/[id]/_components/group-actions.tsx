@@ -16,12 +16,11 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toastApiError } from "@/lib/api/toast";
-import {
-  NOTES_MAX,
-  RESUME_CONSEQUENCES,
-  SUSPENSION_CONSEQUENCES,
-  notesCounter,
-} from "@/lib/hq-groups";
+import { RESUME_CONSEQUENCES, SUSPENSION_CONSEQUENCES, notesCounter } from "@/lib/hq-groups";
+// The one timezone list in the product, shared with the house's own settings
+// form: an operator fixing a house's clock and an admin fixing their own must be
+// offered the same zones.
+import { timezoneOptions } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
 
 import {
@@ -83,6 +82,11 @@ export function GroupActions({
  * the dialog open so the operator can fix the field and try again, where a
  * resolved one closes it. A dialog that closed over a failed save would look
  * exactly like a dialog that closed over a successful one.
+ *
+ * Since https://github.com/bshakr/rota/pull/45 that rejection is also reported to
+ * Sentry, which is right for a write Rails refused. The message thrown is
+ * therefore the same sentence the operator was just shown, so whoever triages it
+ * can tell at a glance which of these three actions failed.
  */
 async function run(
   write: () => Promise<GroupActionResult>,
@@ -100,16 +104,11 @@ async function run(
 // --- Rename and set the timezone --------------------------------------------
 
 /**
- * Every IANA zone the browser knows, with the house's stored zone guaranteed
- * present so it preselects and confirming a correct guess is one tap. Rails
- * rejects anything it does not recognise; the same helper the house's own
- * settings form uses, for the same reason.
+ * The house's own settings form says "Give the group a name."; this says "house",
+ * because that is the word the operator area uses for the same thing everywhere
+ * else on the page.
  */
-function timezoneOptions(current: string): string[] {
-  const supported =
-    typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
-  return supported.includes(current) ? supported : [current, ...supported];
-}
+const NAME_REQUIRED = "Give the house a name.";
 
 function SettingsAction({
   groupId,
@@ -158,8 +157,25 @@ function SettingsAction({
           />
         </>
       }
-      onConfirm={() =>
-        run(
+      onConfirm={() => {
+        // Checked here as well as inline, because `onConfirm` is what the button
+        // actually runs. Rails rejects a blank name too and that path still
+        // works; this only spares the operator a round trip to be told something
+        // the field already knew. Throwing is what keeps the dialog open — see
+        // `run` above.
+        //
+        // KNOWN NOISE: `ConfirmDialog` now reports a rejected confirm to Sentry,
+        // and this one is a deliberate refusal rather than a failure, so it will
+        // show up there. The message is the operator's own sentence so it is
+        // recognisable on sight. Worth closing properly by teaching
+        // `ConfirmDialog` to tell an expected refusal from a real one, which is
+        // a change to a shared component and not this ticket's to make.
+        if (!draft.current.name.trim()) {
+          toast.error(NAME_REQUIRED);
+          throw new Error(NAME_REQUIRED);
+        }
+
+        return run(
           () =>
             saveGroupSettings(groupId, {
               name: draft.current.name.trim(),
@@ -167,8 +183,8 @@ function SettingsAction({
             }),
           "Couldn't save this house.",
           "House saved.",
-        )
-      }
+        );
+      }}
     />
   );
 }
@@ -186,6 +202,11 @@ function SettingsFields({
   // the props ARE the initial value and there is nothing to synchronise.
   const [draft, setDraft] = React.useState({ name, timezone });
   const zones = React.useMemo(() => timezoneOptions(timezone), [timezone]);
+  // No "touched" flag: the box opens carrying the house's real name, so the only
+  // way it can be empty is that somebody emptied it. The message is then a
+  // description of what they just did, not a telling-off for not having typed
+  // yet. Same sentence and same moment as the house's own form.
+  const missing = draft.name.trim() === "";
 
   function update(next: { name: string; timezone: string }) {
     setDraft(next);
@@ -201,7 +222,14 @@ function SettingsFields({
           value={draft.name}
           onChange={(event) => update({ ...draft, name: event.target.value })}
           autoComplete="off"
+          aria-invalid={missing}
+          aria-describedby={missing ? "hq-group-name-error" : undefined}
         />
+        {missing ? (
+          <span id="hq-group-name-error" className="text-destructive block text-sm">
+            {NAME_REQUIRED}
+          </span>
+        ) : null}
       </span>
       <span className="mt-3 block space-y-1.5">
         <Label htmlFor="hq-group-timezone">Timezone</Label>
@@ -283,12 +311,13 @@ function NotesField({
           setValue(event.target.value);
           onChange(event.target.value);
         }}
-        // Bounded here as well as in Rails. `maxLength` stops a paste at the
-        // ceiling rather than letting the operator write 2,400 characters and
-        // lose 400 of them to a validation error they have to read to understand.
-        // The counter is what keeps it honest: a control that silently stops
-        // accepting keystrokes is worse than one that says why.
-        maxLength={NOTES_MAX}
+        // DELIBERATELY NOT `maxLength`. A hard cap on the control stops accepting
+        // keystrokes with no explanation at all — the operator pastes a
+        // paragraph, watches half of it not arrive, and has to guess why. Without
+        // it the counter's over-limit branch is reachable, so the box says "47
+        // over the 2,000 limit" in the went-wrong ink and the operator can see
+        // exactly how much to cut. Rails is still the enforcement
+        // (`Group::NOTES_MAX`), and its refusal comes back as a toast.
         aria-describedby="hq-group-notes-counter"
         placeholder="Trial house for the school run. Chasing them about the card that keeps declining."
       />

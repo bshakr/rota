@@ -4,6 +4,7 @@ import {
   DEFAULT_GROUP_SORT,
   GROUPS_HREF,
   GROUP_SORTS,
+  GROUP_SORT_DIRECTION,
   GROUP_STATUSES,
   GROUP_STATUS_PILL,
   type GroupsFilters,
@@ -50,6 +51,24 @@ describe("the unions Rails owns", () => {
   it("matches SuperAdmin::GroupsController::SORTS, and its default", () => {
     expect([...GROUP_SORTS]).toEqual(["name", "created", "last_activity", "texts"]);
     expect(DEFAULT_GROUP_SORT).toBe("name");
+  });
+
+  // Which way each one actually runs, read off the Ruby lambdas: `name` sorts on
+  // the name itself (A to Z), and the other three negate their key, which is
+  // descending. A header drawing a down arrow over an alphabetical column would
+  // be the page stating the opposite of what the API did, so the direction is
+  // data rather than a guess in the component.
+  it("knows which way each order runs", () => {
+    expect(GROUP_SORT_DIRECTION).toEqual({
+      name: "ascending",
+      created: "descending",
+      last_activity: "descending",
+      texts: "descending",
+    });
+  });
+
+  it("has a direction for every sort the API accepts, and no others", () => {
+    expect(Object.keys(GROUP_SORT_DIRECTION).sort()).toEqual([...GROUP_SORTS].sort());
   });
 
   it("has a pill for every status and every member state", () => {
@@ -219,6 +238,28 @@ describe("a rota, in words", () => {
     expect(rotaStateLabel({ active: false, draft: true }).label).toBe("Draft");
     expect(rotaStateLabel({ active: false, draft: false }).label).toBe("Paused");
     expect(rotaStateLabel({ active: true, draft: false }).label).toBe("Running");
+  });
+
+  // A suspended house's rotas are still running — nothing was switched off, and
+  // resuming puts them straight back — and are still sending nothing, because the
+  // sweep does not visit them. A bare "Running" pill would answer the operator's
+  // main question with the wrong answer, inches from the header that gave the
+  // right one.
+  it("says a running rota is silent while the house is paused", () => {
+    expect(rotaStateLabel({ active: true, draft: false }, { suspended: true }).label).toBe(
+      "Running (silent)",
+    );
+  });
+
+  // Only the running one changes. A draft sends nothing because nobody is on it
+  // and a paused rota because it was switched off; neither becomes more or less
+  // true when the house is suspended, and marking them would blur three distinct
+  // reasons for silence into one.
+  it("leaves draft and paused rotas alone", () => {
+    expect(rotaStateLabel({ active: true, draft: true }, { suspended: true }).label).toBe("Draft");
+    expect(rotaStateLabel({ active: false, draft: false }, { suspended: true }).label).toBe(
+      "Paused",
+    );
   });
 
   it("says outright when nobody is on a rota", () => {

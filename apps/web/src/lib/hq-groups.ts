@@ -140,6 +140,25 @@ export const GROUP_SORT_LABELS: Record<GroupSort, string> = {
 };
 
 /**
+ * WHICH WAY each order actually runs, read off `SuperAdmin::GroupsController::SORTS`.
+ *
+ * Every sort key there is fixed to one direction, and three of the four are
+ * DESCENDING because that is the useful end: the newest house, the most texts,
+ * the most recent activity. Only `name` runs A to Z.
+ *
+ * It is here rather than inferred in the header because a header that draws a
+ * down arrow over a column sorted A to Z — and tells a screen reader
+ * `aria-sort="descending"` about it — is not a cosmetic slip. It is the page
+ * stating the opposite of what the API did.
+ */
+export const GROUP_SORT_DIRECTION: Record<GroupSort, "ascending" | "descending"> = {
+  name: "ascending",
+  created: "descending",
+  last_activity: "descending",
+  texts: "descending",
+};
+
+/**
  * The timezone marker. An unconfirmed zone is the single most consequential thing
  * on a row — every reminder in the house may be going out an hour off — so it
  * gets words rather than an asterisk.
@@ -335,15 +354,28 @@ export function sendHourInWords(hour: number): string {
   return `texts at ${sendHourLabel(hour)}`;
 }
 
-/** Running, paused or draft — the same three states the counts on the list are split by. */
-export function rotaStateLabel(rota: { active: boolean; draft: boolean }): {
-  label: string;
-  tone: GroupTone;
-} {
+/**
+ * Running, paused or draft — the same three states the counts on the list are
+ * split by — and whether a running one is actually sending anything.
+ *
+ * A SUSPENDED HOUSE's rotas are still "running" in every sense the house owns:
+ * nothing was switched off, nothing was deleted, and resuming puts them straight
+ * back. But the sweep does not visit them, so a bare "Running" pill on a paused
+ * house's page answers the operator's main question ("why has this house gone
+ * quiet?") with the wrong answer, three inches from the header that gave the
+ * right one. "Running (silent)" says both facts at once.
+ */
+export function rotaStateLabel(
+  rota: { active: boolean; draft: boolean },
+  { suspended = false }: { suspended?: boolean } = {},
+): { label: string; tone: GroupTone } {
   if (rota.draft) return { label: "Draft", tone: "secondary" };
   if (!rota.active) return { label: "Paused", tone: "warning" };
-  return { label: "Running", tone: "success" };
+  return { label: suspended ? "Running (silent)" : "Running", tone: "success" };
 }
+
+/** The line under the Rotas heading when the house is paused. */
+export const ROTAS_SILENT_NOTE = "Silent while the house is paused.";
 
 /** The roster, as a count. A draft rota has nobody on it, which is why it sends nothing. */
 export function rosterNote(size: number): string {

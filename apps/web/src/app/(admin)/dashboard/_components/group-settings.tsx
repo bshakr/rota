@@ -24,6 +24,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toastApiError } from "@/lib/api/toast";
+// Shared with the operator's own timezone dialog, so the two pickers cannot come
+// to offer different lists. Lifted out of this file by BLO-1676; the behaviour is
+// unchanged.
+import { timezoneOptions } from "@/lib/timezones";
 import type { CalendarEventPreviewItem, Group } from "@/lib/api/types";
 
 import { saveGroupSettings } from "../actions";
@@ -34,15 +38,6 @@ const schema = z.object({
   timezone: z.string().min(1, "Choose a timezone."),
 });
 type Values = z.infer<typeof schema>;
-
-// Every IANA zone the browser knows, with the group's stored zone guaranteed
-// present so it preselects and confirming a correct guess is one tap. Rails
-// rejects anything it doesn't recognise, surfaced inline below the field.
-function timezoneOptions(current: string): string[] {
-  const supported =
-    typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
-  return supported.includes(current) ? supported : [current, ...supported];
-}
 
 /**
  * Group settings — name and, the one that matters, timezone. It lives on the

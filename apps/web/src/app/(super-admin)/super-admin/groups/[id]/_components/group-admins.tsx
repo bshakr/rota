@@ -95,8 +95,8 @@ function AdminRow({ admin, now }: { admin: GroupAdmin | ReportAdmin; now: Date }
               // fill the slot with a phrase that means nothing after "Last seen".
               "Never seen here"
             )}{" "}
-            · {extra.user_sign_in_count_30d} of {extra.user_sign_in_count} sign-ins in the last 30
-            days, anywhere on Rota Monster
+            · {extra.user_sign_in_count_30d} sign-ins in the last 30 days,{" "}
+            {extra.user_sign_in_count} all time, anywhere on Rota Monster
           </p>
         ) : null}
       </div>

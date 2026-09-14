@@ -31,6 +31,7 @@ import { GroupRotas } from "./group-rotas";
 export function GroupScreen({ detail, now }: { detail: GroupDetail; now: Date }) {
   const { group } = detail;
   const pill = GROUP_STATUS_PILL[group.status];
+  const suspended = group.status === "suspended";
   const timezoneWarning = timezoneNote(group.timezone_confirmed);
   const created = new Date(group.created_at);
 
@@ -105,7 +106,7 @@ export function GroupScreen({ detail, now }: { detail: GroupDetail; now: Date })
             name={group.name}
             timezone={group.timezone}
             notes={group.notes}
-            suspended={group.status === "suspended"}
+            suspended={suspended}
           />
         </div>
       </div>
@@ -130,7 +131,11 @@ export function GroupScreen({ detail, now }: { detail: GroupDetail; now: Date })
 
         <div className="grid gap-6">
           <GroupNotes notes={group.notes} />
-          <GroupRotas rotas={detail.rotas} timezone={group.timezone} />
+          <GroupRotas
+            rotas={detail.rotas}
+            timezone={group.timezone}
+            suspended={suspended}
+          />
         </div>
       </div>
     </>

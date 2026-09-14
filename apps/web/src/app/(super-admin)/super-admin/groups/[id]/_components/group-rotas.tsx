@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { GroupRota } from "@/lib/api/super-admin-groups";
 import {
+  ROTAS_SILENT_NOTE,
   reminderOffsetsInWords,
   rosterNote,
   rotaStateLabel,
@@ -28,7 +29,15 @@ import { Empty } from "./group-admins";
  * house is silent — which is the commonest question this page is opened to
  * answer.
  */
-export function GroupRotas({ rotas, timezone }: { rotas: GroupRota[]; timezone: string }) {
+export function GroupRotas({
+  rotas,
+  timezone,
+  suspended,
+}: {
+  rotas: GroupRota[];
+  timezone: string;
+  suspended: boolean;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -38,6 +47,16 @@ export function GroupRotas({ rotas, timezone }: { rotas: GroupRota[]; timezone: 
             ? "No rotas, so this house sends nothing."
             : `${rotas.length} ${plural(rotas.length, "rota", "rotas")}. Send hours are in ${timezone}, this house's own timezone.`}
         </CardDescription>
+        {/* The operator's main question on a paused house is "why has it gone
+            quiet", and this card is where they come to answer it. Without this
+            line the card says "Running" three inches below a header that says
+            the house is suspended, and the reader has to hold both facts in
+            their head to work out which one wins. */}
+        {suspended ? (
+          <CardDescription className="text-foreground font-medium">
+            {ROTAS_SILENT_NOTE}
+          </CardDescription>
+        ) : null}
       </CardHeader>
 
       <CardContent>
@@ -46,7 +65,7 @@ export function GroupRotas({ rotas, timezone }: { rotas: GroupRota[]; timezone: 
         ) : (
           <ul className="divide-border divide-y">
             {rotas.map((rota) => (
-              <RotaRow key={rota.id} rota={rota} />
+              <RotaRow key={rota.id} rota={rota} suspended={suspended} />
             ))}
           </ul>
         )}
@@ -55,8 +74,10 @@ export function GroupRotas({ rotas, timezone }: { rotas: GroupRota[]; timezone: 
   );
 }
 
-function RotaRow({ rota }: { rota: GroupRota }) {
-  const state = rotaStateLabel(rota);
+function RotaRow({ rota, suspended }: { rota: GroupRota; suspended: boolean }) {
+  // "Running (silent)" on a paused house: the rota really is running, and really
+  // is sending nothing. Both, on the pill, where the operator is looking.
+  const state = rotaStateLabel(rota, { suspended });
 
   return (
     <li className="space-y-1 py-3 first:pt-0 last:pb-0">

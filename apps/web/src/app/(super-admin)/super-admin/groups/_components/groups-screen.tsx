@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowDown, Building2, ChevronRight, SearchX } from "lucide-react";
+import { ArrowDown, ArrowUp, Building2, ChevronRight, SearchX } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
@@ -18,6 +18,7 @@ import type { GroupRow } from "@/lib/api/super-admin-groups";
 import { formatTimestamp, relativeTime } from "@/lib/date";
 import {
   GROUPS_HREF,
+  GROUP_SORT_DIRECTION,
   GROUP_SORT_LABELS,
   GROUP_STATUS_PILL,
   type GroupSort,
@@ -170,16 +171,22 @@ function viewFor(group: GroupRow, now: Date) {
  * A column header that is also the way to sort by it.
  *
  * Only the four orders `SuperAdmin::GroupsController::SORTS` actually has are
- * offered, and each has ONE direction — the useful one (newest house, most texts,
- * most recent activity, names A to Z). A header that offered a direction the API
- * ignores would sort by name while claiming otherwise, which is worse than not
- * being sortable at all.
+ * offered, and each has ONE direction — the useful one. A header that offered a
+ * direction the API ignores would sort by name while claiming otherwise, which is
+ * worse than not being sortable at all.
+ *
+ * The arrow and `aria-sort` both come from `GROUP_SORT_DIRECTION`, so they cannot
+ * disagree with Rails or with each other. Three of the four run descending;
+ * `name` runs A to Z and gets an up arrow, because drawing a down arrow over an
+ * alphabetical column is the page stating the opposite of what the API did.
  */
 function SortableHead({ sort, filters }: { sort: GroupSort; filters: GroupsFilters }) {
   const active = filters.sort === sort;
+  const direction = GROUP_SORT_DIRECTION[sort];
+  const Arrow = direction === "ascending" ? ArrowUp : ArrowDown;
 
   return (
-    <TableHead className={CELL} aria-sort={active ? "descending" : "none"}>
+    <TableHead className={CELL} aria-sort={active ? direction : "none"}>
       <Link
         href={groupsHref({ ...filters, sort })}
         scroll={false}
@@ -189,8 +196,8 @@ function SortableHead({ sort, filters }: { sort: GroupSort; filters: GroupsFilte
         )}
       >
         {GROUP_SORT_LABELS[sort]}
-        {active ? <ArrowDown className="size-3 shrink-0" aria-hidden /> : null}
-        {active ? <span className="sr-only">(sorted by this)</span> : null}
+        {active ? <Arrow className="size-3 shrink-0" aria-hidden /> : null}
+        {active ? <span className="sr-only">(sorted by this, {direction})</span> : null}
       </Link>
     </TableHead>
   );
@@ -218,7 +225,11 @@ function GroupTableRow({ group, now }: { group: GroupRow; now: Date }) {
       <TableCell className={cn(CELL, "font-medium")}>
         <Link
           href={`${GROUPS_HREF}/${group.id}`}
-          className="after:absolute after:inset-0 relative rounded-md outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          // No `relative` here, deliberately: the overlay has to resolve against
+          // the ROW, which is the positioned ancestor. With it on the anchor the
+          // pseudo-element stretched to the anchor's own box and only the name
+          // was clickable, which is the whole thing this trick exists to avoid.
+          className="after:absolute after:inset-0 rounded-md outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           <span className="font-heading font-semibold break-words">{group.name}</span>
         </Link>

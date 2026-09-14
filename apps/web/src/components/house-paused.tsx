@@ -3,7 +3,12 @@ import { PauseCircle } from "lucide-react";
 import { Container } from "@/components/container";
 import { EmptyState } from "@/components/empty-state";
 import { Wordmark } from "@/components/wordmark";
-import { HOUSE_PAUSED_BODY_LEAD, HOUSE_PAUSED_BODY_TAIL, housePausedTitle } from "@/lib/hq-groups";
+import {
+  HOUSE_PAUSED_BODY_LEAD,
+  HOUSE_PAUSED_BODY_TAIL,
+  HOUSE_PAUSED_TITLE,
+  housePausedTitle,
+} from "@/lib/hq-groups";
 import { CONTACT_EMAIL } from "@/lib/site";
 
 /**
@@ -121,7 +126,10 @@ export function HousePausedNote() {
     <div className="bg-muted/60 flex items-start gap-3 rounded-2xl px-4 py-4">
       <PauseCircle className="text-muted-foreground mt-0.5 size-5 shrink-0" aria-hidden />
       <p className="text-sm text-pretty">
-        <span className="font-medium">This house is paused.</span>{" "}
+        {/* The shared constant, not a second spelling of it: the panel above and
+            this note must not drift into saying different things. The full stop
+            is the sentence's, not the title's. */}
+        <span className="font-medium">{HOUSE_PAUSED_TITLE}.</span>{" "}
         <span className="text-muted-foreground">
           <PausedBody />
         </span>
