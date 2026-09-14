@@ -58,7 +58,15 @@ const WEEKDAY_LONG = [
   "Friday",
   "Saturday",
 ] as const;
-const MONTH_SHORT = [
+/**
+ * Exported, alone among the four tables, because a CALENDAR MONTH with no
+ * instant behind it cannot be rendered through the helpers below: HQ's spend
+ * payload labels its buckets "2026-09", and `new Date("2026-09")` is midnight
+ * UTC, which in a zone behind UTC prints August. `monthLabel` in lib/hq-spend.ts
+ * reads this table directly and does the arithmetic as calendar arithmetic. A
+ * second copy of the names is how "Sept" becomes "Sep" on one screen.
+ */
+export const MONTH_SHORT = [
   "Jan",
   "Feb",
   "Mar",

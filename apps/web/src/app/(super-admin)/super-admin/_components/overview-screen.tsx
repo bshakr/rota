@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/page-header";
 import type { SuperAdminOverview } from "@/lib/api/super-admin-overview";
+import type { OverviewSpend } from "@/lib/api/super-admin-spend";
 import { formatTimestamp, relativeTime } from "@/lib/date";
 
 import { AttentionList } from "./attention-list";
@@ -24,7 +25,20 @@ import { SystemHealth } from "./system-health";
  * One column below `lg`, which is what makes it work on a phone: the grid simply
  * stops being a grid, and every card was already full-width inside its column.
  */
-export function OverviewScreen({ overview, now }: { overview: SuperAdminOverview; now: Date }) {
+export function OverviewScreen({
+  overview,
+  spend,
+  now,
+}: {
+  overview: SuperAdminOverview;
+  /**
+   * The spend tile's four figures, or null when they could not be counted. A
+   * SECOND payload, fetched by the page beside the overview — the overview's own
+   * `spend` key is still Rails' placeholder. See ./spend-tile.tsx.
+   */
+  spend: OverviewSpend | null;
+  now: Date;
+}) {
   const generatedAt = new Date(overview.generated_at);
 
   return (
@@ -64,7 +78,7 @@ export function OverviewScreen({ overview, now }: { overview: SuperAdminOverview
             when the list is short, which is most days. */}
         <div className="grid gap-6">
           <AttentionList rows={overview.attention} total={overview.attention_total} />
-          <SpendTile />
+          <SpendTile spend={spend} />
         </div>
 
         <div className="grid gap-6">
