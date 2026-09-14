@@ -81,6 +81,11 @@ Rails.application.routes.draw do
     # ?range=30d|90d|12m, and optional — a bare GET answers for the last 30 days, which is also what
     # lets the authorization walker above request this route with no parameters (BLO-1683).
     get "spend", to: "spend#show"
+
+    # Conversion and usage (BLO-1681). ?range=7d|30d|90d, and optional — a bare GET answers for the
+    # last 30 days, which is also what lets the authorization walker above request this route with
+    # no parameters.
+    get "traffic", to: "traffic#show"
   end
 
   # Defines the root path route ("/")
