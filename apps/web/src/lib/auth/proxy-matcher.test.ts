@@ -24,6 +24,15 @@ describe("AuthKit proxy matcher", () => {
     expect(proxyMatches("/callback")).toBe(false);
   });
 
+  // The Sentry tunnel (next.config.ts `tunnelRoute`). Browser error events are
+  // POSTed here. Under the proxy, a member reporting an error from `/s/<token>`
+  // has no WorkOS session, so the POST would be answered with a sign-in redirect
+  // and the event would be lost — the errors we most want are the ones from the
+  // people who cannot tell us about them.
+  it("does not intercept the Sentry tunnel route", () => {
+    expect(proxyMatches("/monitoring")).toBe(false);
+  });
+
   it("does not intercept framework internals or static files", () => {
     expect(proxyMatches("/_next/static/chunk.js")).toBe(false);
     expect(proxyMatches("/favicon.ico")).toBe(false);

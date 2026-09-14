@@ -8,6 +8,16 @@
 # Only enabled connections are touched. A link Google has reset is disabled by CalendarSync after
 # three tries, and a disabled connection stays out of this loop until an admin pastes a new one.
 class SyncHouseCalendarsJob < ApplicationJob
+  # A check-in per run, for the failure the per-connection rescue below cannot see: a worker that
+  # never starts this job raises nothing and reports nothing, and a house's calendar simply stops
+  # updating. The crontab spells out the schedule in config/recurring.yml rather than an hourly
+  # interval, because an interval monitor expects the next check-in an hour after the last one it
+  # saw, which after a restart is any minute of the hour; the crontab says minute 27, which is when
+  # the job actually runs. The 15-minute margin survives a deploy landing on the run.
+  include Sentry::Cron::MonitorCheckIns
+  sentry_monitor_check_ins slug: "sync-house-calendars",
+    monitor_config: Sentry::Cron::MonitorConfig.from_crontab("27 * * * *", checkin_margin: 15, max_runtime: 30, timezone: "UTC")
+
   queue_as :default
 
   # Wrapped in a JobRun so the operator dashboard can answer "when did the calendar sync last
@@ -42,11 +52,11 @@ class SyncHouseCalendarsJob < ApplicationJob
       # connection up again.
       #
       # Log it as well as report it, and do not be tempted to drop the log line as duplication.
-      # `Rails.error` has no subscribers in this app yet, so `report` on its own is a genuine no-op,
-      # and a rescue that swallowed every connection in silence and still finished GREEN would turn
-      # "sync is broken for everyone" into a bug whose first symptom is a house whose calendar
-      # quietly stopped updating. The log line is the only thing that makes this visible today;
-      # `report` is what will carry it to Sentry the day a subscriber is added.
+      # `report` has a subscriber: sentry-rails registers one on `Rails.error` (see
+      # config/initializers/sentry.rb), so this reaches the api project as an issue tagged with the
+      # source below. The log line stays regardless: it is what a human reads next to everything
+      # else this process did, and it is the whole alarm in development and test, where the
+      # reporter is disabled.
       #
       # The connection's id is printed, never its ical_url: the link is a credential, and the one
       # rule this file must not break is that it stays out of the logs. The id is the only thing

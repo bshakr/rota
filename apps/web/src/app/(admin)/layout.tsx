@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/nextjs";
+
 import { requireHousehold } from "@/lib/auth/household";
 import { isSuperAdmin } from "@/lib/auth/super-admin";
 
@@ -17,8 +19,17 @@ import { SignOutButton } from "@/components/admin/sign-out-button";
 export default async function AdminLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const { user } = await requireHousehold();
+  const { user, organizationId } = await requireHousehold();
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || undefined;
+
+  // Who and which household, on every event this request produces. The Node SDK
+  // scopes both to the request, so one admin's id never rides along on another's
+  // error. The WorkOS user id ONLY: an email or a name would put a person into
+  // Sentry, which the privacy contract rules out, and an opaque id is enough to
+  // ask "is this one admin or all of them". The member layout and the household
+  // entry page set nothing at all, deliberately.
+  Sentry.setUser({ id: user.id });
+  Sentry.setTag("household", organizationId);
 
   return (
     <AdminShell

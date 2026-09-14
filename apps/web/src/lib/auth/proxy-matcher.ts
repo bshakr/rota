@@ -10,6 +10,13 @@
 //                it. Getting this wrong breaks every SMS link we will ever send.
 //   - `callback` the OAuth callback owns its own one-shot PKCE cookie via
 //                `handleAuth`; running the session proxy over it only fights that.
+//   - `monitoring` the Sentry tunnel route (next.config.ts `tunnelRoute`). Browser
+//                error events are POSTed here and forwarded to Sentry. A member's
+//                browser on `/s/<token>` has no WorkOS session, so under the proxy
+//                every one of their error reports would be answered with a redirect
+//                to sign-in instead of being delivered. It is excluded rather than
+//                added to `unauthenticatedPaths` because that would still run the
+//                session refresh over every event POST for nothing.
 //   - `_next/`   framework internals.
 //   - `*.*`      static files (favicon, icons, images). A catch-all proxy would
 //                otherwise intercept them and break styling — see the AuthKit
@@ -17,7 +24,7 @@
 //
 // Everything else — `/`, `/dashboard`, `/members`, … — is covered, which is what
 // lets the admin layout call `withAuth()` (it requires the proxy to have run).
-export const PROXY_MATCHER = "/((?!s/|h/|callback|_next/|.*\\..*).*)";
+export const PROXY_MATCHER = "/((?!s/|h/|callback|monitoring|_next/|.*\\..*).*)";
 
 /** True when the AuthKit proxy runs on `pathname`. Mirrors what Next does with `PROXY_MATCHER`. */
 export function proxyMatches(pathname: string): boolean {

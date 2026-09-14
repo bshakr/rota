@@ -47,6 +47,11 @@ gem "twilio-ruby", "~> 7.10"
 # the one attack that matters is enumeration. BLO-1048.
 gem "rack-attack"
 
+# Error reporting. `Rails.error.report` already has callers in the jobs; this is what makes
+# them reach somebody. Configured in config/initializers/sentry.rb.
+gem "sentry-ruby", "~> 7.0"
+gem "sentry-rails", "~> 7.0"
+
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"

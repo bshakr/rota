@@ -15,6 +15,10 @@ module SuperAdmin
     include SuperAdminAuthenticatable
     include ApiErrorRendering
 
+    # After authenticate_super_admin!, so a refused caller never reaches it and Current names the
+    # operator when it does.
+    before_action :tag_sentry_scope
+
     # An id that names no house. 404, the same status the house side answers for an id it cannot
     # reach (TenantScoped#not_found), but for the opposite reason: there it hides whether a record
     # exists from somebody not entitled to know. Here the caller has already passed the allowlist,
@@ -25,6 +29,17 @@ module SuperAdmin
     rescue_from ActiveRecord::RecordNotFound, with: :not_found
 
     private
+
+    # Which operator, and nothing else. The WorkOS user id is the only name we have for them —
+    # there is no row for a super admin — and it is the name the human reading the issue will look
+    # up in WorkOS; the email stays out on purpose, here as on the house side (see
+    # data_collection.user_info in config/initializers/sentry.rb). No group tag either: an operator
+    # acts across every house, which is what `surface` says instead. These are Sentry. calls, which
+    # no-op when the SDK has no DSN, so development and test need nothing.
+    def tag_sentry_scope
+      Sentry.set_user(id: Current.super_admin_workos_user_id)
+      Sentry.set_tags(surface: "super-admin")
+    end
 
     def not_found
       render json: { error: "not_found" }, status: :not_found

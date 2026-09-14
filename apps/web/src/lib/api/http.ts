@@ -1,5 +1,7 @@
 import "server-only";
 
+import * as Sentry from "@sentry/nextjs";
+
 import { buildApiError } from "./errors";
 
 // The one fetch both API clients go through. It attaches the bearer token as a
@@ -58,7 +60,23 @@ export async function requestJson<T>(
   });
 
   if (!response.ok) {
-    throw buildApiError(response.status, await safeJson(response));
+    const error = buildApiError(response.status, await safeJson(response));
+
+    // A 5xx is Rails falling over, and it would otherwise be invisible from this
+    // side: server actions convert an ApiError into a returned body so the client
+    // can toast it, so nothing rethrows and onRequestError never sees it. 4xx is
+    // never reported — that is the API doing its job, and a validation error is not
+    // an incident. The fingerprint groups an outage by error code rather than by
+    // the call site that happened to notice it first.
+    if (response.status >= 500) {
+      Sentry.captureException(error, {
+        level: "error",
+        tags: { api_code: error.code, api_status: String(response.status) },
+        fingerprint: ["rails-5xx", error.code],
+      });
+    }
+
+    throw error;
   }
 
   // Parse via text() so an empty 2xx body (204, or an endpoint that returns no

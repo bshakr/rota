@@ -151,9 +151,10 @@ RSpec.describe ReminderSweepJob do
         .with(boom, hash_including(context: { rota_id: broken.id }))
     end
 
-    # `Rails.error` has no subscribers in this app yet, so reporting alone would leave a job that
-    # swallowed a house's reminders in silence and still finished green. Until a subscriber exists,
-    # this log line is the only alarm, so it is worth a test of its own.
+    # `report` now reaches Sentry (sentry-rails subscribes to `Rails.error`, see
+    # config/initializers/sentry.rb), and the log line stays anyway: it is what a human reads beside
+    # everything else this process did, and it is still the whole alarm in development and test,
+    # where the reporter is disabled. Worth a test of its own for as long as that is true.
     it "says so in the log, loudly enough to find" do
       allow(Rails.logger).to receive(:error)
 
@@ -209,6 +210,22 @@ RSpec.describe ReminderSweepJob do
 
       expect(entry).to include("class" => "ReminderSweepJob")
       expect(entry["schedule"]).to match(/every hour/)
+    end
+  end
+
+  # A rename here silently orphans the Sentry monitor: the old slug stops checking in and starts
+  # alerting, and the new one quietly creates a second monitor nobody is watching. Cheap to assert.
+  describe "the cron monitor" do
+    it "checks in under the slug the monitor was created with" do
+      expect(described_class.sentry_monitor_slug).to eq("reminder-sweep")
+    end
+
+    it "declares the hourly schedule a missed check-in is measured against" do
+      expect(described_class.sentry_monitor_config.to_h).to include(
+        schedule: { type: :interval, value: 1, unit: :hour },
+        checkin_margin: 15,
+        timezone: "UTC"
+      )
     end
   end
 end

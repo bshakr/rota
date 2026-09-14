@@ -49,6 +49,50 @@ and fails if a semantic token is defined for light but never redefined for dark
 (it would silently inherit the light value), or if any foreground/background
 pairing drops below WCAG AA in either theme.
 
+## Error reporting
+
+Unhandled exceptions go to Sentry (project `rota-web`; Rails reports to `rota-api`).
+The plan and the privacy contract are in [`docs/sentry-error-logging.md`](../../docs/sentry-error-logging.md).
+
+| File | What it is |
+| --- | --- |
+| `sentry.server.config.ts` / `sentry.edge.config.ts` | One `Sentry.init` per server runtime. Imported by `register()`, per `NEXT_RUNTIME`. |
+| `src/instrumentation.ts` | `register()`, plus `onRequestError` — the single hook that reports Server Components, Route Handlers, Server Actions **and `proxy.ts`**. Next 16 does not auto-instrument the proxy. |
+| `src/instrumentation-client.ts` | The browser SDK. Turbopack requires this file; the old `sentry.client.config.ts` is not read. |
+| `src/lib/observability/scrub.ts` | `beforeSend` / `beforeBreadcrumb` on **both** runtimes. Rewrites E.164 numbers, `/s/<token>` links, `Bearer …`, email addresses and bare 43-char tokens, and deletes the request cookies and the `cookie` / `authorization` headers. Its Ruby twin is `apps/api/app/lib/sentry_scrubber.rb`; `scrub.test.ts` proves none of the five fixtures survives a serialised event. It carries no `server-only` guard on purpose: the browser needs it. |
+| `src/app/global-error.tsx` | The root-layout boundary. Renders its own `<html>`/`<body>` and imports `globals.css`, because it *replaces* the root layout. |
+| `next.config.ts` | `withSentryConfig`: source-map upload (skipped without a token) and `tunnelRoute: "/monitoring"`. |
+
+Browser events are tunnelled through `/monitoring` on our own origin, because ad
+blockers block `sentry.io` and an admin running uBlock is exactly our user. That
+path is therefore excluded from the proxy matcher in `src/proxy.ts` and
+`src/lib/auth/proxy-matcher.ts`, or every event POST would be answered with a
+WorkOS sign-in redirect.
+
+**`NEXT_PUBLIC_SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_ENVIRONMENT` are the only two
+`NEXT_PUBLIC_` variables in this repo**, and both exceptions are deliberate.
+`next.config.ts` exports nothing through Next's `env` key precisely so no secret is
+inlined into the browser bundle — but neither of these is a secret. A DSN is a
+public, write-only address, rate-limited by Sentry, and in our case reached through
+our own tunnel; the browser cannot report an error it cannot address. The
+environment is a name, and the browser needs its own copy because it cannot read the
+server's `SENTRY_ENVIRONMENT`: without it every deploy reports as `production`
+(NODE_ENV is `production` in any Railway build) and a preview deploy's browser
+events land in the production project's alert rules. Both are inlined at build time,
+so on Railway both must be **build** variables, not runtime ones. Everything else
+Sentry needs (`SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, and the build-only
+`SENTRY_AUTH_TOKEN` / `SENTRY_ORG` / `SENTRY_PROJECT`) stays server-side.
+
+**The build passes with no Sentry variables at all**, which is what CI runs: with
+no auth token the source-map upload is disabled rather than attempted, and with no
+DSN every `Sentry.*` call is a no-op. Only `production` and `preview` ever send, so
+`npm run dev` stays silent even with a DSN in the root `.env`.
+
+`src/app/debug/sentry-smoke/` is temporary and gated on `SENTRY_SMOKE=1`; without it
+the route is a 404. It throws during a server render so one signed-in visit produces
+both a server event and a browser event; set the variable, visit it, unset it, and
+delete the directory once both have been seen in production.
+
 ## The design system
 
 **Open `/styleguide`.** Every token and every component is rendered there, in both

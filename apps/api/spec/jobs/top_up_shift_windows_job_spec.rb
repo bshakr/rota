@@ -140,16 +140,32 @@ RSpec.describe TopUpShiftWindowsJob do
         .with(boom, hash_including(context: { rota_id: broken.id }))
     end
 
-    # The rescue must not be a black hole. `Rails.error` has no subscribers in this app yet, so
-    # reporting alone would leave a job that swallowed every rota in silence and still finished
-    # green — and the first anyone would know of it is a house that stopped being texted. Until a
-    # subscriber exists, this log line IS the alarm, so it is worth a test of its own.
+    # The rescue must not be a black hole. `report` now reaches Sentry (sentry-rails subscribes to
+    # `Rails.error`, see config/initializers/sentry.rb), and the log line stays beside it: it is
+    # what a human reads next to everything else this process did, and in development and test,
+    # where the reporter is disabled, it remains the whole alarm.
     it "says so in the log, loudly enough to find" do
       allow(Rails.logger).to receive(:error)
 
       described_class.perform_now
 
       expect(Rails.logger).to have_received(:error).with(/rota #{broken.id}.*RuntimeError.*no/)
+    end
+  end
+
+  # The daily half of the pair. A rename orphans the monitor: the old slug starts alerting on a
+  # missed check-in and the new one creates a monitor nobody has ever looked at.
+  describe "the cron monitor" do
+    it "checks in under the slug the monitor was created with" do
+      expect(described_class.sentry_monitor_slug).to eq("top-up-shift-windows")
+    end
+
+    it "declares the daily 03:00 schedule a missed check-in is measured against" do
+      expect(described_class.sentry_monitor_config.to_h).to include(
+        schedule: { type: :crontab, value: "0 3 * * *" },
+        checkin_margin: 60,
+        timezone: "UTC"
+      )
     end
   end
 

@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/nextjs";
+
 import { SuperAdminShell } from "@/components/super-admin-shell";
 import { requireSuperAdmin } from "@/lib/auth/super-admin";
 
@@ -22,7 +24,13 @@ import { requireSuperAdmin } from "@/lib/auth/super-admin";
 export default async function SuperAdminLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const { organizationId } = await requireSuperAdmin();
+  const { user, organizationId } = await requireSuperAdmin();
+
+  // The same two facts the admin layout records, id only, plus which surface: an
+  // operator's error is worth telling apart from a house admin's. No household tag,
+  // because an operator may have no house.
+  Sentry.setUser({ id: user.id });
+  Sentry.setTag("surface", "super-admin");
 
   return <SuperAdminShell hasHouse={Boolean(organizationId)}>{children}</SuperAdminShell>;
 }

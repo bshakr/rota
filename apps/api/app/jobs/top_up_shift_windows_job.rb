@@ -5,6 +5,14 @@
 # a few no-op queries and nothing else. That is what makes it a reconciliation loop rather than a
 # one-shot: it does not care what happened yesterday, only whether the window is full now.
 class TopUpShiftWindowsJob < ApplicationJob
+  # A check-in per run: a worker that never starts this job produces no exception and no event, so a
+  # missed check-in is the only evidence that the shift windows have stopped being topped up. The
+  # margin is an hour, because nothing breaks the moment a daily top-up is late — the window is 90
+  # days deep and a day shorter costs nobody a shift.
+  include Sentry::Cron::MonitorCheckIns
+  sentry_monitor_check_ins slug: "top-up-shift-windows",
+    monitor_config: Sentry::Cron::MonitorConfig.from_crontab("0 3 * * *", checkin_margin: 60, max_runtime: 60, timezone: "UTC")
+
   queue_as :default
 
   # Wrapped in a JobRun so the operator dashboard can answer "when did the top-up last finish?".
@@ -35,11 +43,11 @@ class TopUpShiftWindowsJob < ApplicationJob
       # fine.
       #
       # Log it as well as report it, and do not be tempted to drop the log line as duplication.
-      # `Rails.error` has no subscribers in this app yet, so `report` on its own is a genuine no-op
-      # — a rescue that swallowed every rota in silence and still finished GREEN would turn "the
-      # generator is broken for everyone" into a bug whose first symptom is a house that quietly
-      # stopped being texted. The log line is the only thing that makes this failure visible today;
-      # `report` is what will carry it to Sentry the day a subscriber is added.
+      # `report` now has a subscriber: sentry-rails registers one on `Rails.error` (see
+      # config/initializers/sentry.rb), so this reaches the api project as an issue tagged with the
+      # source below. The log line stays regardless — it is what a human reads next to everything
+      # else this process did, and it is the whole alarm in development and test, where the reporter
+      # is disabled.
       Rails.logger.error("TopUpShiftWindowsJob failed for rota #{rota.id}: #{e.class}: #{e.message}")
       Rails.error.report(e, context: { rota_id: rota.id }, source: "rotamonster.shift_generation")
     end

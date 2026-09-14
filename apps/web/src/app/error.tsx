@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import * as Sentry from "@sentry/nextjs";
 import { TriangleAlert } from "lucide-react";
 
 import { Container } from "@/components/container";
@@ -25,9 +26,11 @@ export default function Error({
   reset: () => void;
 }) {
   React.useEffect(() => {
-    // Once observability lands this is where it reports. For now the digest is
-    // enough to correlate a user report with a server log line.
-    console.error(error);
+    // The browser half of the report. A failure during a server render is also
+    // reported server-side by onRequestError (src/instrumentation.ts); both events
+    // carry the same `digest`, which is what joins them into one story and what
+    // correlates a user's "it broke at about two" with a Rails log line.
+    Sentry.captureException(error);
   }, [error]);
 
   return (

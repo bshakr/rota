@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadEnvConfig } from "@next/env";
+import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
 
 // The monorepo keeps ONE .env, at its root. Rails already points its loader there
@@ -40,4 +41,45 @@ loadEnvConfig(repoRoot, isDev, console, true);
 
 const nextConfig: NextConfig = {};
 
-export default nextConfig;
+// Sentry wraps the config rather than replacing it: everything above still runs,
+// and the wrapper only adds the build-time half of error reporting (source-map
+// upload and the tunnel route). The runtime half lives in sentry.server.config.ts,
+// sentry.edge.config.ts and src/instrumentation-client.ts.
+//
+// `withSentryConfig` is imported from "@sentry/nextjs/config" rather than
+// "@sentry/nextjs": the re-export on the main entry is deprecated in SDK 10 and is
+// removed in 11, and the main entry would drag the whole server SDK into the config.
+//
+// Every option here has to survive a build with NO Sentry variables at all, which
+// is exactly what CI runs.
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+
+  sourcemaps: {
+    // CI and local builds have no auth token: the upload is skipped rather than
+    // attempted and failed, so `npm run ci` passes without a Sentry account.
+    disable: !process.env.SENTRY_AUTH_TOKEN,
+    // Upload, then delete. .next/static is served to the public and our source maps
+    // are the one artefact that would hand a reader the unminified app.
+    deleteSourcemapsAfterUpload: true,
+  },
+
+  // Railway injects RAILWAY_GIT_COMMIT_SHA at build AND at runtime, so the release
+  // the maps are uploaded under is the release the running app reports. Both apps
+  // use the same string, so one deploy reads as one deploy across both projects.
+  release: { name: process.env.SENTRY_RELEASE ?? process.env.RAILWAY_GIT_COMMIT_SHA },
+
+  // Browser events are POSTed to our own origin and forwarded server-side. Ad
+  // blockers block sentry.io by default, and an admin running uBlock on a laptop is
+  // exactly our user. The path is excluded from the AuthKit proxy matcher in
+  // src/proxy.ts, or every event POST would be redirected to WorkOS sign-in.
+  tunnelRoute: "/monitoring",
+
+  // Without this, a stack frame inside a dependency or Next internals stays minified.
+  widenClientFileUpload: true,
+
+  // No build telemetry to Sentry, and no build log noise unless CI is watching.
+  telemetry: false,
+  silent: !process.env.CI,
+});

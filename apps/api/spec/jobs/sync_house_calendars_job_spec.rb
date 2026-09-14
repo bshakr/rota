@@ -63,6 +63,21 @@ RSpec.describe SyncHouseCalendarsJob do
 
     expect(config.dig("production", "sync_house_calendars")).to include("class" => "SyncHouseCalendarsJob", "schedule" => "every hour at minute 27")
   end
+  # A rename here silently orphans the Sentry monitor: the old slug stops checking in and starts
+  # alerting, and the new one quietly creates a second monitor nobody is watching. Cheap to assert.
+  describe "the cron monitor" do
+    it "checks in under the slug the monitor was created with" do
+      expect(described_class.sentry_monitor_slug).to eq("sync-house-calendars")
+    end
+
+    it "declares the schedule a missed check-in is measured against" do
+      expect(described_class.sentry_monitor_config.to_h).to include(
+        schedule: { type: :crontab, value: "27 * * * *" },
+        checkin_margin: 15,
+        timezone: "UTC"
+      )
+    end
+  end
 
   # The heartbeat the operator dashboard reads (BLO-1677). This job is a no-op until a house
   # connects a calendar, so without the row "it has not run in days" and "nobody has connected one"
