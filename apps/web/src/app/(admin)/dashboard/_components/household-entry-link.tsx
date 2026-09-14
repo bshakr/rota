@@ -17,7 +17,7 @@ export function HouseholdEntryLink({ slug }: { slug: string }) {
   // Use the stored slug, including its unique suffix. A name is not a URL.
   const path = `/h/${slug}`;
   return (
-    <section aria-label="Household entry page" className="flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+    <section aria-label="Household entry page" className="mb-8 flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 space-y-1">
         <h2 className="font-heading text-lg font-semibold">Your household page</h2>
         <p className="text-muted-foreground text-sm">Add members and their phone numbers, then share this link.</p>
