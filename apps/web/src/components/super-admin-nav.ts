@@ -25,15 +25,14 @@ export type SuperAdminNavItem = {
  * `ready` is here because the shell ships before the screens do: an entry that
  * is not ready renders as a quiet "Soon" item rather than a link to a 404, and
  * anything else that would link to that surface asks here first. Each later
- * ticket flips its own flag and nothing else:
- *   Spend    https://linear.app/bloombase/issue/BLO-1684
- *
- * Two have landed. Traffic was flipped by
- * https://linear.app/bloombase/issue/BLO-1682, and Houses by
+ * ticket flips its own flag and nothing else, and all three have now landed:
+ * Traffic by https://linear.app/bloombase/issue/BLO-1682, Houses by
  * https://linear.app/bloombase/issue/BLO-1676, which built both
- * `/super-admin/groups` and `/super-admin/groups/[id]`. That second boolean also
- * lit every house name on the overview — see `HouseRow`, which asks this list
- * rather than keeping an answer of its own.
+ * `/super-admin/groups` and `/super-admin/groups/[id]`, and Spend by
+ * https://linear.app/bloombase/issue/BLO-1684. Those last two booleans also lit
+ * surfaces on the overview: Houses lit every house name — see `HouseRow` — and
+ * Spend lit the spend tile, both of which ask this list rather than keeping an
+ * answer of their own.
  *
  * "Houses" rather than "Groups": the path keeps the API's noun, the label keeps
  * the product's one.
@@ -42,7 +41,7 @@ export const SUPER_ADMIN_NAV: readonly SuperAdminNavItem[] = [
   { href: "/super-admin", label: "Overview", icon: LayoutDashboard, ready: true },
   { href: "/super-admin/traffic", label: "Traffic", icon: TrendingUp, ready: true },
   { href: "/super-admin/groups", label: "Houses", icon: Building2, ready: true },
-  { href: "/super-admin/spend", label: "Spend", icon: Wallet, ready: false },
+  { href: "/super-admin/spend", label: "Spend", icon: Wallet, ready: true },
 ] as const;
 
 /**

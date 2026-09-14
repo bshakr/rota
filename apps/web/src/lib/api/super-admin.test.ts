@@ -19,11 +19,13 @@ import { withAuth } from "@workos-inc/authkit-nextjs";
 import { notFound, redirect } from "next/navigation";
 
 import { overviewPayload } from "@/test/overview-payload";
+import { spendPayload } from "@/test/spend-payload";
 import { trafficPayload } from "@/test/traffic-payload";
 
 import { ApiError } from "./errors";
-import { getOverview, getTraffic } from "./super-admin";
+import { getOverview, getSpend, getTraffic } from "./super-admin";
 import { OverviewShapeError } from "./super-admin-overview";
+import { SpendShapeError } from "./super-admin-spend";
 import { TrafficShapeError } from "./super-admin-traffic";
 
 const OPERATOR = "user_operator";
@@ -220,6 +222,81 @@ describe("super admin API client", () => {
       );
 
       await expect(getTraffic("30d")).rejects.toThrow("REDIRECT:/auth/reauth");
+    });
+  });
+
+  // --- Spend ---------------------------------------------------------------
+  //
+  // The same client, the same gate, the same token. What is worth asserting
+  // separately is the window: it travels in the query string, it is the only
+  // parameter this API takes, and Rails answers 400 for one it does not know.
+
+  describe("super admin spend", () => {
+    beforeEach(() => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+        respond(200, spendPayload()),
+      );
+    });
+
+    it("asks for the window it was given, with the operator's token", async () => {
+      await getSpend("90d");
+      const { url, headers } = lastFetchCall();
+
+      expect(url).toBe("http://rails.test/api/super_admin/spend?range=90d");
+      expect(headers.Authorization).toBe("Bearer JWT_OPERATOR");
+    });
+
+    // Parsed, not cast. This payload is nothing but money: a key Rails renamed
+    // would not show up as a blank, it would show up as a smaller total.
+    it("hands back the parsed payload, money intact at six decimals", async () => {
+      const spend = await getSpend("90d");
+
+      expect(spend.houses.map((house) => house.name)).toEqual([
+        "Alma Road",
+        "Bell Street",
+        "Cobbler's Yard",
+        "Dray Lane",
+      ]);
+      expect(spend.totals.total).toBe(17.88923);
+      expect(spend.sms_estimated_segment_cost_usd).toBe(0.0079);
+    });
+
+    it("refuses a 200 whose shape is not the spend payload", async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(respond(200, {}));
+
+      await expect(getSpend("30d")).rejects.toBeInstanceOf(SpendShapeError);
+      expect(redirectMock).not.toHaveBeenCalled();
+    });
+
+    it("404s a caller who is not on the allowlist, before any request reaches Rails", async () => {
+      withAuthMock.mockResolvedValue({
+        accessToken: "JWT_STRANGER",
+        organizationId: "org_house",
+        user: { id: STRANGER },
+      });
+
+      await expect(getSpend("30d")).rejects.toThrow("NEXT_NOT_FOUND");
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("turns a Rails 401 into a clean re-auth, not a crash", async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+        respond(401, { error: "unauthorized" }),
+      );
+
+      await expect(getSpend("12m")).rejects.toThrow("REDIRECT:/auth/reauth");
+    });
+
+    // Rails' own 400 for a window it does not know. Unreachable through the
+    // typed union, and worth keeping honest anyway: the page falls back to the
+    // default rather than forwarding a hand-typed range, so this is what would
+    // happen if that ever stopped being true.
+    it("propagates an invalid_range refusal as a typed ApiError", async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+        respond(400, { error: "invalid_range", allowed: ["30d", "90d", "12m"] }),
+      );
+
+      await expect(getSpend("30d")).rejects.toBeInstanceOf(ApiError);
     });
   });
 });

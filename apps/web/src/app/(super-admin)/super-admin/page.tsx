@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 
 import { isApiError } from "@/lib/api/errors";
-import { getOverview } from "@/lib/api/super-admin";
+import { getOverview, getSpend } from "@/lib/api/super-admin";
 import { type SuperAdminOverview, isOverviewShapeError } from "@/lib/api/super-admin-overview";
+import { type OverviewSpend, isSpendShapeError } from "@/lib/api/super-admin-spend";
+import { OVERVIEW_SPEND_RANGE, overviewSpend } from "@/lib/hq-spend";
 
 import { OverviewScreen } from "./_components/overview-screen";
 import { OverviewUnavailable } from "./_components/overview-unavailable";
@@ -17,9 +19,13 @@ export const dynamic = "force-dynamic";
 /**
  * The landing page of the super admin area.
  *
- * It does two things and hands the rest off: it makes the one API call, and it
+ * It does two things and hands the rest off: it makes the API calls, and it
  * decides what a failure looks like. `OverviewScreen` owns the layout and is
- * given a payload, which is what lets it be rendered from a fixture.
+ * given its payloads, which is what lets it be rendered from a fixture.
+ *
+ * TWO calls, not one, and they are not equals. The overview is the page; the
+ * spend window behind the corner tile is fetched beside it and is allowed to
+ * fail on its own.
  *
  * The failure policy is the interesting part. `getOverview()` parses the payload
  * rather than casting it, so there are three ways out of that call:
@@ -48,6 +54,21 @@ export default async function SuperAdminOverviewPage() {
   // handler, which is an error boundary's job and not a page's
   // (react-hooks/error-boundaries). So the call is caught, the outcome is a
   // variable, and the JSX is chosen afterwards.
+  // TWO CALLS, STARTED TOGETHER. The spend tile needs figures the overview
+  // payload does not carry (`overview.spend` is still Rails' placeholder), so the
+  // window they come from is fetched beside it rather than after it: awaiting one
+  // and then the other would cost the operator a second round trip for a tile in
+  // the corner of the page. Both are cached for a minute in Rails.
+  //
+  // The spend call is settled into a value rather than left as a rejecting
+  // promise, because the overview's own failure path returns early — and an
+  // unawaited rejection behind an early return is an unhandled rejection in the
+  // server log.
+  const spendOutcome = getSpend(OVERVIEW_SPEND_RANGE).then(
+    (payload) => ({ payload, error: null as unknown }),
+    (error: unknown) => ({ payload: null, error }),
+  );
+
   let overview: SuperAdminOverview | null = null;
   let failure: unknown = null;
 
@@ -74,5 +95,29 @@ export default async function SuperAdminOverviewPage() {
 
   if (overview === null) return <OverviewUnavailable error={failure} />;
 
-  return <OverviewScreen overview={overview} now={now} />;
+  // The spend half fails SOFTLY, and that asymmetry is the point: the overview is
+  // the page, and the tile is a tile. A cost figure that could not be counted must
+  // never render as a zero, but it must not take the attention list down with it
+  // either — the operator came here to see what needs a human.
+  //
+  // A shape error is still loud in development (the Next overlay names the
+  // drifting field) and logged in production, exactly as the overview's is. A
+  // redirect or a notFound() thrown by the client is rethrown untouched: an
+  // expired session is not a missing tile, it is a page that must not render.
+  const { payload: spendPayload, error: spendError } = await spendOutcome;
+  let spend: OverviewSpend | null = null;
+
+  if (spendPayload !== null) {
+    // Rails' own figures if it ever starts sending them; the 90-day window's last
+    // two calendar months otherwise. The union on `overview.spend` is what makes
+    // that swap a one-line change rather than a ticket.
+    spend = overview.spend ?? overviewSpend(spendPayload);
+  } else {
+    if (isSpendShapeError(spendError) && process.env.NODE_ENV !== "production") throw spendError;
+    if (!isApiError(spendError) && !isSpendShapeError(spendError)) throw spendError;
+
+    console.error("[super-admin/overview] the spend tile could not be counted:", spendError);
+  }
+
+  return <OverviewScreen overview={overview} spend={spend} now={now} />;
 }

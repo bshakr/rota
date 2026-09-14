@@ -6,6 +6,8 @@ import { requireSuperAdmin } from "@/lib/auth/super-admin";
 import { isApiError } from "./errors";
 import { type ApiRequestInit, requestJson } from "./http";
 import { type SuperAdminOverview, parseOverview } from "./super-admin-overview";
+import { type SuperAdminSpend, parseSpend } from "./super-admin-spend";
+import type { SpendRange } from "../spend-constants";
 import {
   type SuperAdminTraffic,
   type TrafficRange,
@@ -96,4 +98,28 @@ export async function getTraffic(range: TrafficRange): Promise<SuperAdminTraffic
   return parseTraffic(
     await superAdminRequest<unknown>(`/api/super_admin/traffic?range=${range}`),
   );
+}
+
+// --- Spend ------------------------------------------------------------------
+
+/**
+ * GET /api/super_admin/spend — what every house costs to run, over one of three
+ * windows: the monthly totals, a row per house, and the unit economics a price
+ * gets set against.
+ *
+ * PARSED, not cast, for the same reason `getOverview` is and then some: this
+ * payload is nothing but money, and a figure that quietly became `undefined`
+ * would render as a zero that looks exactly like a real cost. An operator who
+ * priced a subscription against a total missing its Claude column has been told
+ * something false in the most expensive possible way. See ./super-admin-spend.ts.
+ *
+ * `range` is required here although Rails defaults it, because every caller in
+ * this app knows which window it wants — the page reads it from the URL, and the
+ * overview tile always asks for 90 days — and a default in two places is how the
+ * two stop agreeing. Rails answers 400 `invalid_range` for anything outside the
+ * union, which the type makes unreachable from this side — the same reasoning
+ * `getTraffic` above sets out.
+ */
+export async function getSpend(range: SpendRange): Promise<SuperAdminSpend> {
+  return parseSpend(await superAdminRequest<unknown>(`/api/super_admin/spend?range=${range}`));
 }

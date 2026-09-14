@@ -18,8 +18,9 @@
  *
  *   A. `.next/static/**\/*.js` — every chunk the browser downloads — contains none
  *      of FORBIDDEN: the member API client's request paths, the Bearer-header
- *      builder's error sentinel, the super admin API paths, and the name of the
- *      super admin allowlist variable. This is a check on CODE placement.
+ *      builder's error sentinel, the super admin API paths, the name of the
+ *      super admin allowlist variable, and the spend payload's zod schema. This
+ *      is a check on CODE placement.
  *
  *   B. `.next/server/app/**\/*.{html,rsc}` — the prerendered markup and flight
  *      payloads, which are also served to browsers — contains no trace of the
@@ -80,6 +81,20 @@ const FORBIDDEN = [
   // precisely so this never happens.
   "SUPER_ADMIN_WORKOS_USER_IDS",
   "/api/super_admin/", // super admin API client request paths
+  // The spend payload's zod schema, caught by its own regex message — a string
+  // that exists in src/lib/api/super-admin-spend.ts and nowhere else.
+  //
+  // Not a credential, and the only entry here that is not. It is in this list
+  // because it guards the same KIND of mistake: the spend page's margin
+  // calculator is a Client Component, it imports the arithmetic in
+  // src/lib/hq-spend.ts, and everything that module reaches at runtime rides
+  // into the browser chunk with it. Today it reaches the window keys and the
+  // money precision through src/lib/spend-constants.ts (a leaf importing
+  // nothing) and takes only `import type` from the schema module, so the schema
+  // stays server-side. Turn one of those into a value import — one autocomplete
+  // away — and zod plus every field, refinement and message of a payload the
+  // browser never sees lands in the bundle, silently. This is the tripwire.
+  "is not a YYYY-MM month",
 ];
 
 // The PRERENDERED OUTPUT is served to browsers too, and it is a second place the
@@ -164,7 +179,8 @@ const offenders = scan(files, FORBIDDEN);
 
 if (offenders.length > 0) {
   fail(
-    "token-handling code reached a client bundle — the magic-link token could leak to the browser:\n" +
+    "server-only code reached a client bundle (the magic-link token could leak to the browser; a " +
+      "payload schema would be dead weight in it):\n" +
       offenders.join("\n"),
   );
 }
@@ -201,7 +217,8 @@ const valueCheck =
 
 console.log(
   `✓ bundle safety, pass A: scanned ${files.length} client chunks in .next/static — no member API client ` +
-    `request paths, no Bearer-header builder, no super admin API paths, no allowlist variable name.\n` +
+    `request paths, no Bearer-header builder, no super admin API paths, no allowlist variable name, ` +
+    `no spend payload schema.\n` +
     `✓ bundle safety, pass B: scanned ${prerendered.length} prerendered .html/.rsc files in ` +
     `.next/server/app for the super admin allowlist ${valueCheck} — none present.`,
 );

@@ -189,13 +189,29 @@ describe("parseOverview", () => {
     expect(unknown.system_health.queue_failed_executions).toBeNull();
   });
 
-  // The tripwire: the ticket that fills `spend` must widen this schema and build
-  // the tile together (https://linear.app/bloombase/issue/BLO-1684), rather than
-  // leaving the page saying "spend arrives later" over real money.
-  it("refuses a spend payload until the tile that renders it exists", () => {
+  // `spend` was `z.null()` — a tripwire so the ticket that filled it had to widen
+  // the schema and build the tile in the same change.
+  // https://linear.app/bloombase/issue/BLO-1684 is that ticket. What the union
+  // now accepts is exactly the tile's shape, and what it still refuses is a
+  // half-shaped one: the page derives these figures from the spend endpoint
+  // today, and the union is what lets Rails start inlining them without a second
+  // type or a second deploy.
+  it("still refuses a spend payload the tile could not render", () => {
     expect(() => parseOverview(payload({ spend: { this_month: 12.5 } }))).toThrow(
       OverviewShapeError,
     );
+  });
+
+  it("accepts the tile's own shape, and still accepts the null Rails sends today", () => {
+    const spend = {
+      range: "90d",
+      currency: "USD",
+      this_month: { month: "2026-09", sms_cost: 2.9273, claude_cost: 0.36963, total: 3.29693 },
+      last_month: { month: "2026-08", sms_cost: 5.5415, claude_cost: 0.784, total: 6.3255 },
+    };
+
+    expect(parseOverview(payload({ spend })).spend?.this_month.total).toBe(3.29693);
+    expect(parseOverview(payload()).spend).toBeNull();
   });
 
   it("refuses a body that is not the payload at all", () => {

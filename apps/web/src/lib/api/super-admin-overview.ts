@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { overviewSpendSchema } from "./super-admin-spend";
+
 // The shape of GET /api/super_admin/overview, checked at the boundary.
 //
 // Every other client in this folder CASTS its response (`requestJson<T>`), which
@@ -190,20 +192,29 @@ export const overviewSchema = z.object({
   recent_houses: z.array(recentHouseSchema),
   system_health: systemHealthSchema,
   /**
-   * Always null today, and asserted as null on purpose.
+   * The spend tile's four figures, or null.
    *
-   * The spend figures are their own query object and their own ticket
-   * (https://linear.app/bloombase/issue/BLO-1683), and the tile that renders them
-   * is https://linear.app/bloombase/issue/BLO-1684. Until then the key ships null
-   * so the page can draw the tile's waiting state rather than grow a key later.
+   * This key used to be `z.null()`, a deliberate tripwire: the ticket that
+   * filled it had to widen the schema and build the tile in the same change,
+   * rather than let the page go on saying "spend arrives later" while real money
+   * sat in the payload. https://linear.app/bloombase/issue/BLO-1684 is that
+   * ticket, and this is the widening.
    *
-   * `z.null()` rather than a tolerant `unknown` is a tripwire: the ticket that
-   * fills this key must widen the schema and build the tile in the same change,
-   * instead of the page quietly going on saying "spend arrives later" while real
-   * money sits in the payload. Both apps deploy from the same merge, so the two
-   * halves cannot get out of step in production.
+   * Rails still sends null — `SuperAdmin::Overview` keeps its `spend: nil`
+   * placeholder — and the tile still draws its waiting state for it. What
+   * changed is where the figures come from: the overview PAGE now calls
+   * `getSpend("90d")` alongside `getOverview()` and derives the tile from
+   * `months[-1]` and `months[-2]` (see `overviewSpend` in src/lib/hq-spend.ts),
+   * because the tile needs four numbers and a second query object would be a
+   * second place for "what did September cost" to be answered.
+   *
+   * The union is what makes that reversible. The day Rails inlines those four
+   * figures into this payload, the page reads them here with no new type and no
+   * second round trip; until then null keeps meaning "ask the spend endpoint".
+   * `overviewSpendSchema` lives beside the spend payload's own shapes, in
+   * ./super-admin-spend.ts, so there is one definition of what the tile renders.
    */
-  spend: z.null(),
+  spend: overviewSpendSchema.nullable(),
 });
 
 export type SuperAdminOverview = z.infer<typeof overviewSchema>;
