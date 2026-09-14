@@ -9,7 +9,7 @@ module SuperAdmin
   # somebody did, not a thing that happened. Then "never started", because a house with no running
   # rota is not quiet — it never began, which is a different conversation and a different fix.
   class GroupStatus
-    # A month with nothing at all — no text, and (once BLO-1671 lands) nobody opening anything. A
+    # A month with nothing at all: no text sent, no admin seen, nobody opening a personal link. A
     # week would flag every house that skips a bin collection; a quarter would notice a dead house
     # long after it stopped being recoverable.
     QUIET_AFTER = 30.days
@@ -20,7 +20,10 @@ module SuperAdmin
     SUSPENDED = "suspended".freeze
 
     def self.of(group, stats, now: Time.current)
-      return SUSPENDED if suspended?(group)
+      # Suspended beats everything: it is a thing somebody did, and the operator who did it should
+      # read it back off the list in the same words they used. A paused house that is also silent is
+      # not "Quiet" — it is quiet because it was paused.
+      return SUSPENDED if group.suspended?
       # "Nobody is on any rota", not "nothing is switched on". A house that ran for a year and then
       # paused its rotas has started, whatever it is doing now; calling that "never started" would
       # put the label next to a year of its own traffic.
@@ -29,16 +32,6 @@ module SuperAdmin
 
       LIVE
     end
-
-    # The seam for https://linear.app/bloombase/issue/BLO-1675, which adds `groups.suspended_at`
-    # and the actions that set it. Until that migration lands there is no column to read, so no
-    # house can be suspended and this arm is unreachable — asking the record whether it has the
-    # attribute means the pill starts working the moment the column exists, rather than needing
-    # this file edited again in the ticket that adds it.
-    def self.suspended?(group)
-      group.respond_to?(:suspended_at) && group.suspended_at.present?
-    end
-    private_class_method :suspended?
 
     # Silence is measured from the last thing that happened, and for a house where nothing has
     # happened yet, from the day it was created. Measuring from the beginning of time instead would

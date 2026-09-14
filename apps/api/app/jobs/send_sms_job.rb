@@ -40,6 +40,9 @@ class SendSmsJob < ApplicationJob
     @sms_message_id = sms_message_id
     message = SmsMessage.find_by(id: sms_message_id)
     return if message.nil?
+    # Before the claim, not after, because the row has to be left exactly as it was found — see
+    # skip_paused_house.
+    return skip_paused_house(message) if message.member.group.suspended?
     # Claim atomically: pending -> sending in a single UPDATE. Zero rows affected means someone else
     # already claimed it, or it has moved past pending (sent, or left `sending` by a crashed run that
     # must never be re-sent). Either way, this run does nothing.
@@ -108,5 +111,24 @@ class SendSmsJob < ApplicationJob
   # are allowed to text somebody belongs to the code that does the texting.
   def skip_uncontactable(message)
     message.update!(status: :failed, error_code: SmsMessage::NOT_CONTACTABLE)
+  end
+
+  # The house was paused between the sweep claiming this reminder and this job running (BLO-1675).
+  # The sweep skips suspended houses, but a reminder already in the queue when the operator pulled
+  # the lever would otherwise go out after it — and "suspend" that still texts people is not a
+  # suspension.
+  #
+  # The row is left `pending` and NOT marked failed, which is the deliberate part. `failed` is what
+  # the operator's list and the overview count as a delivery incident, and a text nobody tried to
+  # send is not one: a house would appear to have started failing on the day it was paused, by us.
+  # So the row stays as it was — a reminder that was claimed and never sent — and it is visible as
+  # an unsent text rather than as a carrier failure.
+  #
+  # Nothing re-enqueues it on resume, and that is correct rather than a gap: the reminder stays
+  # claimed, so the sweep will not raise a second one for the same (shift, offset), and its send
+  # moment is now in the past, where ReminderSweep's 24-hour staleness guard would have buried it
+  # anyway. Resuming a house texts nobody about the days it was paused.
+  def skip_paused_house(message)
+    Rails.logger.info("SendSmsJob(#{message.id}) skipped: house paused")
   end
 end

@@ -95,7 +95,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_100400) do
   create_table "groups", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "name", null: false
+    t.text "notes"
     t.string "slug", default: -> { "('household-'::text || substr(md5((random())::text), 1, 16))" }, null: false
+    t.datetime "suspended_at"
     t.string "timezone", null: false
     t.datetime "timezone_confirmed_at"
     t.datetime "updated_at", null: false

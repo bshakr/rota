@@ -58,6 +58,56 @@ RSpec.describe TopUpShiftWindowsJob do
     expect { described_class.perform_now }.not_to change { rota.shifts.count }
   end
 
+  # A house an operator has paused (BLO-1675). Its window simply stops being topped up: nothing is
+  # deleted, the shifts it already has stay exactly where they are, and the next daily run after a
+  # resume fills it back to ninety days in one pass — because this job asks only whether the window
+  # is full now.
+  describe "a suspended house" do
+    let(:paused) { create(:group, timezone: "Europe/London", suspended_at: 1.day.ago) }
+
+    it "is left out of the top-up" do
+      rota = create(:rota, :with_roster, group: paused, starts_on: Date.current)
+
+      described_class.perform_now
+
+      expect(rota.shifts).to be_empty
+    end
+
+    it "keeps the shifts it already had" do
+      rota = create(:rota, :with_roster, group: paused, starts_on: Date.current)
+      existing = create(:shift, rota: rota, assigned_member: rota.members.first, due_on: Date.current + 3)
+
+      described_class.perform_now
+
+      expect(rota.shifts.pluck(:id)).to eq([ existing.id ])
+    end
+
+    # The skip is inside the loop, not around it, so the JobRun wrapper still writes a row: "the
+    # top-up ran and had nothing to do" and "the top-up stopped running" are the two things the
+    # operator's system health tile exists to tell apart.
+    it "does not stop the job running, or writing down that it ran" do
+      paused_rota = create(:rota, :with_roster, group: paused, starts_on: Date.current)
+      live = create(:rota, :with_roster, group: group, starts_on: Date.current)
+
+      described_class.perform_now
+
+      expect(paused_rota.shifts).to be_empty
+      expect(live.shifts).to be_present
+      expect(JobRun.sole).to have_attributes(name: "top_up_shift_windows", succeeded: true)
+    end
+
+    it "fills the window back up on the first run after a resume" do
+      rota = create(:rota, :with_roster, group: paused, starts_on: Date.current,
+        interval_count: 1, interval_unit: "week")
+      described_class.perform_now
+
+      paused.update!(suspended_at: nil)
+      described_class.perform_now
+
+      expect(rota.shifts.maximum(:due_on)).to be_within(7).of(rota.group.today + 90.days)
+    end
+  end
+
   describe "when one rota blows up" do
     let(:broken) { create(:rota, :with_roster, group: group, starts_on: Date.current) }
     let(:healthy) { create(:rota, :with_roster, group: create(:group), starts_on: Date.current) }

@@ -28,10 +28,7 @@ module MemberAuthenticatable
     @current_member = Member.active.find_by(access_token: bearer_token) if bearer_token.present?
 
     if @current_member
-      # "Did anyone actually open their link" — the one signal the member path has, and the only
-      # way to tell a house whose texts land from one whose housemates never tap them. Same
-      # one-an-hour rule as the admin path, and for the same reason: this is a read path.
-      @current_member.touch_last_seen
+      record_last_seen
       return
     end
 
@@ -40,6 +37,20 @@ module MemberAuthenticatable
   end
 
   attr_reader :current_member
+
+  # "Did anyone actually open their link" — the one signal the member path has, and the only way to
+  # tell a house whose texts land from one whose housemates never tap them. Same one-an-hour rule as
+  # the admin path, and for the same reason: this is a read path.
+  #
+  # Not while the house is paused (BLO-1675), and the guard is HERE rather than in the controller's
+  # own paused response so that it runs before the write and not after it. A paused house's "last
+  # activity" must stop moving — the operator's list shows it on a paused row, and a housemate
+  # reloading the paused notice is not the house doing anything.
+  def record_last_seen
+    return if @current_member.group.suspended?
+
+    @current_member.touch_last_seen
+  end
 
   # Only the header, and only the bearer scheme. A token in the query string would already be in the
   # access log by the time any filter ran.

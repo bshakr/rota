@@ -12,7 +12,11 @@ class HouseholdEntry
       # Limits count persisted attempts, including failures, not only successful sends.
       # This does not trust forwarded IP headers or reset on cache eviction/redeploy.
       SmsMessage.connection.execute("SELECT pg_advisory_xact_lock(728614902)")
-      group = Group.find_by(slug: slug)
+      # `live` only (BLO-1675): a paused house sends no texts at all, and a personal link is a text.
+      # Refusing HERE rather than in the controller is what preserves the one property this endpoint
+      # has — a paused house is answered exactly as an unknown one is, so the 202 goes on saying
+      # nothing about the house or the number it was asked about.
+      group = Group.live.find_by(slug: slug)
       next unless group
 
       members = group.members.contactable.where(phone_e164: parsed.e164).limit(2).to_a

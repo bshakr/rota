@@ -21,8 +21,16 @@ class SyncHouseCalendarsJob < ApplicationJob
 
   private
 
+  # Inside the loop, not around it, so the JobRun wrapper in `perform` still records a pass that
+  # synced nothing — which for this job is the ordinary case until a house connects a calendar.
+  #
+  # A calendar connection belongs to exactly one house, so suspension is expressible here as plainly
+  # as it is in the other two loops: `Group.live` drops a paused house's feed (BLO-1675). Worth
+  # stopping for its own sake and not only for tidiness — CalendarSync calls Claude to classify new
+  # titles, so a paused house that kept syncing would go on costing money nobody is paying for,
+  # which is one of the two reasons suspension exists.
   def sync_every_enabled_connection
-    CalendarConnection.enabled.includes(:group).find_each do |connection|
+    CalendarConnection.enabled.joins(:group).merge(Group.live).includes(:group).find_each do |connection|
       CalendarSync.new(connection).call
     rescue StandardError => e
       # Every house's calendar is synced in this one loop, so a single connection that raises must

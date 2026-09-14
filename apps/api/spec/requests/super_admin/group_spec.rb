@@ -26,6 +26,19 @@ RSpec.describe "GET /api/super_admin/groups/:id" do
     )
   end
 
+  # The header the group page draws its actions from: the pill, when it was paused, and the note the
+  # operator keeps about it. All three are operator-only — see spec/requests/api/house_payloads_spec.rb
+  # for the house side of that line.
+  it "carries the suspension state and the operator's note" do
+    group.update!(suspended_at: Time.utc(2026, 9, 1, 12), notes: "Trial house for the school run")
+    running_rota(group)
+
+    expect(show.fetch("group")).to include(
+      "status" => "suspended", "notes" => "Trial house for the school run"
+    )
+    expect(Time.zone.parse(show.fetch("group").fetch("suspended_at"))).to eq(Time.utc(2026, 9, 1, 12))
+  end
+
   it "answers 404 for an id that names no house" do
     show(0)
 

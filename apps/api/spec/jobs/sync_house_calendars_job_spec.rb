@@ -27,6 +27,23 @@ RSpec.describe SyncHouseCalendarsJob do
     expect(a_request(:get, disabled.ical_url)).not_to have_been_made
   end
 
+  # A calendar connection belongs to exactly one house, so suspension is expressible here as plainly
+  # as it is in the other two loops (BLO-1675). Worth stopping for its own sake and not only for
+  # tidiness: CalendarSync calls Claude to classify new titles, so a paused house that kept syncing
+  # would go on costing money nobody is paying for — one of the two reasons suspension exists.
+  it "leaves a suspended house's calendar alone, and still records the run" do
+    paused = create(:calendar_connection, group: create(:group, suspended_at: 1.day.ago))
+    live = create(:calendar_connection)
+    stub_request(:get, live.ical_url).to_return(status: 200, body: file_fixture("ics/all_day_single.ics").read)
+
+    described_class.perform_now
+
+    expect(paused.reload.last_synced_at).to be_nil
+    expect(a_request(:get, paused.ical_url)).not_to have_been_made
+    expect(live.reload.last_synced_at).to be_present
+    expect(JobRun.sole).to have_attributes(name: "sync_house_calendars", succeeded: true)
+  end
+
   it "carries on past a connection that raises" do
     first = create(:calendar_connection)
     second = create(:calendar_connection)

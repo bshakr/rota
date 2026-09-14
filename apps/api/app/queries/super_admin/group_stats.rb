@@ -143,21 +143,42 @@ module SuperAdmin
       end
     end
 
-    # "When did anything last happen here." Today that is the house's last text, preferring the
-    # moment it actually went out and falling back to the moment the row was claimed, because a
-    # text that never made it past `pending` still says somebody's rota ran.
+    # "When did anything last happen here." The plan's definition, in full: the latest of the last
+    # text, the last time an admin was seen, and the last time a housemate opened their link.
     #
-    # TODO(https://linear.app/bloombase/issue/BLO-1675): fold in `users.last_seen_at` and
-    # `members.last_seen_at`. The plan's definition is the latest of the last text, the last admin
-    # seen and the last member seen; only the last text is folded in here. BLO-1671
-    # (https://linear.app/bloombase/issue/BLO-1671) added the two columns but deliberately does not
-    # touch this class; BLO-1675 is the next ticket to edit these endpoints, so it is the one that
-    # wires them in.
+    # All three matter, and the first on its own is misleading in both directions. A house whose
+    # admins log in every week but whose rotas are all drafts has sent nothing and is not dead; a
+    # house that texts on a schedule nobody reads is not alive in the way the number implies. Three
+    # grouped queries, one per source, merged in Ruby by taking the later value — the cost is three
+    # queries for the whole page, not three per row, which is the invariant the list is built on.
     def last_activity
+      [ last_text_at, last_admin_seen_at, last_member_seen_at ]
+        .reduce({}) { |merged, seen| merged.merge(seen) { |_id, a, b| [ a, b ].compact.max } }
+    end
+
+    # The house's last text, preferring the moment it actually went out and falling back to the
+    # moment the row was claimed, because a text that never made it past `pending` still says
+    # somebody's rota ran.
+    def last_text_at
       SmsMessage.joins(:member)
         .where(members: { group_id: group_ids })
         .group("members.group_id")
         .maximum(Arel.sql("COALESCE(sms_messages.sent_at, sms_messages.created_at)"))
+    end
+
+    # The last time any of the house's admins was seen (BLO-1671's throttled touch, so it is at most
+    # an hour behind). Joined through group_admins rather than read off `users`, because a user may
+    # administer more than one house and "last seen" belongs to the house they were seen in as much
+    # as to them.
+    def last_admin_seen_at
+      GroupAdmin.joins(:user).where(group_id: group_ids).group(:group_id).maximum("users.last_seen_at")
+    end
+
+    # The last time any housemate opened their personal link. Every member, not just the active
+    # ones: this is a question about the past, and a member who has since been removed still opened
+    # their link on the day they opened it.
+    def last_member_seen_at
+      Member.where(group_id: group_ids).group(:group_id).maximum(:last_seen_at)
     end
   end
 end

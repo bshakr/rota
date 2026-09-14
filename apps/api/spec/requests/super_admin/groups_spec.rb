@@ -55,6 +55,18 @@ RSpec.describe "GET /api/super_admin/groups" do
       text_in(group, rota: rota, member: members.third, at: 20.days.ago)
     end
 
+    it "carries the operator-only columns the house never sees" do
+      group.update!(notes: "Trial house for the school run", suspended_at: nil)
+
+      expect(list.first).to include("notes" => "Trial house for the school run", "suspended_at" => nil)
+    end
+
+    it "says when a paused house was paused" do
+      group.update!(suspended_at: Time.utc(2026, 9, 1, 12))
+
+      expect(Time.zone.parse(list.first.fetch("suspended_at"))).to eq(Time.utc(2026, 9, 1, 12))
+    end
+
     it "counts admins, active members and rotas by whether anyone is on them" do
       expect(list.first).to include(
         "name" => "Alma Road",
@@ -112,14 +124,93 @@ RSpec.describe "GET /api/super_admin/groups" do
     end
   end
 
+  # "When did anything last happen here" is the latest of three things, not one: the last text, the
+  # last time an admin was seen, and the last time a housemate opened their personal link. The first
+  # on its own is misleading in both directions — a house whose admins log in weekly but whose rotas
+  # are all drafts has sent nothing and is very much not dead.
+  describe "last activity" do
+    def last_activity_of(group)
+      value = list.find { |row| row.fetch("id") == group.id }.fetch("last_activity_at")
+      value && Time.zone.parse(value)
+    end
+
+    it "counts an admin being seen" do
+      group = create(:group)
+      create(:group_admin, group: group, user: create(:user, last_seen_at: 2.days.ago))
+
+      expect(last_activity_of(group)).to be_within(1.second).of(2.days.ago)
+    end
+
+    it "counts a housemate opening their link" do
+      group = create(:group)
+      create(:member, group: group, last_seen_at: 3.days.ago)
+
+      expect(last_activity_of(group)).to be_within(1.second).of(3.days.ago)
+    end
+
+    it "reports whichever of the three happened last" do
+      group = create(:group)
+      text_in(group, at: 9.days.ago)
+      create(:group_admin, group: group, user: create(:user, last_seen_at: 4.days.ago))
+      create(:member, group: group, last_seen_at: 6.days.ago)
+
+      expect(last_activity_of(group)).to be_within(1.second).of(4.days.ago)
+    end
+
+    it "is still nothing for a house where none of the three has ever happened" do
+      group = create(:group)
+      create(:group_admin, group: group, user: create(:user, last_seen_at: nil))
+      create(:member, group: group, last_seen_at: nil)
+
+      expect(last_activity_of(group)).to be_nil
+    end
+
+    # An admin may run more than one house. Being seen in one of them is not activity in the other.
+    it "does not carry an admin's visit over to another house they administer" do
+      user = create(:user, last_seen_at: 1.day.ago)
+      seen = create(:group, name: "Seen")
+      unseen = create(:group, name: "Unseen")
+      create(:group_admin, group: seen, user: user)
+      create(:group_admin, group: unseen, user: create(:user, last_seen_at: nil))
+
+      expect(last_activity_of(seen)).to be_within(1.second).of(1.day.ago)
+      expect(last_activity_of(unseen)).to be_nil
+    end
+
+    # A house that went quiet a month ago is Quiet even though its texts are older still, and a
+    # house whose admin logged in yesterday is not.
+    it "is what the status pill is measured from" do
+      group = create(:group, created_at: 1.year.ago)
+      running_rota(group)
+      text_in(group, at: 60.days.ago)
+
+      expect(list.find { |row| row.fetch("id") == group.id }.fetch("status")).to eq("quiet")
+
+      group.group_admins.create!(user: create(:user, last_seen_at: 1.day.ago), role: "admin")
+
+      expect(list.find { |row| row.fetch("id") == group.id }.fetch("status")).to eq("live")
+    end
+  end
+
+  # A house with something in every table the list counts, so no grouped query short-circuits on an
+  # empty one — the three that make up `last_activity` included.
+  def populated_house(name)
+    group = create(:group, name: name)
+    running_rota(group)
+    create(:group_admin, group: group, user: create(:user, last_seen_at: 1.day.ago))
+    create(:member, group: group, last_seen_at: 2.days.ago)
+    text_in(group, at: 3.days.ago)
+    group
+  end
+
   # The counts are grouped queries over the whole page, not one query per row. The assertion is not
   # an upper bound — those drift upward — but that the cost does not move when the page gets bigger.
   it "costs the same number of queries for twenty houses as for two" do
-    2.times { |n| running_rota(create(:group, name: "Small #{n}")) }
+    2.times { |n| populated_house("Small #{n}") }
     small = sql_selects_during { get "/api/super_admin/groups", headers: headers }
     expect(response).to have_http_status(:ok)
 
-    18.times { |n| running_rota(create(:group, name: "Big #{n}")) }
+    18.times { |n| populated_house("Big #{n}") }
     big = sql_selects_during { get "/api/super_admin/groups", headers: headers }
 
     expect(response).to have_http_status(:ok)
@@ -197,6 +288,31 @@ RSpec.describe "GET /api/super_admin/groups" do
       expect(status_of(group)).to eq("never_started")
     end
 
+    # Suspended beats every other state: it is the one somebody chose, and an operator scanning the
+    # list for houses to chase should not find their own decision filed under Quiet.
+    it "is suspended for a paused house, whatever else is true of it" do
+      group = create(:group, created_at: 1.year.ago, suspended_at: 1.day.ago)
+
+      expect(status_of(group)).to eq("suspended")
+
+      running_rota(group)
+      text_in(group, at: 1.hour.ago)
+
+      expect(status_of(group)).to eq("suspended")
+    end
+
+    it "goes back to what it was when the house is resumed" do
+      group = create(:group, suspended_at: 1.day.ago)
+      running_rota(group)
+      text_in(group, at: 1.hour.ago)
+
+      expect(status_of(group)).to eq("suspended")
+
+      group.update!(suspended_at: nil)
+
+      expect(status_of(group)).to eq("live")
+    end
+
     it "turns from live to quiet as the thirty days pass" do
       group = create(:group)
       running_rota(group)
@@ -243,6 +359,17 @@ RSpec.describe "GET /api/super_admin/groups" do
       create(:group)
 
       expect(names(status: "banished")).to be_empty
+    end
+
+    it "narrows to the houses an operator has paused" do
+      paused = create(:group, name: "Paused", suspended_at: 1.day.ago)
+      running_rota(paused)
+      live = create(:group, name: "Live House")
+      running_rota(live)
+      text_in(live, at: 1.day.ago)
+
+      expect(names(status: "suspended")).to eq([ "Paused" ])
+      expect(names(status: "live")).to eq([ "Live House" ])
     end
 
     it "narrows to houses nobody has confirmed a timezone for" do

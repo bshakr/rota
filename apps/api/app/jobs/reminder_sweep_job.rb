@@ -20,8 +20,16 @@ class ReminderSweepJob < ApplicationJob
 
   private
 
+  # Inside the loop, not around it: the JobRun wrapper in `perform` must still write a row on a
+  # pass that touched nothing, because "the sweep ran and there was nothing to do" and "the sweep
+  # stopped running" are the two things the operator's system health tile exists to tell apart.
+  #
+  # `Group.live` drops the rotas of a house an operator has paused (BLO-1675). Reminders are never
+  # *claimed* while it is paused — no sms_messages row is written — so resuming does not fire a
+  # backlog: ReminderSweep's 24-hour staleness guard buries every moment that passed in the
+  # meantime, exactly as it does after an outage.
   def sweep_every_active_rota
-    Rota.active.includes(:group).find_each do |rota|
+    Rota.active.joins(:group).merge(Group.live).includes(:group).find_each do |rota|
       ReminderSweep.new(rota).call
     rescue StandardError => e
       # Every group's rota is swept in this one loop, so a single rota that raises must not starve

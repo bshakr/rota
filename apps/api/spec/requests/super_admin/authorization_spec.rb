@@ -63,7 +63,18 @@ RSpec.describe "Super admin authorization" do
   let(:operator_headers) { workos_headers(sub: operator, org_id: "org_01FLAT", role: "admin") }
 
   it "walks the routes it thinks it is walking" do
-    expect(super_admin_routes).to include([ :get, "/api/super_admin/overview" ])
+    expect(super_admin_routes).to include(
+      [ :get, "/api/super_admin/overview" ],
+      # The routes that WRITE (BLO-1675). They matter most here: every other route in this namespace
+      # would merely leak if the gate were missed, while these would let a house admin who guessed
+      # the path rename or pause somebody else's house. An id of 0 names nothing, so a 404 from any
+      # of them is the gate answering before a lookup ever happened — which the "changes no row"
+      # example below turns into a promise about the whole namespace.
+      [ :patch, "/api/super_admin/groups/0" ],
+      [ :put, "/api/super_admin/groups/0" ],
+      [ :post, "/api/super_admin/groups/0/suspend" ],
+      [ :delete, "/api/super_admin/groups/0/suspend" ]
+    )
   end
 
   # The headline case.
