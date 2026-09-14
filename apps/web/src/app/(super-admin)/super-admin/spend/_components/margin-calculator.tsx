@@ -206,7 +206,7 @@ function MarginBlock({
             <span data-numeric>{formatMoney(at.cost, currency)}</span> of cost
             {at.rate === null ? null : (
               <>
-                {" — "}
+                {", "}
                 <span data-numeric>{formatRate(at.rate)}</span> of the price
               </>
             )}

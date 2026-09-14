@@ -733,6 +733,20 @@ RSpec.describe SuperAdmin::Spend do
         expect(result[:claude_unconverted]).to be(true)
       end
     end
+
+    it "ignores a zero rate, which is not negative but would make Claude read as free" do
+      expect(Rails.logger).to receive(:warn).with(/SPEND_GBP_PER_USD.*not positive/)
+
+      with_env("SPEND_GBP_PER_USD" => "0") do
+        claude_call(group, cost_usd: "0.5000".to_d, items_count: 10)
+        settled_text(group, amount: "0.1000")
+
+        answer = result
+        expect(answer[:claude_unconverted]).to be(true)
+        expect(answer[:totals][:claude_cost]).to be_nil
+        expect(answer[:totals][:total]).to eq(0.1)
+      end
+    end
   end
 
   describe "unit economics" do

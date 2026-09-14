@@ -329,7 +329,9 @@ module SuperAdmin
       @fixed_monthly_cost = parse_money(ENV["FIXED_MONTHLY_COST_GBP"], "FIXED_MONTHLY_COST_GBP")
       # Nil is a supported state, not a misconfiguration to paper over: until somebody decides a
       # rate, Claude is reported in dollars and left out of the pound totals. See the class note.
-      @gbp_per_usd = parse_money(ENV["SPEND_GBP_PER_USD"], "SPEND_GBP_PER_USD")
+      @gbp_per_usd = positive_rate(
+        parse_money(ENV["SPEND_GBP_PER_USD"], "SPEND_GBP_PER_USD"), "SPEND_GBP_PER_USD"
+      )
     end
 
     # What one unsettled segment is priced at, and where that figure came from.
@@ -722,6 +724,18 @@ module SuperAdmin
       nil
     rescue ArgumentError
       Rails.logger.warn("#{name}=#{value.inspect} is not a number; ignoring it")
+      nil
+    end
+
+    # SPEND_GBP_PER_USD only: zero is not negative, so parse_money above lets it through, and a
+    # zero rate would make claude_gbp multiply out to exactly zero rather than staying
+    # unconverted — the "Claude was free" lie the class note warns about, wearing a real number.
+    # Checked here, after the shared parser, rather than inside it, so the other two variables
+    # parse_money also serves — which are allowed to legitimately be zero — are untouched.
+    def positive_rate(value, name)
+      return value if value.nil? || value.positive?
+
+      Rails.logger.warn("#{name}=#{value} is not positive; ignoring it")
       nil
     end
   end

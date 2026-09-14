@@ -25,7 +25,7 @@ const SPEND_HREF = "/super-admin/spend";
  * reason — a percentage between a partial month and a whole one is a number that
  * is wrong for twenty-nine days out of thirty.
  *
- * A placeholder "$0.00" on a cost tile is the single most expensive lie this
+ * A placeholder "£0.00" on a cost tile is the single most expensive lie this
  * screen could tell, so the null branch says what it does not know instead.
  *
  * Whether it links anywhere is not decided here. It asks the nav, which is the

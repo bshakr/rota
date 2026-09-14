@@ -46,7 +46,7 @@ import { formatRate, plural } from "./hq-overview";
  *      (project rule, BLO-1454).
  *   2. NULL IS NOT ZERO. A house with nobody left to text has no cost per
  *      member; a window with no texts has no cost per text. Each of those says
- *      so in words. "$0.00" on a cost page is the single most expensive lie this
+ *      so in words. "£0.00" on a cost page is the single most expensive lie this
  *      product can tell.
  *   3. SETTLED IS NOT ESTIMATED. Twilio's price lands minutes after delivery, so
  *      the newest rows are always priced at a list rate. The two are never
@@ -115,9 +115,9 @@ const group = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
  * `0.0079` prints "0.0079", `17.88923` prints "17.88923", `2.5` prints "2.50".
  *
  * Trailing zeros are trimmed down to two and no further, so the common case
- * reads as ordinary money and a sub-cent figure keeps every digit that carries
- * information. Rounding to whole cents is forbidden outright: the cost of one
- * text is $0.0079, and a page that renders that as $0.01 has overstated the
+ * reads as ordinary money and a sub-penny figure keeps every digit that carries
+ * information. Rounding to whole pence is forbidden outright: the cost of one
+ * text is £0.0079, and a page that renders that as £0.01 has overstated the
  * product's variable cost by twenty-seven per cent on the figure a price is set
  * against.
  *
@@ -399,7 +399,7 @@ export function claudeShortfallNote(figures: SpendFigures): string | null {
  *
  * Null when there are none. A conversion would need a rate, and a rate is one
  * more thing to be wrong about (the plan's Currency decision), so these sit
- * beside the USD total rather than inside it — and the page has to say so, or
+ * beside the GBP total rather than inside it — and the page has to say so, or
  * the total silently understates the bill.
  */
 export function otherCurrenciesNote(figures: SpendFigures, currency: string): string | null {
@@ -455,7 +455,7 @@ export function activeMembersNote(house: SpendHouse): string {
  *
  * Every one of them can legitimately have no answer — no houses, no members, no
  * texts — and Rails says nil rather than zero for each. "Not enough data" and
- * "$0.00" are different answers to a pricing question, and only one of them is
+ * "£0.00" are different answers to a pricing question, and only one of them is
  * true.
  */
 export function unitFigure(value: number | null, currency: string): string {

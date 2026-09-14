@@ -193,7 +193,7 @@ Plan section: Spend.
 
 - `SuperAdmin::Spend`: monthly totals split texts and Claude, per-house rows (settled versus
   estimated SMS cost marked separately, tokens, calls, per active member, allocated fixed cost
-  from `FIXED_MONTHLY_COST_USD`), unit economics (median and p90 per house and per member, cost
+  from `FIXED_MONTHLY_COST_GBP`), unit economics (median and p90 per house and per member, cost
   per text, per classified title).
 - Specs: settled versus estimated, division with zero active members, median and p90 with one
   house and many.
