@@ -81,4 +81,29 @@ RSpec.describe "A member request that raises tells Sentry nothing private" do
     expect(event.tags).to include(surface: "member", group_id: member.group_id, member_id: member.id)
     expect(event.user).to eq({})
   end
+
+  # The operator's front door (BLO-1669), which is the third surface and the only one that reads
+  # across every house. An event from it has to name the human who made it, and the WorkOS user id
+  # is the only name it may carry. The token below deliberately holds an email claim, because what
+  # this proves is that none of it travels with the event.
+  describe "a super admin request that raises" do
+    let(:operator) { "user_01OPERATOR" }
+
+    before do
+      allowlist_super_admins(operator)
+      allow_any_instance_of(SuperAdmin::OverviewController).to receive(:show)
+        .and_raise(RuntimeError, "a bug on the operator path")
+    end
+
+    it "tags the operator surface and names the operator by id, never by email" do
+      headers = workos_headers(sub: operator, org_id: nil, email: "operator@example.com")
+
+      expect { get "/api/super_admin/overview", headers: headers }.to raise_error(RuntimeError)
+
+      event = sentry_events.last
+      expect(event.tags).to include(surface: "super-admin")
+      expect(event.user).to eq({ id: operator })
+      expect(JSON.generate(event.to_json_compatible)).not_to include("operator@example.com")
+    end
+  end
 end

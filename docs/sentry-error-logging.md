@@ -83,7 +83,7 @@ default, and what stops it.
 | WorkOS access token (JWT) | Rails request `Authorization` header on `/api/*` | Header deny list |
 | AuthKit session cookie (`wos-session`) | Next server request `cookie` header and `request.cookies` | `sendDefaultPii: false`, and `beforeSend` deletes `request.cookies` and the `cookie` header outright |
 | Twilio auth token, account SID | Never in a request; the account SID is in outgoing Twilio URLs | No `http_logger` breadcrumbs; no `outgoing_request` bodies |
-| Admin email and name | Sentry's default user context | `data_collection.user_info = false`; set the user by hand with the WorkOS user id only, and tag the household by group id |
+| Admin email and name | Sentry's default user context | `data_collection.user_info = false`; set the user by hand with the WorkOS user id only, and tag the household by group id; scrub the email pattern in every string of every event on both SDKs, for the address quoted as prose in a WorkOS or validation message |
 | Twilio webhook signature | `X-Twilio-Signature` header | Header deny list |
 
 Two rules follow from the table and hold for every phase:
@@ -133,8 +133,9 @@ written in the file's existing voice (say what breaks when it is wrong).
 | Variable | App | When | Notes |
 | --- | --- | --- | --- |
 | `SENTRY_DSN` | api | runtime | Required in production, refused at boot if missing (see §6.2). Absent in development and test, which disables the SDK. |
-| `NEXT_PUBLIC_SENTRY_DSN` | web | build and runtime | The one and only `NEXT_PUBLIC_` variable in this repo. `next.config.ts` deliberately exports nothing through Next's `env` key so no secret is inlined into the browser bundle; a DSN is not a secret (it is a public, write-only address, rate-limited by Sentry and reached through our own tunnel route), so it is the one value that is allowed to be inlined. Document that sentence next to it in `.env.example` and `apps/web/README.md`, because the rule "nothing is `NEXT_PUBLIC_`" is otherwise going to look violated. Must be present at build time on Railway, since Next inlines it then. |
-| `SENTRY_ENVIRONMENT` | both | runtime | Optional. Defaults to the Rails env / `NODE_ENV`. Only `production` and `preview` send. |
+| `NEXT_PUBLIC_SENTRY_DSN` | web | build and runtime | The first of the two `NEXT_PUBLIC_` variables in this repo. `next.config.ts` deliberately exports nothing through Next's `env` key so no secret is inlined into the browser bundle; a DSN is not a secret (it is a public, write-only address, rate-limited by Sentry and reached through our own tunnel route), so it is the one value that is allowed to be inlined. Document that sentence next to it in `.env.example` and `apps/web/README.md`, because the rule "nothing is `NEXT_PUBLIC_`" is otherwise going to look violated. Must be present at build time on Railway, since Next inlines it then. |
+| `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | web | build only | The second and last `NEXT_PUBLIC_` variable, and an environment name rather than a credential. The browser cannot read `SENTRY_ENVIRONMENT`, so without this every deploy reports as `production` (that is what `NODE_ENV` is in any Railway build) and a preview deploy's browser events land in the production project's alert rules. Next inlines it at build time, so a runtime-only setting changes nothing. |
+| `SENTRY_ENVIRONMENT` | both | runtime | Optional. Defaults to the Rails env / `NODE_ENV`. Only `production` and `preview` send. The browser half reads `NEXT_PUBLIC_SENTRY_ENVIRONMENT` instead, so a preview deploy sets both. |
 | `SENTRY_RELEASE` | both | build and runtime | Optional override. Defaults to `RAILWAY_GIT_COMMIT_SHA`. |
 | `SENTRY_AUTH_TOKEN` | web | build only | Source-map upload. Scopes: `project:releases`, `project:write`, `org:read`. Railway build variable, never a runtime one. Absent in CI and locally, which disables the upload and must not fail the build. |
 | `SENTRY_ORG`, `SENTRY_PROJECT` | web | build only | Which project the maps belong to. |
@@ -296,7 +297,7 @@ existing `Rails.error.report` calls are what the subscriber lights up. Update th
 "no subscribers yet" comments in both jobs and both specs to say the subscriber exists
 and why the log line stays.
 
-### 6.6 Cron monitors for the two recurring jobs
+### 6.6 Cron monitors for the recurring jobs
 
 `config/recurring.yml` runs `reminder_sweep` every hour and `top_up_shift_windows`
 daily at 03:00 UTC. A monitor answers the question the per-rota rescue cannot: did the
@@ -318,8 +319,10 @@ end
 ```
 
 Main has since added two more recurring jobs, and they get the same treatment for the
-same reason: `sync-house-calendars` (hourly at :27, interval monitor, 15-minute margin)
-and `backfill-sms-prices` (daily 04:40 UTC, crontab monitor, hour margin). The price
+same reason: `sync-house-calendars` (crontab monitor on `27 * * * *`, 15-minute margin,
+because an interval monitor would expect the next check-in an hour after the last one it
+saw rather than at the minute the job actually runs) and `backfill-sms-prices` (daily
+04:40 UTC, crontab monitor, hour margin). The price
 backfill is silent by design when it has nothing to do, so a missed check-in is the
 only signal it has stopped.
 
@@ -338,7 +341,11 @@ the event. It walks `event.to_hash`-shaped data and rewrites strings in place:
 - E.164 numbers `\+[1-9]\d{6,14}` → `[phone]`. Twilio's `RestError` messages quote the
   `To` number; this is the row that catches it.
 - Magic links `/s/[A-Za-z0-9_-]{20,}` → `/s/[token]`.
-- `Bearer <anything>` → `Bearer [filtered]`.
+- `Bearer <anything>` → `Bearer [filtered]`, stopping at the first whitespace, quote,
+  comma or semicolon so a header quoted inside JSON keeps everything after it.
+- Email addresses `[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}` → `[email]`. An
+  admin's address names the person the way the number names a housemate, and WorkOS and
+  validation messages quote it back as prose.
 - 32-byte URL-safe tokens standing alone (`\b[A-Za-z0-9_-]{43}\b`) → `[token]`. This
   is the shape `Member#access_token` has; a bare token in a log-derived breadcrumb is
   the case the first two rules miss.
@@ -359,7 +366,7 @@ All under the existing rules: WebMock blocks the network, `Sentry::TestHelper`'s
 - `spec/lib/sentry_scrubber_spec.rb`: an event whose message, exception value, request
   URL, breadcrumb data, `rails.error` context and extra each contain a phone number, a
   magic link, a bearer header and a bare token comes out with none of them. Assert on
-  the serialised JSON of the whole event containing none of the four fixtures, so a new
+  the serialised JSON of the whole event containing none of the five fixtures, so a new
   field the walker misses fails the spec rather than leaking.
 - `spec/sentry/error_reporter_spec.rb`: `setup_sentry_test` in a `before`,
   `teardown_sentry_test` in an `after`. `Rails.error.report(boom, context: { rota_id: 1 }, source: "rotamonster.reminder_sweep")`
@@ -485,11 +492,13 @@ edge today; the file exists because the SDK expects it and it costs nothing.
 import * as Sentry from "@sentry/nextjs";
 import { scrubEvent, scrubBreadcrumb } from "@/lib/observability/scrub";
 
+const environment = process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? process.env.NODE_ENV;
+
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? process.env.NODE_ENV,
-  // Development never sends. NODE_ENV is production for every deployed build.
-  enabled: process.env.NODE_ENV === "production",
+  environment,
+  // Development never sends, and only production and preview do, as on the server.
+  enabled: ["production", "preview"].includes(environment ?? ""),
   sendDefaultPii: false,
   tracesSampleRate: 0,
   replaysSessionSampleRate: 0,     // decided against, see §2
@@ -502,11 +511,12 @@ Sentry.init({
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
 ```
 
-The browser bundle can only see `NEXT_PUBLIC_` values. Rather than add two more, have
-`withSentryConfig`'s `release.name` inject the release (the SDK does this at build) and
-leave the browser environment at `NODE_ENV`, which is `production` on Railway. If a
-preview environment is ever wanted in the browser, that is the moment to add
-`NEXT_PUBLIC_SENTRY_ENVIRONMENT`, not before.
+The browser bundle can only see `NEXT_PUBLIC_` values. The release needs no variable of
+its own: `withSentryConfig`'s `release.name` injects it at build. The environment does,
+because `NODE_ENV` is `production` in every Railway build, preview included, so a
+preview deploy's browser events would otherwise land in the production project's alert
+rules. `NEXT_PUBLIC_SENTRY_ENVIRONMENT` is that variable, and it is the second and last
+of its kind here; both reads name it in full, since Next inlines the literal text.
 
 ### 7.3 Error boundaries and the places that swallow
 
@@ -550,9 +560,9 @@ refresh over every event POST for no reason.
 ### 7.5 The scrubber, shared by both runtimes
 
 `src/lib/observability/scrub.ts`. No `server-only` (the browser needs it), no secrets,
-no `sonner`. Exports `scrubString`, `scrubUrl`, `scrubEvent(event)` and
-`scrubBreadcrumb(breadcrumb)` and applies the same four rewrites as the Rails
-scrubber (E.164, `/s/<token>`, `Bearer …`, bare 43-char token) to: `message`,
+no `sonner`. Exports `scrubString`, `scrubEvent(event)` and
+`scrubBreadcrumb(breadcrumb)` and applies the same five rewrites as the Rails
+scrubber (E.164, `/s/<token>`, `Bearer …`, email address, bare 43-char token) to: `message`,
 `transaction`, `request.url`, every exception value, every breadcrumb's `message`,
 `data.url`, `data.from`, `data.to`, `extra`, `contexts`, and tag values. It also
 deletes `request.cookies` and the `cookie` and `authorization` request headers
@@ -560,7 +570,7 @@ outright.
 
 `src/lib/observability/scrub.test.ts` in vitest: same fixtures as the Rails spec, same
 "the serialised event contains none of them" assertion. Add the fixture strings as
-constants shared by both tests? No: two languages, two files, the same four literals
+constants shared by both tests? No: two languages, two files, the same five literals
 copied. A comment in each names the other.
 
 ### 7.6 Context
@@ -724,13 +734,13 @@ appended to this document in the style of `household-entry.md`:
 
 Phases 1 and 2 are implemented on branch `claude/sentry-production-error-logging-y0zrga`
 as two commits, one per app, with the plan's PR slices 1 to 3 folded into them. Gates
-run in a container with Ruby 3.3.6 (the project pins 3.4.5; no 3.4-only syntax used),
-Node 22 and Postgres 16, with no `.env` and no Sentry variables set:
+run on Ruby 3.4.5 (the version the project pins), Node 22 and Postgres 16, with no
+`.env` and no Sentry variables set:
 
-- API: 551 specs pass (up from 516), RuboCop clean, Brakeman 0 warnings, gem audit clean.
+- API: 1290 examples pass, RuboCop clean, Brakeman 0 warnings, gem audit clean.
   Production boot without `SENTRY_DSN` raises the boot message; with a DSN it boots and
-  both cron monitor configs resolve.
-- Web: 155 vitest tests pass (up from 143), lint and typecheck clean, 42 semantic tokens
+  every cron monitor config resolves.
+- Web: 383 vitest tests across 35 files pass, lint and typecheck clean, 42 semantic tokens
   in both themes, production build succeeds with the source-map upload skipped, and the
   client-chunk token gate passes. A build with `RAILWAY_GIT_COMMIT_SHA` set carries that
   release string in a client chunk and leaves no `.map` files in `.next/static`.
@@ -751,8 +761,10 @@ Merged with main on 2026-09-13 after the pull request opened. Main had renamed t
 error source prefix to `rotamonster.`, added two recurring jobs and a super admin
 route group; the new sources follow the rename, both jobs carry cron monitors, and the
 super admin layout tags its events with the operator's WorkOS user id and its own
-surface. Gates after the merge: 810 API specs and 320 web tests pass, with every other
-step still clean.
+surface. Every gate was re-run after the merge and stayed clean.
+
+Rebased onto main 2026-09-14 as one commit; gates re-run: rubocop clean, 1290 API
+examples, 383 web tests, lint, tsc and production build green.
 
 Still to do, all outside the repo: create the two Sentry projects and set the variables
 on Railway (section 5), run `bin/rails sentry:smoke` and visit the web smoke page, the

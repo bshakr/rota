@@ -72,7 +72,7 @@ RSpec.describe SyncHouseCalendarsJob do
 
     it "declares the schedule a missed check-in is measured against" do
       expect(described_class.sentry_monitor_config.to_h).to include(
-        schedule: { type: :interval, value: 1, unit: :hour },
+        schedule: { type: :crontab, value: "27 * * * *" },
         checkin_margin: 15,
         timezone: "UTC"
       )

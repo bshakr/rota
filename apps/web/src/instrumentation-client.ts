@@ -15,23 +15,28 @@ import { scrubBreadcrumb, scrubEvent } from "@/lib/observability/scrub";
 // secrets of its own: it is meant to be here, scrubbing the member's own URL out of
 // their own breadcrumbs.
 
+// The browser cannot read SENTRY_ENVIRONMENT the way sentry.server.config.ts does,
+// so the browser half needs its own NEXT_PUBLIC_ copy, inlined by Next at build
+// time. Without it every deploy is `production` to NODE_ENV, and a preview deploy's
+// browser events land in the production project's alert rules. Both reads have to
+// name the variable in full: Next inlines the literal `process.env.NEXT_PUBLIC_...`
+// text, so anything computed from it at runtime would be `undefined`.
+const environment = process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? process.env.NODE_ENV;
+
 Sentry.init({
-  // The one NEXT_PUBLIC_ variable in this repo. A DSN is a public, write-only
-  // address, and events reach it through our own /monitoring tunnel; see
-  // apps/web/README.md for why this single exception to "nothing is NEXT_PUBLIC_"
-  // is safe.
+  // One of the two NEXT_PUBLIC_ variables in this repo. A DSN is a public,
+  // write-only address, and events reach it through our own /monitoring tunnel; see
+  // apps/web/README.md for why this exception to "nothing is NEXT_PUBLIC_" is safe.
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
-  // The browser can only read NEXT_PUBLIC_ values, and NODE_ENV is `production` on
-  // Railway, so no second public variable is needed to gate development out. The
+  // The same string the server half reports, so one deploy reads as one deploy. The
   // release comes from the build: withSentryConfig injects it into the client
   // bundle under the same name the source maps were uploaded with.
-  environment: process.env.NODE_ENV,
+  environment,
 
   // Development never sends, matching the server gate and the Rails initialiser.
   // A DSN pasted into the root .env must not turn `npm run dev` into a page.
-  // NODE_ENV is `production` for every deployed build, preview included.
-  enabled: process.env.NODE_ENV === "production",
+  enabled: ["production", "preview"].includes(environment ?? ""),
 
   sendDefaultPii: false,
   tracesSampleRate: 0,

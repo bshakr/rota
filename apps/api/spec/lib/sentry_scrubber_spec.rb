@@ -2,10 +2,11 @@ require "rails_helper"
 
 # The privacy contract of docs/sentry-error-logging.md §3, asserted against a REAL event object.
 #
-# The four fixtures below are the four secrets that can reach an event as prose rather than as a
+# The five fixtures below are the five secrets that can reach an event as prose rather than as a
 # named field, which is why no deny list catches them: Twilio quotes the recipient's number in its
-# own error messages, a magic link turns up in a URL or a rendered body, and a bare access token is
-# what a log-derived breadcrumb carries. The same four literals are asserted on the web side in
+# own error messages, a magic link turns up in a URL or a rendered body, a bare access token is
+# what a log-derived breadcrumb carries, and an admin's email address is quoted back by WorkOS and
+# by any validation message about it. The same five literals are asserted on the web side in
 # apps/web/src/lib/observability/scrub.test.ts; they are copied rather than shared because they are
 # in two languages, and each file names the other.
 #
@@ -18,13 +19,14 @@ RSpec.describe SentryScrubber do
   let(:token) { "OwJtLMMuj5l3wknvx5zfH6rAV0E6BA2tUzi4ADr-Qws" }
   let(:magic_link) { "https://rota.monster/s/#{token}" }
   let(:bearer) { "Bearer #{token}" }
+  let(:email) { "alice@example.com" }
 
   # A DSN is needed for the client to build an event at all, and DummyTransport is what keeps this
   # spec off the network. See spec/support/webmock.rb for the belt to that pair of braces.
   before { setup_sentry_test }
   after { teardown_sentry_test }
 
-  # An event carrying all four fixtures in every field the plan names, built the way the SDK builds
+  # An event carrying all five fixtures in every field the plan names, built the way the SDK builds
   # one rather than stubbed, so a change in the gem's event shape shows up here.
   def event_with_everything
     event = Sentry.get_current_client.event_from_exception(
@@ -35,7 +37,7 @@ RSpec.describe SentryScrubber do
     event.transaction = "GET /s/#{token}"
     event.tags = { magic_link: magic_link }
     event.extra = { body: "Your Rota Monster personal link: #{magic_link}" }
-    event.contexts = { "rails.error" => { sms_message_id: 12, phone: phone, token: token } }
+    event.contexts = { "rails.error" => { sms_message_id: 12, phone: phone, token: token, invited: email } }
     # Set by hand on top of the deny list in config/initializers/sentry.rb, which is the point: this
     # is what the event looks like the day somebody edits a term out of that list.
     event.request.headers = { "Authorization" => bearer, "X-Twilio-Signature" => token }
@@ -71,18 +73,19 @@ RSpec.describe SentryScrubber do
       expect(described_class.call(event)).to equal(event)
     end
 
-    it "leaves no phone number, magic link, bearer token or bare token anywhere in the event" do
+    it "leaves no phone number, magic link, bearer token, bare token or email anywhere in the event" do
       json = serialised(described_class.call(event_with_everything))
 
       expect(json).not_to include(phone)
       expect(json).not_to include(token)
       expect(json).not_to include("Bearer #{token}")
+      expect(json).not_to include(email)
     end
 
     it "keeps enough of each to be worth reading" do
       json = serialised(described_class.call(event_with_everything))
 
-      expect(json).to include("[phone]", "/s/[token]", "Bearer [filtered]", "[token]")
+      expect(json).to include("[phone]", "/s/[token]", "Bearer [filtered]", "[token]", "[email]")
       # The parts of the event that were never a secret survive intact.
       expect(json).to include("Unable to create record", "sms_message_id")
     end
@@ -107,6 +110,7 @@ RSpec.describe SentryScrubber do
       expect(event.extra[:body]).to eq("Your Rota Monster personal link: https://rota.monster/s/[token]")
       expect(event.contexts["rails.error"][:phone]).to eq("[phone]")
       expect(event.contexts["rails.error"][:token]).to eq("[token]")
+      expect(event.contexts["rails.error"][:invited]).to eq("[email]")
       expect(event.contexts["rails.error"][:sms_message_id]).to eq(12)
       expect(event.request.headers["Authorization"]).to eq("Bearer [filtered]")
       expect(event.request.headers["X-Twilio-Signature"]).to eq("[token]")
@@ -142,6 +146,10 @@ RSpec.describe SentryScrubber do
       expect(described_class.scrub_string("token=#{token} used")).to eq("token=[token] used")
       ending_in_dash = "#{token[0..41]}-"
       expect(described_class.scrub_string("token=#{ending_in_dash} used")).to eq("token=[token] used")
+    end
+
+    it "rewrites an email address wherever it is quoted" do
+      expect(described_class.scrub_string("invite to #{email} bounced")).to eq("invite to [email] bounced")
     end
 
     it "leaves an ordinary sentence alone, so events stay readable" do

@@ -10,11 +10,13 @@
 class SyncHouseCalendarsJob < ApplicationJob
   # A check-in per run, for the failure the per-connection rescue below cannot see: a worker that
   # never starts this job raises nothing and reports nothing, and a house's calendar simply stops
-  # updating. The schedule is hourly at minute 27 (config/recurring.yml); the interval is what the
-  # monitor measures, and the 15-minute margin survives a deploy landing on the run.
+  # updating. The crontab spells out the schedule in config/recurring.yml rather than an hourly
+  # interval, because an interval monitor expects the next check-in an hour after the last one it
+  # saw, which after a restart is any minute of the hour; the crontab says minute 27, which is when
+  # the job actually runs. The 15-minute margin survives a deploy landing on the run.
   include Sentry::Cron::MonitorCheckIns
   sentry_monitor_check_ins slug: "sync-house-calendars",
-    monitor_config: Sentry::Cron::MonitorConfig.from_interval(1, :hour, checkin_margin: 15, max_runtime: 30, timezone: "UTC")
+    monitor_config: Sentry::Cron::MonitorConfig.from_crontab("27 * * * *", checkin_margin: 15, max_runtime: 30, timezone: "UTC")
 
   queue_as :default
 

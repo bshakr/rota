@@ -14,8 +14,8 @@ import type { Breadcrumb, Event } from "@sentry/nextjs";
 // `/s/<token>` URL and the navigation breadcrumbs live. It handles no secret of
 // its own, so nothing leaks by shipping it.
 //
-// The same four rewrites exist in Ruby in apps/api/app/lib/sentry_scrubber.rb, and
-// the same four fixtures are asserted there. Two languages, two files, one
+// The same five rewrites exist in Ruby in apps/api/app/lib/sentry_scrubber.rb, and
+// the same five fixtures are asserted there. Two languages, two files, one
 // contract: change one and change the other.
 
 /** Twilio's own error messages quote the destination number verbatim. */
@@ -24,8 +24,11 @@ const E164 = /\+[1-9]\d{6,14}/g;
 /** The magic link. The token is a permanent bearer credential and never expires. */
 const MAGIC_LINK = /\/s\/[A-Za-z0-9_-]{20,}/g;
 
-/** Any Authorization header value that reached a breadcrumb, a header map or a message. */
-const BEARER = /\bBearer\s+\S+/gi;
+// Any Authorization header value that reached a breadcrumb, a header map or a
+// message. The credential stops at the first quote, comma or semicolon rather than
+// at the next space, so a header serialised inside JSON loses its token and keeps
+// the rest of the object readable. Same character class as the Ruby twin.
+const BEARER = /\bBearer\s+[^\s"',;]+/gi;
 
 // A bare 32-byte URL-safe token, the shape `Member#access_token` has. The first
 // three rules miss it when it stands on its own (a log-derived breadcrumb, an
@@ -33,28 +36,27 @@ const BEARER = /\bBearer\s+\S+/gi;
 // `-` is not a word character, so `\b` would happily match inside a longer run.
 const BARE_TOKEN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g;
 
+// An admin's email address, which identifies the person the way the phone number
+// identifies a housemate. The SDK is told not to collect it, but a WorkOS error, a
+// validation message or a mailer breadcrumb quotes it as prose, which no deny list
+// reaches.
+const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+
 /**
  * Rewrite every known credential shape out of one string.
  *
  * Order matters: `Bearer …` is collapsed before the bare-token rule can eat its
- * payload, and the magic link is matched before the bare token so the surviving
- * text still says a link was involved.
+ * payload, the magic link is matched before the bare token so the surviving text
+ * still says a link was involved, and the email rule runs before the bare token so
+ * an address is replaced whole rather than in pieces.
  */
 export function scrubString(value: string): string {
   return value
     .replace(BEARER, "Bearer [filtered]")
     .replace(MAGIC_LINK, "/s/[token]")
     .replace(E164, "[phone]")
+    .replace(EMAIL, "[email]")
     .replace(BARE_TOKEN, "[token]");
-}
-
-/**
- * Rewrite a URL. Same rules as `scrubString`; named separately because the URL is
- * the one field where a leak is certain rather than possible, and callers should
- * be able to say what they mean.
- */
-export function scrubUrl(url: string): string {
-  return scrubString(url);
 }
 
 // Request headers that are a credential in their entirety. The SDK's own deny
@@ -67,7 +69,7 @@ const FORBIDDEN_HEADERS = new Set(["cookie", "authorization"]);
  * allows. Events carry credentials in places a field list never quite covers:
  * `contexts`, `extra`, a breadcrumb's `data`, a tag value, a stack frame's
  * module path. Walking everything is what makes the test assertion ("the
- * serialised event contains none of the four fixtures") true by construction
+ * serialised event contains none of the five fixtures") true by construction
  * rather than by a field list somebody has to remember to extend.
  */
 function scrubDeep<T>(value: T, seen: WeakSet<object>): T {

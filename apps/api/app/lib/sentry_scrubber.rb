@@ -8,7 +8,7 @@
 # deny list catches that. So every string in every event is rewritten here, whatever field it is in.
 #
 # It is a plain object under app/lib, not a lambda in the initializer, so that spec/lib/
-# sentry_scrubber_spec.rb can feed it a real event and prove the four rewrites still happen. A
+# sentry_scrubber_spec.rb can feed it a real event and prove the five rewrites still happen. A
 # scrubber without that spec is the same as no scrubber, the day somebody refactors it.
 module SentryScrubber
   module_function
@@ -29,13 +29,20 @@ module SentryScrubber
   # characters, and \b would then refuse to match at the token's real edges.
   BARE_TOKEN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/
 
+  # An admin's email address, which names the person as plainly as the phone number names a
+  # housemate. data_collection.user_info is off, so the SDK never collects it as a field; what this
+  # catches is the address quoted as prose in a WorkOS error, a validation message or a breadcrumb.
+  EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
+
   # Order matters. Bearer runs before the bare-token rule so an Authorization header reads
-  # "Bearer [filtered]" rather than "Bearer [token]", and the magic-link rule runs before it so a
-  # personal link keeps its recognisable shape.
+  # "Bearer [filtered]" rather than "Bearer [token]", the magic-link rule runs before it so a
+  # personal link keeps its recognisable shape, and the email rule runs before the bare-token rule
+  # so an address is replaced whole rather than in pieces.
   REWRITES = [
     [ PHONE, "[phone]" ],
     [ MAGIC_LINK, "/s/[token]" ],
     [ BEARER, "Bearer [filtered]" ],
+    [ EMAIL, "[email]" ],
     [ BARE_TOKEN, "[token]" ]
   ].freeze
 
@@ -50,7 +57,7 @@ module SentryScrubber
     event
   end
 
-  # The one place the four rules are applied. Everything else in this file exists to find the
+  # The one place the five rules are applied. Everything else in this file exists to find the
   # strings to hand it.
   def scrub_string(value)
     REWRITES.reduce(value) { |scrubbed, (pattern, replacement)| scrubbed.gsub(pattern, replacement) }
