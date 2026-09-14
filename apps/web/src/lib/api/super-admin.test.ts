@@ -19,10 +19,12 @@ import { withAuth } from "@workos-inc/authkit-nextjs";
 import { notFound, redirect } from "next/navigation";
 
 import { overviewPayload } from "@/test/overview-payload";
+import { trafficPayload } from "@/test/traffic-payload";
 
 import { ApiError } from "./errors";
-import { getOverview } from "./super-admin";
+import { getOverview, getTraffic } from "./super-admin";
 import { OverviewShapeError } from "./super-admin-overview";
+import { TrafficShapeError } from "./super-admin-traffic";
 
 const OPERATOR = "user_operator";
 const STRANGER = "user_stranger";
@@ -153,5 +155,71 @@ describe("super admin API client", () => {
 
     await expect(getOverview()).rejects.toBeInstanceOf(ApiError);
     expect(redirectMock).not.toHaveBeenCalled();
+  });
+
+  // The second surface on this client. The transport, the token and the failure
+  // policy are the overview's, already covered above; what is its own is the
+  // window it asks for and the second parse.
+  describe("super admin traffic", () => {
+    beforeEach(() => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+        respond(200, trafficPayload()),
+      );
+    });
+
+    it("asks Rails for the window the page resolved, and nothing else", async () => {
+      await getTraffic("90d");
+
+      const { url, headers } = lastFetchCall();
+      expect(url).toBe("http://rails.test/api/super_admin/traffic?range=90d");
+      expect(headers.Authorization).toBe("Bearer JWT_OPERATOR");
+    });
+
+    it("hands back the parsed payload, with its unions narrowed", async () => {
+      const traffic = await getTraffic("30d");
+
+      expect(traffic.funnel).toHaveLength(8);
+      expect(traffic.funnel[0].tracked).toBe(false);
+      expect(traffic.weeks.at(-1)?.delivery_rate).toBe(96.7);
+    });
+
+    it("refuses a 200 whose shape is not the traffic payload", async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(respond(200, {}));
+
+      await expect(getTraffic("30d")).rejects.toBeInstanceOf(TrafficShapeError);
+      expect(redirectMock).not.toHaveBeenCalled();
+    });
+
+    it("404s a caller who is not on the allowlist, before any request reaches Rails", async () => {
+      withAuthMock.mockResolvedValue({
+        accessToken: "JWT_STRANGER",
+        organizationId: "org_house",
+        user: { id: STRANGER },
+      });
+
+      await expect(getTraffic("7d")).rejects.toThrow("NEXT_NOT_FOUND");
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    // Rails answers 400 invalid_range for a window it does not know. The page
+    // resolves the URL down to one of three before calling, so this is the shape
+    // of a caller that got here another way — and it must surface as a typed
+    // error, never as a silent fall back to different figures.
+    it("propagates a refused range as a typed ApiError", async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+        respond(400, { error: "invalid_range", allowed: ["7d", "30d", "90d"] }),
+      );
+
+      await expect(getTraffic("30d")).rejects.toBeInstanceOf(ApiError);
+      expect(redirectMock).not.toHaveBeenCalled();
+    });
+
+    it("turns a Rails 401 into a clean re-auth, not a crash", async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+        respond(401, { error: "unauthorized" }),
+      );
+
+      await expect(getTraffic("30d")).rejects.toThrow("REDIRECT:/auth/reauth");
+    });
   });
 });

@@ -6,6 +6,11 @@ import { requireSuperAdmin } from "@/lib/auth/super-admin";
 import { isApiError } from "./errors";
 import { type ApiRequestInit, requestJson } from "./http";
 import { type SuperAdminOverview, parseOverview } from "./super-admin-overview";
+import {
+  type SuperAdminTraffic,
+  type TrafficRange,
+  parseTraffic,
+} from "./super-admin-traffic";
 
 // The super admin API client — the operator's half of ./admin.ts, and separate
 // from it on purpose.
@@ -62,4 +67,28 @@ async function superAdminRequest<T>(path: string, init?: ApiRequestInit): Promis
  */
 export async function getOverview(): Promise<SuperAdminOverview> {
   return parseOverview(await superAdminRequest<unknown>("/api/super_admin/overview"));
+}
+
+// --- Traffic ----------------------------------------------------------------
+
+/**
+ * GET /api/super_admin/traffic — conversion and usage over one of three
+ * windows: the eight-step funnel with its rates, how long a house takes to send
+ * its first text, who signed in and never made a house, and a week-by-week
+ * series of what the product actually did.
+ *
+ * Parsed rather than cast, like the overview and for the same reason: this
+ * payload is nothing but derived numbers, and a key Rails renames renders as a
+ * zero that looks exactly like a real fact. See ./super-admin-traffic.ts.
+ *
+ * `range` is typed to the three windows Rails accepts, and the page validates
+ * whatever was in the URL down to one of them before calling
+ * (`parseRange` in lib/hq-traffic.ts). So the query string is built from a value
+ * that cannot be anything else — Rails would answer 400 `invalid_range`, which
+ * is the right answer for a caller that got here another way.
+ */
+export async function getTraffic(range: TrafficRange): Promise<SuperAdminTraffic> {
+  return parseTraffic(
+    await superAdminRequest<unknown>(`/api/super_admin/traffic?range=${range}`),
+  );
 }

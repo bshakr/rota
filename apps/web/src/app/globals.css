@@ -221,7 +221,13 @@
     inset 0 2px 0 rgb(255 255 255 / 0.35), inset 0 -4px 0 rgb(0 0 0 / 0.2),
     0 16px 26px -12px rgb(99 52 203 / 0.7);
 
-  /* Charts: the sticker sheet at its deeper cuts, one hue each. */
+  /* Charts: the sticker sheet at its deeper cuts, one hue each, in the order a
+     chart assigns them. Validated as a categorical palette (the dataviz
+     validator, OKLab CVD delta E): every adjacent pair clears the normal-vision
+     floor, and the one protanopia pair in the 6-8 band (mint against peach) is
+     legal because every chart that uses these ships a legend and prints its own
+     numbers. They sit under 3:1 against white, which is why a chart mark here is
+     never the only carrier of a value. */
   --chart-1: var(--grape-500);
   --chart-2: var(--mint-500);
   --chart-3: var(--peach-500);
@@ -312,11 +318,21 @@
     inset 0 2px 0 rgb(255 255 255 / 0.28), inset 0 -4px 0 rgb(0 0 0 / 0.3),
     0 16px 26px -12px rgb(99 52 203 / 0.8);
 
+  /* Charts at night keep the DEEPER cuts rather than dropping to the -300
+     stickers, and that is the one place the "a sticker does not invert" rule
+     does not reach. A sticker is one shape carrying plum ink; a chart is three
+     or five marks that have to be told APART. The -300 family is a single
+     lightness (L 0.90) at a chroma of about 0.06, so run as a categorical
+     palette it fails the dataviz validator's chroma floor outright and scores
+     sky against peach at delta E 12.6 for NORMAL vision, under the floor of 15 —
+     two segments of one stacked bar that a full-colour reader cannot separate.
+     The -500 cuts clear 3:1 on the night card and every adjacent pair clears the
+     floor. Only chart-1 stays a -300: grape-500 is too dark to read on plum. */
   --chart-1: var(--grape-300);
-  --chart-2: var(--mint-300);
-  --chart-3: var(--peach-300);
-  --chart-4: var(--sky-300);
-  --chart-5: var(--blush-300);
+  --chart-2: var(--mint-500);
+  --chart-3: var(--peach-500);
+  --chart-4: var(--sky-500);
+  --chart-5: var(--blush-500);
 
   --sidebar: var(--plum-850);
   --sidebar-foreground: var(--plum-50);
