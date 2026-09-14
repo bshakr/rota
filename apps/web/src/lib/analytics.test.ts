@@ -6,12 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ANALYTICS_EVENTS,
   BROWSER_EVENTS,
+  BROWSER_FAMILIES,
   BROWSER_PROPERTY_KEYS,
   CTA_POSITIONS,
   DEVICE_CLASSES,
   MAX_BODY_BYTES,
   MAX_PROPERTY_LENGTH,
+  OS_FAMILIES,
   PROPERTY_KEYS,
+  SERVER_PROPERTY_KEYS,
   isBrowserEvent,
   isHostname,
   referrerHost,
@@ -77,6 +80,14 @@ describe("the Rails allowlist", () => {
     expect(rubyList("DEVICE_CLASSES")).toEqual([...DEVICE_CLASSES]);
   });
 
+  // The same drift, one level down. These two are decided here, from the request headers, and
+  // checked again by the model on arrival: a family added on one side only would be a property
+  // silently dropped at the boundary and a column that is quietly missing a bar.
+  it("agrees on the browser and system families", () => {
+    expect(rubyList("BROWSER_FAMILIES")).toEqual([...BROWSER_FAMILIES]);
+    expect(rubyList("OS_FAMILIES")).toEqual([...OS_FAMILIES]);
+  });
+
   it("agrees on the maximum property length", () => {
     expect(model).toContain(`MAX_VALUE_LENGTH = ${MAX_PROPERTY_LENGTH}`);
   });
@@ -120,14 +131,22 @@ describe("sanitiseProperties", () => {
 // choose is a value that says nothing, so the browser list simply does not contain them and a body
 // carrying one loses it on the way through rather than being deleted afterwards.
 describe("sanitiseBrowserProperties", () => {
-  it("has no country and no device on it at all", () => {
-    expect([...BROWSER_PROPERTY_KEYS]).not.toContain("country");
-    expect([...BROWSER_PROPERTY_KEYS]).not.toContain("device");
+  it("has not one of the five server-derived properties on it", () => {
+    for (const key of SERVER_PROPERTY_KEYS) {
+      expect([...BROWSER_PROPERTY_KEYS], `${key} is on the browser's list`).not.toContain(key);
+    }
   });
 
-  it("drops a country and a device the sender supplied, and keeps the rest", () => {
+  it("drops every property the sender was not entitled to set, and keeps the rest", () => {
     expect(
-      sanitiseBrowserProperties({ utm_source: "reddit", country: "US", device: "desktop" }),
+      sanitiseBrowserProperties({
+        utm_source: "reddit",
+        country: "US",
+        city: "Atlantis",
+        device: "desktop",
+        browser: "safari",
+        os: "windows",
+      }),
     ).toEqual({ utm_source: "reddit" });
   });
 
@@ -198,8 +217,8 @@ describe("visitContext", () => {
     expect(visitContext(headers({ "cf-ipcountry": "gb" }))).toMatchObject({ country: "GB" });
   });
 
-  // The domain is DNS-only on Cloudflare today, so this is the state in production right now: no
-  // header, no country, and no guess in its place.
+  // Nothing in front of the request that knows where it came from: no header, no country, and no
+  // guess in its place.
   it("omits the country entirely when the header is not there", () => {
     expect(visitContext(headers({}))).not.toHaveProperty("country");
   });
@@ -243,19 +262,136 @@ describe("visitContext", () => {
     expect(visitContext(headers({}))).toEqual({});
   });
 
+  it("reads the city from Cloudflare's header, beside the country", () => {
+    expect(visitContext(headers({ "cf-ipcountry": "GB", "cf-ipcity": " London " }))).toMatchObject({
+      country: "GB",
+      city: "London",
+    });
+  });
+
+  // The state of production until the zone's "Add visitor location headers" transform is switched
+  // on. The city is omitted, and no lookup of our own stands in for it.
+  it("omits the city when Cloudflare does not send one", () => {
+    expect(visitContext(headers({ "cf-ipcountry": "GB" }))).not.toHaveProperty("city");
+  });
+
+  it("keeps the accents, the hyphens, the full stops and the apostrophes a city name really has", () => {
+    for (const city of ["Saint-Étienne", "St. Albans", "N'Djamena", "Ciudad Juárez"]) {
+      expect(visitContext(headers({ "cf-ipcountry": "FR", "cf-ipcity": city }))).toMatchObject({ city });
+    }
+  });
+
+  // A column an operator reads must not be able to grow a row that is really a sentence or an id
+  // somebody chose, whoever set the header.
+  it("drops a city that is an id or a sentence rather than a name", () => {
+    expect(visitContext(headers({ "cf-ipcountry": "GB", "cf-ipcity": "8675309" }))).not.toHaveProperty("city");
+    expect(
+      visitContext(headers({ "cf-ipcountry": "GB", "cf-ipcity": "London<script>alert(1)</script>" })),
+    ).not.toHaveProperty("city");
+  });
+
+  // A city with no country did not come from a working location lookup, and a lone city name is the
+  // one shape of this value that would be hard to read as coarse.
+  it("never keeps a city without a country beside it", () => {
+    expect(visitContext(headers({ "cf-ipcity": "London" }))).toEqual({});
+    expect(visitContext(headers({ "cf-ipcountry": "XX", "cf-ipcity": "London" }))).toEqual({});
+  });
+
+  it("reads the browser family off the brand list, and never a version", () => {
+    const brands = (value: string) => visitContext(headers({ "sec-ch-ua": value }));
+
+    expect(brands('"Chromium";v="141", "Not?A_Brand";v="8", "Google Chrome";v="141"')).toMatchObject({
+      browser: "chrome",
+    });
+    // Both of these announce "Chromium" as well, so the specific brand has to be asked about first.
+    expect(brands('"Not/A)Brand";v="8", "Chromium";v="141", "Microsoft Edge";v="141"')).toMatchObject({
+      browser: "edge",
+    });
+    expect(brands('"Not/A)Brand";v="99", "Samsung Internet";v="27", "Chromium";v="127"')).toMatchObject({
+      browser: "samsung",
+    });
+  });
+
+  it("falls back to the agent for Safari and Firefox, which send no brands at all", () => {
+    const safari =
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
+    const firefox = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0";
+    // Every browser on iOS is Safari underneath and says so, so the ones that name themselves have
+    // to be asked about first.
+    const chromeOnIos =
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0 Mobile/15E148 Safari/604.1";
+
+    expect(visitContext(headers({ "user-agent": safari }))).toMatchObject({ browser: "safari" });
+    expect(visitContext(headers({ "user-agent": firefox }))).toMatchObject({ browser: "firefox" });
+    expect(visitContext(headers({ "user-agent": chromeOnIos }))).toMatchObject({ browser: "chrome" });
+  });
+
+  it("counts a browser it cannot name rather than losing the visit", () => {
+    expect(visitContext(headers({ "sec-ch-ua": '"Some New Engine";v="3"' }))).toMatchObject({
+      browser: "other",
+    });
+    expect(visitContext(headers({ "user-agent": "curl/8.7.1" }))).toMatchObject({ browser: "other" });
+  });
+
+  it("reads the system family off the platform hint, unquoted", () => {
+    const platform = (value: string) => visitContext(headers({ "sec-ch-ua-platform": value }));
+
+    expect(platform('"macOS"')).toMatchObject({ os: "macos" });
+    expect(platform('"Windows"')).toMatchObject({ os: "windows" });
+    expect(platform('"Android"')).toMatchObject({ os: "android" });
+    expect(platform('"iOS"')).toMatchObject({ os: "ios" });
+    expect(platform('"Linux"')).toMatchObject({ os: "linux" });
+    // A platform this list does not name. Counted, not guessed at.
+    expect(platform('"Chrome OS"')).toMatchObject({ os: "other" });
+  });
+
+  it("falls back to the agent when the platform hint is absent or says it does not know", () => {
+    const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15";
+    const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
+
+    // An iPad in mobile mode carries "Mac OS X" too, so the iPad has to be asked about first.
+    const ipad = "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15";
+
+    expect(visitContext(headers({ "user-agent": iphone }))).toMatchObject({ os: "ios" });
+    expect(visitContext(headers({ "user-agent": ipad }))).toMatchObject({ os: "ios" });
+    expect(visitContext(headers({ "user-agent": mac }))).toMatchObject({ os: "macos" });
+    expect(
+      visitContext(headers({ "sec-ch-ua-platform": '"Unknown"', "user-agent": mac })),
+    ).toMatchObject({ os: "macos" });
+  });
+
+  it("says nothing about the browser or the system of a request that carries neither", () => {
+    const context = visitContext(headers({ "cf-ipcountry": "GB" }));
+
+    expect(context).not.toHaveProperty("browser");
+    expect(context).not.toHaveProperty("os");
+  });
+
   // Never the IP, and never the agent string itself. Both are read on the way past and neither is
-  // kept: what comes out is a two-letter country and one word from a closed set of three.
-  it("returns nothing but a country and a device class", () => {
+  // kept: what comes out is a two-letter country, a city name, and one word from a closed set for
+  // each of the other three. No version of anything.
+  it("returns nothing but the five coarse properties", () => {
     const context = visitContext(
       headers({
         "cf-ipcountry": "GB",
+        "cf-ipcity": "London",
+        "cf-iplatitude": "51.50853",
+        "cf-iplongitude": "-0.12574",
+        "cf-postal-code": "EC1A",
+        "cf-region": "England",
+        "cf-timezone": "Europe/London",
         "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua": '"Chromium";v="141", "Google Chrome";v="141"',
+        "sec-ch-ua-platform": '"Android"',
         "x-forwarded-for": "203.0.113.7",
         "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
       }),
     );
 
-    expect(Object.keys(context).sort()).toEqual(["country", "device"]);
+    expect(Object.keys(context).sort()).toEqual(["browser", "city", "country", "device", "os"]);
+    // The finer location headers are read by nobody here. A postcode is a street and a coordinate
+    // pair is a map pin, and the only way to keep that promise is not to read them.
+    expect(JSON.stringify(context)).not.toMatch(/51\.50853|-0\.12574|EC1A|England|Europe/);
   });
 });
 

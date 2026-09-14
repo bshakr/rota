@@ -17,16 +17,18 @@ import { createTokenBucket } from "@/lib/rate-limit";
  * small.
  *
  * What it accepts: one of the THREE events a browser owns, with allowlisted properties, in a body
- * under 2 KB, at a limited rate per IP. What it does with it: adds the two things only this side can
+ * under 2 KB, at a limited rate per IP. What it does with it: adds the few things only this side can
  * know, then forwards it server-to-server to Rails behind ANALYTICS_SHARED_SECRET, which the browser
  * never sees.
  *
- * The two things: the visitor's COUNTRY and their DEVICE CLASS, read off request headers and merged
- * over the sanitised body so a client-supplied `country` or `device` can never survive. Neither is
- * an identifier and neither is derived from the IP: the country is Cloudflare's own two-letter
- * header, absent today because the domain is still DNS-only there, and the device class is one of
- * three words from a client hint. The IP is used for the rate limiter's bucket and is never stored,
- * logged or forwarded, and the user agent is matched and discarded without being kept either.
+ * Those few things are the visitor's COUNTRY, CITY, DEVICE CLASS, BROWSER FAMILY and OS FAMILY, read
+ * off request headers and merged over the sanitised body so a client-supplied one can never survive.
+ * Not one of them is an identifier and not one is derived from the IP: the country and the city are
+ * Cloudflare's own headers, and the other three are one word each from a closed set, taken from
+ * client hints. No version number is kept, of the browser or of the system. The IP is used for the
+ * rate limiter's bucket and is never stored, logged or forwarded, and the user agent is matched and
+ * discarded without being kept either. See `visitContext` in src/lib/analytics.ts, which also lists
+ * the Cloudflare location headers this app deliberately never reads.
  *
  * What it cannot do, by construction: create an event that belongs to a house. `first_text_delivered`
  * is the number this whole wave exists to measure, and the boundary that stops a visitor forging one
@@ -84,8 +86,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     return new NextResponse(null, { status: 400 });
   }
 
-  // Against the BROWSER allowlist, which is what drops a `country` or a `device` somebody posted by
-  // hand. They are not deleted afterwards; they were never copied across in the first place.
+  // Against the BROWSER allowlist, which is what drops a `country`, a `city`, a `device`, a
+  // `browser` or an `os` somebody posted by hand. They are not deleted afterwards; they were never
+  // copied across in the first place.
   const cleaned = sanitiseBrowserProperties(properties);
 
   // The one property with a closed set of values. A position we do not recognise is dropped rather

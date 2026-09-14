@@ -102,7 +102,7 @@ describe("POST /api/analytics", () => {
     }
   });
 
-  // The two properties this side derives, and the one it re-checks. Everything here is really the
+  // The five properties this side derives, and the one it re-checks. Everything here is really the
   // same question as the event allowlist above: can a stranger with curl decide what a chart says?
   describe("what the server adds to a visit", () => {
     it("reads the country off Cloudflare's header and the device off the client hint", async () => {
@@ -118,12 +118,59 @@ describe("POST /api/analytics", () => {
       });
     });
 
-    // The state in production today: the domain is DNS-only on Cloudflare, so the header is simply
-    // not there. The country is omitted rather than guessed at, and no GeoIP lookup replaces it.
+    it("reads the city, the browser family and the system family off their own headers", async () => {
+      await post(
+        { name: "landing_view", properties: { path: "/" } },
+        {
+          "cf-ipcountry": "GB",
+          "cf-ipcity": "Manchester",
+          "sec-ch-ua": '"Chromium";v="141", "Google Chrome";v="141"',
+          "sec-ch-ua-platform": '"macOS"',
+          "sec-ch-ua-mobile": "?0",
+        },
+      );
+
+      expect(forward).toHaveBeenCalledWith("landing_view", {
+        path: "/",
+        country: "GB",
+        city: "Manchester",
+        device: "desktop",
+        browser: "chrome",
+        os: "macos",
+      });
+    });
+
+    // The state in production until the zone's "Add visitor location headers" transform is on. The
+    // city is omitted rather than guessed at, and no lookup of our own stands in for it.
+    it("omits the city while Cloudflare is not sending one", async () => {
+      await post({ name: "landing_view" }, { "cf-ipcountry": "GB", "sec-ch-ua-mobile": "?0" });
+
+      expect(forward).toHaveBeenCalledWith("landing_view", { country: "GB", device: "desktop" });
+    });
+
+    it("drops a city that is not a name, and keeps the visit", async () => {
+      await post(
+        { name: "landing_view", properties: { path: "/" } },
+        { "cf-ipcountry": "GB", "cf-ipcity": "12345", "sec-ch-ua-mobile": "?0" },
+      );
+
+      expect(forward).toHaveBeenCalledWith("landing_view", {
+        path: "/",
+        country: "GB",
+        device: "desktop",
+      });
+    });
+
+    // Nothing in front of the request that knows where it came from. The country is omitted rather
+    // than guessed at, and no GeoIP lookup replaces it.
     it("omits the country when Cloudflare is not in front of the request", async () => {
       await post({ name: "landing_view" }, { "user-agent": "Mozilla/5.0 (Macintosh)" });
 
-      expect(forward).toHaveBeenCalledWith("landing_view", { device: "desktop" });
+      expect(forward).toHaveBeenCalledWith("landing_view", {
+        device: "desktop",
+        browser: "other",
+        os: "macos",
+      });
     });
 
     it("drops Cloudflare's markers for unknown and for Tor rather than charting them", async () => {
@@ -133,25 +180,61 @@ describe("POST /api/analytics", () => {
     });
 
     // The point of deriving them here. A country the browser supplied would be a country the
-    // browser made up, and the traffic page's country column would be a chart of whatever a script
-    // felt like claiming.
-    it("refuses to take the sender's word for the country or the device", async () => {
+    // browser made up, and the traffic page's columns would be a chart of whatever a script felt
+    // like claiming.
+    it("refuses to take the sender's word for any of the five", async () => {
       await post(
-        { name: "landing_view", properties: { country: "US", device: "desktop", path: "/" } },
-        { "cf-ipcountry": "GB", "sec-ch-ua-mobile": "?1" },
+        {
+          name: "landing_view",
+          properties: {
+            country: "US",
+            city: "Atlantis",
+            device: "desktop",
+            browser: "firefox",
+            os: "linux",
+            path: "/",
+          },
+        },
+        {
+          "cf-ipcountry": "GB",
+          "cf-ipcity": "London",
+          "sec-ch-ua-mobile": "?1",
+          "sec-ch-ua": '"Chromium";v="141", "Google Chrome";v="141"',
+          "sec-ch-ua-platform": '"Android"',
+        },
       );
 
       expect(forward).toHaveBeenCalledWith("landing_view", {
         path: "/",
         country: "GB",
+        city: "London",
         device: "mobile",
+        browser: "chrome",
+        os: "android",
       });
     });
 
-    it("keeps a claimed country out even when it has no header of its own to use", async () => {
-      await post({ name: "landing_view", properties: { country: "US", device: "tablet" } });
+    it("keeps a claimed property out even when it has no header of its own to use", async () => {
+      await post({
+        name: "landing_view",
+        properties: { country: "US", city: "Atlantis", device: "tablet", browser: "safari", os: "ios" },
+      });
 
       expect(forward).toHaveBeenCalledWith("landing_view", {});
+    });
+
+    // The invariant the privacy page rests on. The agent string is matched for the families above
+    // and goes no further: it is not stored, not logged and not forwarded, and neither is the IP the
+    // rate limiter bucketed the request under.
+    it("never forwards the user agent or the IP it read on the way past", async () => {
+      const agent =
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+
+      await post({ name: "landing_view" }, { "user-agent": agent, "x-forwarded-for": "203.0.113.7" });
+
+      const [, properties] = forward.mock.calls.at(-1)!;
+      expect(properties).toEqual({ device: "mobile", browser: "safari", os: "ios" });
+      expect(JSON.stringify(properties)).not.toMatch(/Mozilla|AppleWebKit|203\.0\.113\.7/);
     });
 
     it("forwards a referrer host the page derived", async () => {
