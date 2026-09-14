@@ -60,6 +60,20 @@ RSpec.describe "Super admin traffic" do
     expect(landing["note"]).to eq(SuperAdmin::Traffic::LANDING_VIEW_NOTE)
   end
 
+  it "publishes where the visits came from, under the funnel" do
+    create(:analytics_event, name: "landing_view", occurred_at: 1.day.ago,
+                             properties: { "referrer_host" => "reddit.com", "device" => "mobile" })
+
+    get "/api/super_admin/traffic", headers: operator_headers
+
+    visits = response.parsed_body["visits"]
+    expect(visits["referrers"]).to eq([ { "host" => "reddit.com", "count" => 1 } ])
+    expect(visits["devices"]).to eq([ { "device" => "mobile", "count" => 1 } ])
+    # The header is not sent while the domain is DNS-only on Cloudflare, so this is the state in
+    # production today. Empty, and the page says why rather than drawing a blank chart.
+    expect(visits["countries"]).to eq([])
+  end
+
   it "reads across every house, which is the whole point of the surface" do
     first = create(:group)
     second = create(:group)

@@ -3,9 +3,11 @@ import type { BarTone } from "@/components/charts/bars";
 import {
   DEFAULT_TRAFFIC_RANGE,
   TRAFFIC_RANGES,
+  type DeviceClass,
   type TextKind,
   type TrafficFunnelStep,
   type TrafficRange,
+  type VisitDimension,
 } from "./api/super-admin-traffic";
 import { formatCalendarDate } from "./date";
 import { FUNNEL_STEP_LABELS, formatRate, plural } from "./hq-overview";
@@ -149,6 +151,67 @@ export function medianHoursNote(hours: number | null, sample: number): string {
 export function leakNote(count: number): string {
   if (count === 0) return "Everybody who signed in made a house";
   return "Got through the door and no further";
+}
+
+// --- Where the visits came from ---------------------------------------------
+
+/**
+ * The three columns under the funnel, and what each says when it is empty.
+ *
+ * The empty states are the point of this constant. An empty column has three
+ * quite different causes here and they must not read alike:
+ *
+ *   referrers  nobody was linked here, or everybody arrived directly. A direct
+ *              visit carries no referrer at all, so an empty column is normal
+ *              for a site whose traffic is word of mouth.
+ *   countries  NOT a fact about traffic. The `cf-ipcountry` header only arrives
+ *              once the domain is proxied through Cloudflare, and it is DNS-only
+ *              there today, so this column is empty however many people visit.
+ *              Saying "no countries" would read as "nobody visited", which is
+ *              false and is exactly the misreading the funnel's step 1 above it
+ *              would then confirm.
+ *   devices    nobody visited, near enough: every request carries a user agent
+ *              or a client hint, so a visit almost always lands in one of three
+ *              buckets.
+ */
+export const VISIT_COLUMNS: Record<VisitDimension, { heading: string; empty: string }> = {
+  referrers: {
+    heading: "Which site linked here",
+    empty: "Nothing linked here in this window. A visit typed in or tapped from a text carries no referrer.",
+  },
+  countries: {
+    heading: "Country",
+    empty: "Country arrives once the site is behind the Cloudflare proxy. The header is not sent while the domain is DNS-only there.",
+  },
+  devices: {
+    heading: "Device",
+    empty: "No visit in this window.",
+  },
+};
+
+/**
+ * The three device classes in the product's own words, which are the words the
+ * privacy page uses for the same three: a phone, a tablet or a computer.
+ */
+export const DEVICE_LABELS: Record<DeviceClass, string> = {
+  mobile: "Phone",
+  tablet: "Tablet",
+  desktop: "Computer",
+};
+
+/**
+ * The line under the three columns: how much of step 1 they could account for.
+ *
+ * Every column leaves out the visits its property was missing from, so the rows
+ * never add up to the funnel's first bar, and a reader who notices that is owed
+ * the reason rather than left to assume the page is broken. One decimal, like
+ * every other rate here.
+ */
+export function visitsCoverageNote(counted: number, views: number): string {
+  if (views === 0) return "No visit was counted in this window";
+
+  const share = formatRate((counted / views) * 100);
+  return `${counted} of ${views} ${plural(views, "visit", "visits")} said which site linked here (${share}). The rest arrived directly.`;
 }
 
 // --- The weekly series ------------------------------------------------------

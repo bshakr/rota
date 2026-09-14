@@ -4,10 +4,12 @@ import { emptyTrafficPayload, trafficPayload as payload } from "@/test/traffic-p
 
 import { FUNNEL_STEPS } from "./super-admin-overview";
 import {
+  DEVICE_CLASSES,
   TEXT_KINDS,
   TRAFFIC_FUNNEL_STEPS,
   TRAFFIC_RANGES,
   TrafficShapeError,
+  VISIT_DIMENSIONS,
   WEEK_SERIES,
   isTrafficShapeError,
   parseTraffic,
@@ -25,8 +27,13 @@ import {
 //                  texts_settled, delivery_rate, covers, active_houses, active_users,
 //                  members_last_seen, new_houses
 //
+//     VISIT_DIMENSIONS = { referrers:, countries:, devices: }
+//
 //   apps/api/app/models/sms_message.rb
 //     KINDS = { reminder:, cover_notice:, member_login: }
+//
+//   apps/api/app/models/analytics_event.rb
+//     DEVICE_CLASSES = %w[mobile tablet desktop]
 //
 // Hardcoded rather than read off disk on purpose, exactly as
 // super-admin-overview.test.ts does it. The point is not to re-derive the lists
@@ -46,6 +53,8 @@ const RUBY_STEPS = [
   "first_cover",
 ];
 const RUBY_KINDS = ["reminder", "cover_notice", "member_login"];
+const RUBY_VISIT_DIMENSIONS = ["referrers", "countries", "devices"];
+const RUBY_DEVICE_CLASSES = ["mobile", "tablet", "desktop"];
 const RUBY_WEEK_KEYS = [
   "week_starting",
   "texts_sent",
@@ -209,5 +218,55 @@ describe("parseTraffic", () => {
     const traffic = parseTraffic(payload());
 
     expect(traffic.funnel[3].rate_from_previous).toBe(107.3);
+  });
+
+  describe("where the visits came from", () => {
+    it("names the three columns Rails names", () => {
+      expect([...VISIT_DIMENSIONS]).toEqual(RUBY_VISIT_DIMENSIONS);
+      expect([...DEVICE_CLASSES]).toEqual(RUBY_DEVICE_CLASSES);
+    });
+
+    it("narrows each column to its own row shape", () => {
+      const traffic = parseTraffic(payload());
+
+      expect(traffic.visits.referrers[0]).toEqual({ host: "news.ycombinator.com", count: 341 });
+      expect(traffic.visits.devices[0]).toEqual({ device: "mobile", count: 806 });
+    });
+
+    // Empty is the state of production today: the domain is DNS-only on
+    // Cloudflare, so no visit carries a country. A schema that demanded a row
+    // would turn that into a blank dashboard.
+    it("accepts a column with nothing in it", () => {
+      expect(parseTraffic(payload()).visits.countries).toEqual([]);
+      expect(parseTraffic(emptyTrafficPayload()).visits.devices).toEqual([]);
+    });
+
+    // `device` is a closed set in Rails, so a fourth word is a deploy skew rather
+    // than a new kind of visitor, and the page has no label to draw it with.
+    it("refuses a device class nobody defined", () => {
+      const body = payload();
+      const visits = { ...body.visits, devices: [{ device: "fridge", count: 1 }] };
+
+      expect(() => parseTraffic({ ...body, visits })).toThrow(TrafficShapeError);
+    });
+
+    it("refuses more rows than Rails will ever send", () => {
+      const body = payload();
+      const referrers = Array.from({ length: 11 }, (_, index) => ({
+        host: `host${index}.example.com`,
+        count: 1,
+      }));
+
+      expect(() => parseTraffic({ ...body, visits: { ...body.visits, referrers } })).toThrow(
+        TrafficShapeError,
+      );
+    });
+
+    it("refuses a payload with no visits at all, which is a deploy skew", () => {
+      const body: Record<string, unknown> = payload();
+      delete body.visits;
+
+      expect(() => parseTraffic(body)).toThrow(/visits/);
+    });
   });
 });

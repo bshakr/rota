@@ -560,6 +560,65 @@ RSpec.describe SuperAdmin::Traffic do
     end
   end
 
+  # Under the funnel: where step 1's visits actually came from. Three columns, each the top values of
+  # one coarse property on the landing views in the window.
+  describe "where the visits came from" do
+    def view(at: now - 1.day, **properties)
+      create(:analytics_event, name: "landing_view", occurred_at: at,
+                               properties: AnalyticsEvent.sanitise_properties(properties))
+    end
+
+    it "lists the referrer hosts, countries and device classes, commonest first" do
+      2.times { view(referrer_host: "reddit.com", country: "GB", device: "mobile") }
+      view(referrer_host: "news.ycombinator.com", country: "US", device: "desktop")
+
+      visits = result[:visits]
+
+      expect(visits[:referrers]).to eq([
+        { host: "reddit.com", count: 2 },
+        { host: "news.ycombinator.com", count: 1 }
+      ])
+      expect(visits[:countries]).to eq([ { code: "GB", count: 2 }, { code: "US", count: 1 } ])
+      expect(visits[:devices]).to eq([ { device: "mobile", count: 2 }, { device: "desktop", count: 1 } ])
+    end
+
+    # The missing rows are not bucketed here. Step 1 above is the total they are all shares of, so
+    # the gap between the funnel's count and a column's sum IS the "we could not see" figure.
+    it "leaves out a view the property is missing from rather than giving it a row" do
+      view(device: "mobile")
+      view(referrer_host: "reddit.com", device: "mobile")
+
+      expect(funnel_step("landing_views")[:count]).to eq(2)
+      expect(result[:visits][:referrers]).to eq([ { host: "reddit.com", count: 1 } ])
+      expect(result[:visits][:countries]).to be_empty
+    end
+
+    it "counts the landing views and no other event name" do
+      view(referrer_host: "reddit.com")
+      create(:analytics_event, name: "cta_click", occurred_at: now - 1.day,
+                               properties: { "referrer_host" => "reddit.com" })
+
+      expect(result[:visits][:referrers]).to eq([ { host: "reddit.com", count: 1 } ])
+    end
+
+    it "leaves out a view from outside the window" do
+      view(at: now - 31.days, referrer_host: "reddit.com")
+      view(at: now - 2.days, referrer_host: "news.ycombinator.com")
+
+      expect(result[:visits][:referrers]).to eq([ { host: "news.ycombinator.com", count: 1 } ])
+    end
+
+    it "shows the ten commonest referrers and no more" do
+      12.times { |index| view(referrer_host: "host#{index}.example.com") }
+
+      expect(result[:visits][:referrers].length).to eq(described_class::VISIT_ROWS_SHOWN)
+    end
+
+    it "publishes three empty lists when nobody visited" do
+      expect(result[:visits]).to eq(referrers: [], countries: [], devices: [])
+    end
+  end
+
   describe "the number of questions it asks the database" do
     def queries_during
       statements = []

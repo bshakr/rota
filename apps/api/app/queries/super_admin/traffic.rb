@@ -83,6 +83,17 @@ module SuperAdmin
     # Enough to see the shape of a delivery problem without turning the page into a Twilio manual.
     FAILURE_CODES_SHOWN = 5
 
+    # The three coarse properties a landing view carries, as the payload spells them, mapped to the
+    # key each row publishes its value under. The page draws one column per entry.
+    VISIT_DIMENSIONS = {
+      "referrers" => { property: "referrer_host", key: :host },
+      "countries" => { property: "country", key: :code },
+      "devices" => { property: "device", key: :device }
+    }.freeze
+
+    # A long tail of one-view referrers is not a finding. Ten is a column somebody reads.
+    VISIT_ROWS_SHOWN = 10
+
     # Every kind, from the model's own constant, so a fourth kind of text cannot silently fall out
     # of the stacked bars.
     KINDS = SmsMessage::KINDS.values.map(&:to_sym).freeze
@@ -279,6 +290,65 @@ module SuperAdmin
       GROUP BY week_start
     SQL
 
+    # Where the visits in the window came from, three ways, in one round trip.
+    #
+    # Landing views only. A `cta_click` fires on a page whose referrer is our own, and counting those
+    # would put Rota Monster at the top of its own referrer table.
+    #
+    # A row with the property MISSING is left out of every branch rather than bucketed. The three
+    # columns each publish what they could see, and the funnel's own step 1 above them is the total
+    # they are shares of, so the gap between the two IS the missing count and does not need a row of
+    # its own. That matters most for `country`, which is absent from every row today: the domain is
+    # still DNS-only on Cloudflare, the `cf-ipcountry` header is not sent, and the page says so in
+    # that column's empty state rather than drawing an empty chart and leaving it unexplained.
+    #
+    # The LIMIT is a constant of this file rather than a bind, because it is not a parameter: no
+    # caller chooses it and no request reaches it. Every value that DOES come from outside is bound
+    # by name, like everywhere else here.
+    VISITS_SQL = <<~SQL.freeze
+      (
+        SELECT 'referrers' AS dimension,
+               analytics_events.properties ->> 'referrer_host' AS value,
+               COUNT(*) AS count
+        FROM analytics_events
+        WHERE analytics_events.name = 'landing_view'
+          AND analytics_events.occurred_at >= :starts_at
+          AND analytics_events.occurred_at <= :ends_at
+          AND analytics_events.properties ->> 'referrer_host' IS NOT NULL
+        GROUP BY 2
+        ORDER BY COUNT(*) DESC, 2 ASC
+        LIMIT #{VISIT_ROWS_SHOWN}
+      )
+      UNION ALL
+      (
+        SELECT 'countries',
+               analytics_events.properties ->> 'country',
+               COUNT(*)
+        FROM analytics_events
+        WHERE analytics_events.name = 'landing_view'
+          AND analytics_events.occurred_at >= :starts_at
+          AND analytics_events.occurred_at <= :ends_at
+          AND analytics_events.properties ->> 'country' IS NOT NULL
+        GROUP BY 2
+        ORDER BY COUNT(*) DESC, 2 ASC
+        LIMIT #{VISIT_ROWS_SHOWN}
+      )
+      UNION ALL
+      (
+        SELECT 'devices',
+               analytics_events.properties ->> 'device',
+               COUNT(*)
+        FROM analytics_events
+        WHERE analytics_events.name = 'landing_view'
+          AND analytics_events.occurred_at >= :starts_at
+          AND analytics_events.occurred_at <= :ends_at
+          AND analytics_events.properties ->> 'device' IS NOT NULL
+        GROUP BY 2
+        ORDER BY COUNT(*) DESC, 2 ASC
+        LIMIT #{VISIT_ROWS_SHOWN}
+      )
+    SQL
+
     # The two weekly counts that are plain counts, in one round trip. `members_last_seen` is
     # housemates who opened their magic link — the only signal that the link ever arrived — and
     # `new_houses` is the top of the funnel drawn week by week.
@@ -368,6 +438,8 @@ module SuperAdmin
         median_hours_to_first_text: median(hours_to_first_text),
         median_hours_sample: hours_to_first_text.length,
         signed_in_without_house: signed_in_without_house,
+        # Under the funnel: where step 1's visits actually came from.
+        visits: visits,
         weeks: weeks,
         failures: failures
       }
@@ -458,6 +530,27 @@ module SuperAdmin
       SignIn.where(created_at: window.range)
         .where.not(user_id: GroupAdmin.select(:user_id))
         .distinct.count(:user_id)
+    end
+
+    # --- where the visits came from -----------------------------------------------------------------
+
+    # Three lists, each worst-to-best by count, each at most VISIT_ROWS_SHOWN long.
+    #
+    # Sorted again in Ruby rather than trusted from the UNION. Each branch orders and limits itself,
+    # which is what keeps the long tail out of the round trip, but Postgres does not promise the
+    # order of a UNION's result and a column whose rows quietly reshuffled between two reads of the
+    # same data would be a chart nobody could compare with itself. Thirty rows is nothing to sort.
+    def visits
+      rows = each_row(VISITS_SQL, "SuperAdmin::Traffic visits").group_by { |row| row["dimension"] }
+
+      VISIT_DIMENSIONS.to_h do |dimension, spec|
+        list = rows.fetch(dimension, [])
+          .map { |row| [ row["value"], row["count"].to_i ] }
+          .sort_by { |value, count| [ -count, value ] }
+          .map { |value, count| { spec.fetch(:key) => value, count: count } }
+
+        [ dimension.to_sym, list ]
+      end
     end
 
     # --- the weekly series ------------------------------------------------------------------------

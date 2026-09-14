@@ -171,6 +171,37 @@ const weekSchema = z.object({
   new_houses: count,
 });
 
+/**
+ * The three coarse properties a landing view carries, as the payload spells
+ * them. MUST stay in step with `SuperAdmin::Traffic::VISIT_DIMENSIONS`.
+ */
+export const VISIT_DIMENSIONS = ["referrers", "countries", "devices"] as const;
+export type VisitDimension = (typeof VISIT_DIMENSIONS)[number];
+
+/** One of `AnalyticsEvent::DEVICE_CLASSES`, which is the closed set Rails stores. */
+export const DEVICE_CLASSES = ["mobile", "tablet", "desktop"] as const;
+export type DeviceClass = (typeof DEVICE_CLASSES)[number];
+
+/**
+ * Where the visits in the window came from, three ways, worst to best by count
+ * and at most ten rows each.
+ *
+ * A visit the property is MISSING from is not in any of these lists, and that is
+ * deliberate rather than a gap: the funnel's first step above them is the total
+ * they are all shares of, so the difference between it and a column's sum is the
+ * "we could not see" figure without a row that would otherwise top every chart.
+ *
+ * `countries` is empty in production today. The domain is DNS-only on
+ * Cloudflare, so the `cf-ipcountry` header is never sent and no visit carries a
+ * country. That is a configuration fact, not an absence of traffic, and the
+ * page's empty state for that column has to say which.
+ */
+const visitsSchema = z.object({
+  referrers: z.array(z.object({ host: z.string(), count })).max(10),
+  countries: z.array(z.object({ code: z.string(), count })).max(10),
+  devices: z.array(z.object({ device: z.enum(DEVICE_CLASSES), count })).max(10),
+});
+
 const failuresSchema = z.object({
   /** Every failed text in the range, including the ones that carry no code. */
   total: count,
@@ -252,6 +283,9 @@ export const trafficSchema = z.object({
   /** Signed in during the window and has no house at all, as of now. The leak. */
   signed_in_without_house: count,
 
+  /** Where the funnel's first step came from: referrer, country, device class. */
+  visits: visitsSchema,
+
   /**
    * Every week the window touches, oldest first, zero-filled. A chart with a
    * hole in it reads as missing data rather than as a quiet week.
@@ -279,6 +313,7 @@ export type SuperAdminTraffic = z.infer<typeof trafficSchema>;
 export type TrafficFunnelRow = z.infer<typeof funnelStepSchema>;
 export type TrafficWeek = z.infer<typeof weekSchema>;
 export type TrafficFailures = z.infer<typeof failuresSchema>;
+export type TrafficVisits = z.infer<typeof visitsSchema>;
 
 /**
  * The API answered, but not with the payload this page knows how to read.

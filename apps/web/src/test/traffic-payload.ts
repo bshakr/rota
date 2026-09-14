@@ -241,6 +241,34 @@ export function trafficPayload() {
 
     // 45 coded failures plus 5 with no code = the 50 failed texts in the weeks
     // above. The shares are of 50, so the five rows add up to 90%, not 100.
+    /**
+     * Where those 1420 visits came from. The referrers add up to 812, well short
+     * of 1420, because a direct arrival carries no referrer at all: the panel's
+     * own coverage line is what explains the gap, and a fixture whose columns
+     * summed to the funnel's step 1 would never exercise it.
+     *
+     * `countries` is EMPTY on purpose. It is the state of production today —
+     * the domain is DNS-only on Cloudflare, so the `cf-ipcountry` header is
+     * never sent — and the one empty state on this page that must not read as
+     * "nobody visited". A fixture that filled it in would photograph a column
+     * that does not exist yet.
+     */
+    visits: {
+      referrers: [
+        { host: "news.ycombinator.com", count: 341 },
+        { host: "www.google.com", count: 228 },
+        { host: "www.reddit.com", count: 146 },
+        { host: "t.co", count: 61 },
+        { host: "mumsnet.com", count: 36 },
+      ],
+      countries: [],
+      devices: [
+        { device: "mobile", count: 806 },
+        { device: "desktop", count: 559 },
+        { device: "tablet", count: 55 },
+      ],
+    },
+
     failures: {
       total: 50,
       uncoded: 5,
@@ -276,6 +304,7 @@ export function emptyTrafficPayload() {
     median_hours_to_first_text: null,
     median_hours_sample: 0,
     signed_in_without_house: 0,
+    visits: { referrers: [], countries: [], devices: [] },
     weeks: payload.weeks.map((w) => ({
       ...w,
       texts_sent: 0,
