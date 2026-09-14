@@ -32,6 +32,15 @@ RSpec.describe "Super admin redaction" do
     cover_shift = create(:shift, rota: rota, assigned_member: members.first, due_on: Date.current + 30)
     send_now(create(:sms_message, :cover_notice, shift: cover_shift, member: members.second))
     send_now(SmsMessage.create!(member: members.third, kind: :member_login))
+
+    # And then one of those reminders comes back failed — marked after the send, so it keeps the
+    # body a phone would have received, magic link and all.
+    #
+    # Not decoration. The group page's report carries the house's FAILED texts a second time, as
+    # the input the house's own dashboard warnings are computed from (SuperAdmin::WarningsInput),
+    # and with an all-`sent` fixture that list is empty in every example in this file — a hole in
+    # the net at exactly the place a new body reaches the operator.
+    SmsMessage.reminder.order(:id).first.update_columns(status: "failed", error_code: "30006")
   end
 
   # A fresh stub per send: `twilio_sid` is unique, so replaying one SID would fail the second
@@ -59,7 +68,18 @@ RSpec.describe "Super admin redaction" do
   it "sent texts that really do carry a magic link, or this spec proves nothing" do
     expect(SmsMessage.pluck(:body)).to all(include("/s/"))
     expect(SmsMessage.count).to eq(5)
-    expect(SmsMessage.pluck(:status).uniq).to eq([ "sent" ])
+    expect(SmsMessage.pluck(:status).uniq).to match_array(%w[sent failed])
+  end
+
+  # The second place a body reaches the operator on the group page. Asserted non-empty here so that
+  # the two greps below — for the token and for the path — are actually reading it.
+  it "carries a failed text in the warnings input, or the greps below are reading an empty list" do
+    get "/api/super_admin/groups/#{group.id}", headers: headers
+
+    failed = response.parsed_body.dig("report", "warnings_input", "failed_sms")
+
+    expect(failed.length).to eq(1)
+    expect(failed.first.fetch("body")).to be_present
   end
 
   it "never returns a member's access token, on any super admin endpoint" do

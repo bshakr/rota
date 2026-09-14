@@ -5,7 +5,15 @@ module SuperAdmin
   # reason every serializer in this namespace is: the two audiences are not the same, and a
   # serializer that can be asked for either shape is one argument away from handing out the wrong
   # one. This one carries counts and a status the house never sees; that one carries the house's
-  # own calendar link, which is none of the operator's business.
+  # own calendar card, which this one has no column for.
+  #
+  # That is a statement about THIS class, not about the whole operator payload. Since BLO-1679 the
+  # group page also carries `report.warnings_input.group`, which IS the house's own serializer, so
+  # the operator does see the calendar's STATE — `failing`, `last_error`, `masked_url`, the counts
+  # — because that is what one of the five dashboard warnings is made of and the operator is
+  # promised the same warnings the house admin gets. The credential is a different matter and is
+  # never anywhere near either payload: `ical_url` leaves the server masked or not at all
+  # (CalendarConnectionSerializer), for the same reason a member's `access_token` does not.
   #
   # The counts are not read off the record — they come from SuperAdmin::GroupStats, computed once
   # for the whole page, which is why `one` and `many` take it rather than finding it themselves.
