@@ -1,4 +1,4 @@
 class ApplicationMailer < ActionMailer::Base
-  default from: "hello@rota.monster"
+  default from: "hello@bloombase.studio"
   layout "mailer"
 end
