@@ -131,14 +131,18 @@ housemate's own feed.
 ```
 bin/rails "analytics:funnel[30]"     # every step, each as a percentage of the one before,
                                      # plus the number that matters
-bin/rails "analytics:sources[30]"    # houses named, grouped by ref and utm_source
+bin/rails "analytics:sources[30]"    # houses named, grouped by ref and utm_source, then the
+                                     # landing views by referrer, country and device
 ```
 
 Quote the task name in zsh: brackets are globs. The argument is a number of days and defaults to 7.
 Rates print to one decimal, never rounded to a whole percent.
 
-A super admin page for all of this is a follow-up ticket. These tasks exist so the numbers are
-readable the day the events start arriving rather than the day a screen is built for them.
+`analytics:sources` prints four tables. The first is first touch, which is about the visits that
+became HOUSES. The three under it are about the visits themselves, each with a `(none)` row for the
+views the property is missing from: a direct arrival has no referrer, and no visit has a country
+until the site is behind the Cloudflare proxy. The super admin traffic page draws the same three in
+its "Where visits come from" panel.
 
 ## Retention
 

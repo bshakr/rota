@@ -38,24 +38,60 @@ namespace :analytics do
     puts "  This is the number to know before buying or posting anywhere."
   end
 
-  desc "Houses named in the last N days (default 7), grouped by where they came from"
+  # What each landing-view table is called. Presentation, so it lives here rather than in the report.
+  VISIT_TABLES = {
+    "referrer_host" => "Which site linked here",
+    "country" => "Country",
+    "device" => "Device"
+  }.freeze
+
+  desc "Where the last N days (default 7) came from: houses by first touch, visits by referrer, country and device"
   task :sources, [ :days ] => :environment do |_task, args|
     days = Integer(args[:days] || 7)
+    window = "last #{days} #{'day'.pluralize(days)}"
     rows = AnalyticsReport.sources(days: days)
 
-    puts "Houses named, last #{days} #{'day'.pluralize(days)}, by first touch"
+    puts "Houses named, #{window}, by first touch"
     puts
 
     if rows.empty?
       puts "  No houses named in this window."
-      next
+    else
+      rows.each do |row|
+        label = [ row[:ref] && "ref=#{row[:ref]}", row[:utm_source] && "utm_source=#{row[:utm_source]}" ]
+          .compact.join("  ").presence || "(direct, no campaign)"
+        puts "  #{row[:count].to_s.rjust(6)}  #{label}"
+      end
     end
 
-    rows.each do |row|
-      label = [ row[:ref] && "ref=#{row[:ref]}", row[:utm_source] && "utm_source=#{row[:utm_source]}" ]
-        .compact.join("  ").presence || "(direct, no campaign)"
-      puts "  #{row[:count].to_s.rjust(6)}  #{label}"
+    visits = AnalyticsReport.visit_sources(days: days)
+    views = visits.values.first[:total]
+
+    puts
+    puts "Landing views, #{window}: #{views} #{'view'.pluralize(views)}"
+
+    VISIT_TABLES.each do |key, heading|
+      table = visits.fetch(key)
+      puts
+      puts "  #{heading}"
+
+      printable = table[:top].map { |row| [ row[:count], row[:value] ] }
+      # Always last, whatever its size. It is the row that says what the table above it cannot see —
+      # a direct visit, or a country header that is not arriving — and reading it as the winner of a
+      # ranking would be the wrong way round.
+      printable << [ table[:none], "(none)" ] if table[:none].positive?
+
+      if printable.empty?
+        puts "    Nothing to show for this window."
+      else
+        printable.each { |count, label| puts "    #{count.to_s.rjust(6)}  #{label}" }
+      end
     end
+
+    puts
+    puts "  (none) is a visit the property is missing from. A direct arrival for the referrer, and"
+    puts "  every visit for the country until the site sits behind the Cloudflare proxy: the header"
+    puts "  is not sent while the domain is DNS-only there."
   end
 
   desc "Delete anonymous events older than N days (default 180). A house's own events are kept."
