@@ -8,6 +8,16 @@
 # 24h staleness window; the day-of reminder is best-effort within its own calendar day (see
 # ReminderSweep). It is never a lost multi-day reminder, only a late one.
 class ReminderSweepJob < ApplicationJob
+  # A check-in per run, so that "the sweep did not happen at all" is an alert rather than a silence.
+  # The per-rota rescue below cannot answer that question: a worker that is down raises nothing,
+  # reports nothing, and simply produces no events. A missed check-in is the only shape that failure
+  # has. The margin is 15 minutes, which survives a deploy landing on the hour and still catches a
+  # dead worker well before the next send hour. Every Sentry.capture_check_in is a no-op with no
+  # DSN, so development and the specs are unaffected.
+  include Sentry::Cron::MonitorCheckIns
+  sentry_monitor_check_ins slug: "reminder-sweep",
+    monitor_config: Sentry::Cron::MonitorConfig.from_interval(1, :hour, checkin_margin: 15, max_runtime: 30, timezone: "UTC")
+
   queue_as :default
 
   # Wrapped in a JobRun so the operator dashboard can answer "when did the sweep last finish?".
@@ -37,12 +47,12 @@ class ReminderSweepJob < ApplicationJob
       # another's reminders. Report it and carry on; the next hourly run picks the rota up again once
       # it is fixed, and a missed hour is exactly what the reconciliation is built to heal.
       #
-      # Log as well as report, and do not drop the log line as duplication. `Rails.error` has no
-      # subscribers in this app yet, so `report` alone is a no-op — a rescue that swallowed a house's
-      # reminders in silence and still finished GREEN would turn "the sweep is broken" into a bug
-      # whose first symptom is a house that quietly stopped being texted. The log line is the only
-      # thing that makes this visible today; `report` is what carries it to Sentry once a subscriber
-      # exists.
+      # Log as well as report, and do not drop the log line as duplication. `report` now reaches
+      # somebody: sentry-rails registers a subscriber on `Rails.error` (see
+      # config/initializers/sentry.rb), so this becomes an issue in the api project, tagged with the
+      # source below. The log line stays because it answers a different question — Sentry says a rota
+      # broke, the Railway log says what else this process was doing in the same hour — and because
+      # the reporter is disabled in development and test, where the log line is still the whole alarm.
       Rails.logger.error("ReminderSweepJob failed for rota #{rota.id}: #{e.class}: #{e.message}")
       Rails.error.report(e, context: { rota_id: rota.id }, source: "rotamonster.reminder_sweep")
     end

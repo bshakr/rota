@@ -132,4 +132,19 @@ RSpec.describe BackfillSmsPricesJob do
     # that silently never runs.
     expect(Fugit.parse(entry["schedule"])).to be_a(Fugit::Cron)
   end
+  # A rename here silently orphans the Sentry monitor: the old slug stops checking in and starts
+  # alerting, and the new one quietly creates a second monitor nobody is watching. Cheap to assert.
+  describe "the cron monitor" do
+    it "checks in under the slug the monitor was created with" do
+      expect(described_class.sentry_monitor_slug).to eq("backfill-sms-prices")
+    end
+
+    it "declares the schedule a missed check-in is measured against" do
+      expect(described_class.sentry_monitor_config.to_h).to include(
+        schedule: { type: :crontab, value: "40 4 * * *" },
+        checkin_margin: 60,
+        timezone: "UTC"
+      )
+    end
+  end
 end

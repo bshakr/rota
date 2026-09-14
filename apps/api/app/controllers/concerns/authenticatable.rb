@@ -40,6 +40,12 @@ module Authenticatable
     # We could not reach WorkOS, so we do not know whether this token is good. 401 would be a lie
     # that logs every admin out of the app; 503 says what is true, and Next.js can retry.
     logger.error("WorkOS key set unavailable: #{e.message}")
+    # Every admin in every house is locked out for as long as this lasts, and nothing else in the
+    # system will notice: the log line says so to whoever is already reading the log. Reported on
+    # every refused request on purpose. Sentry groups them into one issue, and the project rate limit
+    # is what bounds the cost of an outage; throttling it here would only make the first minute of a
+    # real outage look like a blip.
+    Rails.error.report(e, handled: true, severity: :warning, source: "rotamonster.workos")
     render json: { error: "service_unavailable" }, status: :service_unavailable
   end
 

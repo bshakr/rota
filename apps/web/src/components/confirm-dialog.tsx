@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import * as Sentry from "@sentry/nextjs";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -66,7 +67,11 @@ export function ConfirmDialog({
       // telling them what failed (a toast); we only make sure a rejected
       // onConfirm doesn't surface as an unhandled promise rejection, since this
       // runs from an onClick React does not await.
-      console.error(error);
+      //
+      // It is reported rather than logged because this catch sits on the
+      // consequential actions — removing a member, deleting a rota — and a
+      // console line in somebody else's browser is a failure nobody ever sees.
+      Sentry.captureException(error);
     } finally {
       setPending(false);
     }

@@ -13,6 +13,10 @@ Household member access: [`docs/household-entry.md`](docs/household-entry.md)
 explains sharing the `/h/<slug>` entry link from dashboard settings, requesting
 personal links by SMS, delivery limits, and API-first rollout checks.
 
+Error reporting: [`docs/sentry-error-logging.md`](docs/sentry-error-logging.md) is the
+production readiness plan for Sentry on both apps, including the privacy rules for what
+may never reach it (member tokens, phone numbers, session credentials).
+
 ## Layout
 
 ```

@@ -22,6 +22,21 @@ class SendSmsJob < ApplicationJob
     # can answer "why didn't Alice get her text" with a carrier code rather than a shrug. A transient
     # failure released the claim back to `pending` before re-raising, so the row is claimable here.
     job.class.record_failure(job.arguments.first, error.error_code)
+
+    # Log and report, never one or the other. Five refused attempts at texting one person is a
+    # carrier problem or a bug, and the SMS log only answers it for somebody who already suspects
+    # something is wrong. Reported here rather than per attempt (see active_job_report_on_retry_error
+    # in config/initializers/sentry.rb): one wobble should not page anybody five times.
+    Rails.logger.error(
+      "SendSmsJob(#{job.arguments.first}) gave up after #{job.executions} attempts: #{error.class}: #{error.error_code}"
+    )
+    Rails.error.report(
+      error,
+      handled: true,
+      severity: :warning,
+      context: { sms_message_id: job.arguments.first, error_code: error.error_code },
+      source: "rotamonster.sms"
+    )
   end
 
   # Records a terminal failure without ever raising itself: the last thing the failure path should do
@@ -78,11 +93,33 @@ class SendSmsJob < ApplicationJob
     # A bad number, a blocked recipient, a template we cannot render. Retrying would ask Twilio the
     # same question five times and get the same answer.
     self.class.record_failure(sms_message_id, e.error_code, body: body)
+
+    # A template that cannot be rendered should have been refused when the rota was saved. Reaching
+    # send time means the model validation has a hole in it, and the house whose reminder this was
+    # has just silently not been texted. The other permanent failures are the world being itself (a
+    # disconnected number, a recipient who blocked us) and belong in the SMS log, not in an issue.
+    if e.error_code == SmsMessage::INVALID_TEMPLATE
+      Rails.logger.error("SendSmsJob(#{sms_message_id}) refused an invalid template that was saved anyway")
+      Rails.error.report(
+        e,
+        handled: true,
+        severity: :warning,
+        context: { sms_message_id: sms_message_id },
+        source: "rotamonster.sms.template"
+      )
+    end
   rescue StandardError => e
     # The catch-all. Anything else — a nil the renderer chokes on, a bug on this path — must not
     # leave the row stranded in `sending` with no status and its retries spent. Record it and move
     # on; "why didn't Alice get her text" stays answerable even when the answer is "we hit a bug".
     Rails.logger.error("SendSmsJob(#{sms_message_id}) unexpected #{e.class}: #{e.message}")
+    Rails.error.report(
+      e,
+      handled: true,
+      severity: :error,
+      context: { sms_message_id: sms_message_id },
+      source: "rotamonster.sms"
+    )
     self.class.record_failure(sms_message_id, SmsMessage::INTERNAL_ERROR, body: body)
   end
 

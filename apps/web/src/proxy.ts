@@ -108,7 +108,9 @@ export function stampFirstTouch(request: NextRequest, response: ProxyResult): Pr
 //
 // Runs the proxy on everything EXCEPT: household entry (`h/…`, public), the member magic-link route (`s/…`, public,
 // token-authenticated — must never be intercepted), the OAuth callback (owns its
-// own PKCE cookie), Next internals (`_next/`), and static files (`*.*`).
+// own PKCE cookie), the Sentry tunnel (`monitoring`, a browser error POST that
+// must never be redirected to WorkOS sign-in), Next internals (`_next/`), and
+// static files (`*.*`).
 export const config = {
-  matcher: ["/((?!s/|h/|callback|_next/|.*\\..*).*)"],
+  matcher: ["/((?!s/|h/|callback|monitoring|_next/|.*\\..*).*)"],
 };

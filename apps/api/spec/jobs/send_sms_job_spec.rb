@@ -303,6 +303,80 @@ RSpec.describe SendSmsJob do
     end
   end
 
+  # Everything above is about the SMS log answering "why didn't Alice get her text" for somebody who
+  # already went looking. These are about somebody being told. `Rails.error.report` now has a
+  # subscriber (sentry-rails, see config/initializers/sentry.rb), so each of these is an issue.
+  describe "what reaches the error reporter" do
+    before { allow(Rails.error).to receive(:report) }
+
+    it "reports once when the retries run out, with the carrier code and the message id" do
+      stub_twilio_server_error
+
+      perform_enqueued_jobs { described_class.perform_later(sms_message.id) }
+
+      expect(Rails.error).to have_received(:report).once
+        .with(
+          kind_of(Sms::TransientFailure),
+          hash_including(
+            source: "rotamonster.sms",
+            severity: :warning,
+            context: { sms_message_id: sms_message.id, error_code: "500" }
+          )
+        )
+    end
+
+    # The point of reporting exhaustion rather than every attempt: one Twilio wobble must not page
+    # anybody five times, and a wobble that heals is not news at all.
+    it "reports nothing when a transient failure is followed by a successful retry" do
+      stub_request(:post, TwilioStubs::MESSAGES_URL_PATTERN).to_return(
+        { status: 500, headers: { "Content-Type" => "application/json" }, body: { code: 20_500 }.to_json },
+        { status: 201, headers: { "Content-Type" => "application/json" }, body: { sid: "SM1", status: "queued" }.to_json }
+      )
+
+      perform_enqueued_jobs { described_class.perform_later(sms_message.id) }
+
+      expect(sms_message.reload.status).to eq("sent")
+      expect(Rails.error).not_to have_received(:report)
+    end
+
+    it "reports the catch-all once, at error, because that one is a bug on our side" do
+      allow(Sms).to receive(:deliver).and_raise(StandardError, "unexpected")
+
+      described_class.perform_now(sms_message.id)
+
+      expect(Rails.error).to have_received(:report).once
+        .with(
+          kind_of(StandardError),
+          hash_including(source: "rotamonster.sms", severity: :error, context: { sms_message_id: sms_message.id })
+        )
+    end
+
+    # A template that cannot be rendered should have been refused when the rota was saved. Reaching
+    # send time means the model validation has a hole in it, and its own source says so.
+    it "reports a template that reached send time, under its own source" do
+      rota.update_column(:message_template, "Hi {{nmae}}")
+
+      described_class.perform_now(sms_message.id)
+
+      expect(Rails.error).to have_received(:report).once
+        .with(
+          kind_of(Sms::PermanentFailure),
+          hash_including(source: "rotamonster.sms.template", severity: :warning)
+        )
+    end
+
+    # The rest of the permanent failures are the world being itself: a disconnected number, somebody
+    # who blocked us. They belong in the SMS log, and nowhere near an alert channel.
+    it "reports nothing for a carrier failure that is simply the number's own fault" do
+      stub_twilio_error(status: 400, code: 21_610, message: "Attempt to send to unsubscribed recipient")
+
+      described_class.perform_now(sms_message.id)
+
+      expect(sms_message.reload.status).to eq("failed")
+      expect(Rails.error).not_to have_received(:report)
+    end
+  end
+
   describe "an unexpected exception on the send path" do
     it "records the row as failed rather than leaving it stranded in sending" do
       # A bug or a nil somewhere past the claim. The catch-all must not let the row sit in `sending`

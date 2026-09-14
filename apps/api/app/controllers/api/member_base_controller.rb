@@ -15,6 +15,11 @@ module Api
 
     include MemberAuthenticatable
 
+    # After authentication, so every event from a member request says which house and which member
+    # row it came from (never the token). Declared before answer_paused_house so a paused house's
+    # quiet notice is tagged too.
+    before_action :tag_sentry_scope
+
     # After authentication, because until the token has resolved to a member there is no house to ask
     # (BLO-1675). A housemate's link goes on working while an operator has the house paused — the
     # link is not what was suspended — but there is nothing behind it to show, so the page gets a
@@ -44,6 +49,13 @@ module Api
     # to be refused in a way the page can tell apart from one that succeeded.
     def render_paused_house
       render json: { paused: true, house: { name: current_member.group.name } }
+    end
+
+    # No user: a member has no identity we want in Sentry. The group is what makes an event
+    # actionable, and member_id is an integer row id, never the token that would let anyone holding
+    # the event log in as them.
+    def tag_sentry_scope
+      Sentry.set_tags(group_id: current_member.group_id, member_id: current_member.id, surface: "member")
     end
 
     # The one JSON shape for a shift, shared by the list and by the cover actions so a shift reads the

@@ -11,6 +11,15 @@
 # been asked about", so a doubled run finds nothing to redo and an interrupted one leaves the rest
 # for tomorrow. Reads only — nothing on this path can send a text.
 class BackfillSmsPricesJob < ApplicationJob
+  # A check-in per run. The job is silent by design when there is nothing to price, so the log line
+  # below is the only sign it ran, and nobody reads a log for a line that is missing. A missed
+  # check-in is what turns "the spend page has shown estimates for a week" into an alert on the
+  # first night the worker failed to start it. Daily at 04:40 UTC (config/recurring.yml); an hour
+  # of margin, because a late night's prices are still settled by the next one.
+  include Sentry::Cron::MonitorCheckIns
+  sentry_monitor_check_ins slug: "backfill-sms-prices",
+    monitor_config: Sentry::Cron::MonitorConfig.from_crontab("40 4 * * *", checkin_margin: 60, max_runtime: 60, timezone: "UTC")
+
   queue_as :default
 
   WINDOW = 7.days
