@@ -3,8 +3,10 @@ require "rails_helper"
 # Rack::Attack throttles /api/member/* to blunt token enumeration — the one attack that matters
 # against a permanent, non-expiring credential — WITHOUT punishing a household that shares one public
 # IP. Authenticated members are keyed per member; only unauthenticated (enumeration) traffic is keyed
-# per IP. The test env cache is null (so the throttle never interferes with any other spec); here we
-# swap in a real store so the limits can actually be reached.
+# per IP. The counters are a real per-process MemoryStore in every environment, the test one included
+# (config/initializers/rack_attack.rb), so the limits below can actually be reached; what keeps this
+# file's bursts out of every other spec is spec/support/rack_attack.rb, which empties the store
+# before each example.
 #
 # Time is frozen for every example on purpose. Rack::Attack counts in a FIXED 60-second window
 # keyed on `Time.now.to_i / 60`, so a burst that happens to straddle a minute boundary starts a
@@ -14,12 +16,7 @@ require "rails_helper"
 # measures what they are actually about. (Drive-by fix; the flake predates BLO-1671.)
 RSpec.describe "Rate limiting the member magic-link path" do
   around do |example|
-    original = Rack::Attack.cache.store
-    Rack::Attack.cache.store = ActiveSupport::Cache::MemoryStore.new
     freeze_time { example.run }
-  ensure
-    Rack::Attack.cache.store = original
-    Rack::Attack.reset!
   end
 
   it "throttles enumeration — a stream of bad tokens from one IP" do

@@ -9,19 +9,16 @@ require "rails_helper"
 # is not there and a loop writes a row per request. This throttle is the floor under that case, and
 # these specs are what say it exists.
 #
-# The test env cache is null, so the throttle never interferes with any other spec; here we swap in a
-# real store so the limit can actually be reached. Time is frozen inside the window on purpose:
+# The counters are a real per-process MemoryStore in every environment, the test one included
+# (config/initializers/rack_attack.rb), so the limit below can actually be reached; what keeps this
+# file's burst out of every other spec is spec/support/rack_attack.rb, which empties the store before
+# each example. Time is frozen inside the window on purpose:
 # Rack::Attack counts in a FIXED 60-second window keyed on `Time.now.to_i / 60`, so a burst that
 # straddles a minute boundary starts a fresh counter and the test would fail for the clock's reasons
 # rather than the code's.
 RSpec.describe "Rate limiting the sign-in collector" do
   around do |example|
-    original = Rack::Attack.cache.store
-    Rack::Attack.cache.store = ActiveSupport::Cache::MemoryStore.new
     freeze_time { example.run }
-  ensure
-    Rack::Attack.cache.store = original
-    Rack::Attack.reset!
   end
 
   # One token, presented over and over. A real retried callback presents the same token, so this is

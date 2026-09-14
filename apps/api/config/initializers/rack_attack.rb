@@ -17,6 +17,25 @@
 class Rack::Attack
   MEMBER_PATH_PREFIX = "/api/member/"
 
+  # Where the counters live. Given no store of its own, Rack::Attack falls back to `Rails.cache`,
+  # which in production is Solid Cache, so every throttled request became a read and a write against
+  # the cache Postgres database before the router had even chosen a controller. That is a round trip
+  # bought on the request path to answer a question with no durability requirement at all.
+  #
+  # A per-process counter is the right granularity for what these throttles are for. They exist to
+  # make token enumeration and request loops unattractive, not to meter a paid quota, so a limit that
+  # is approximate at the edges costs nothing. And there is only one process here to be approximate
+  # across: config/puma.rb declares no `workers`, so the API runs as a single process serving
+  # RAILS_MAX_THREADS threads (5 on the Railway api service, set as a service variable; Puma's own
+  # default is 3), and MemoryStore serialises every read and write across those threads behind a
+  # monitor. The written limit is the limit. If a `workers` directive is ever added, or the service
+  # is ever scaled to a second replica, each process keeps its own counter and the effective limit
+  # becomes the written one times the process count.
+  #
+  # A store that outlives a request also outlives an example, so the suite empties it before each one
+  # (spec/support/rack_attack.rb) and no spec inherits another's counts.
+  self.cache.store = ActiveSupport::Cache::MemoryStore.new
+
   # The two admin routes that make the server fetch a third-party URL on the caller's behalf
   # (BLO-1667). PATCH is here because the router generates it alongside PUT for a singular resource,
   # and a limit a second verb walks around is not a limit.
@@ -120,17 +139,41 @@ class Rack::Attack
     "token:#{OpenSSL::Digest::SHA256.hexdigest(authorization)}"
   end
 
-  # The member a request's bearer token names, resolved once and memoised on the Rack env so the two
-  # member throttles share ONE indexed lookup. Only ACTIVE members resolve, so a deactivated token
-  # authenticates as nobody (see MemberAuthenticatable), so it falls to the IP throttle like any other
-  # bad token. A token-less request never touches the database.
-  def self.member_id_for(request)
-    request.env.fetch("member_api.member_id") do
-      token = request.env["HTTP_AUTHORIZATION"].to_s[/\ABearer\s+(.+)\z/i, 1]
-      request.env["member_api.member_id"] =
-        token.present? ? Member.active.where(access_token: token).pick(:id) : nil
+  # The member a request's bearer token names, resolved ONCE for the whole request and memoised on
+  # the Rack env. The two member throttles share the lookup with each other and, further up the
+  # stack, with MemberAuthenticatable#authenticate_member!, which used to run the same indexed
+  # find_by a second time on every member request, against the same scope and the same token.
+  #
+  # The record is stored rather than the id, because the id alone would leave the controller needing
+  # its own query for the row and the second lookup is the whole thing being removed here. The Rack
+  # env is per-request and nothing serialises it (Sentry's rack_env_whitelist is three network
+  # fields), so the token on the record goes nowhere.
+  #
+  # Only ACTIVE members resolve, so a deactivated token authenticates as nobody (see
+  # MemberAuthenticatable) and falls to the IP throttle like any other bad token. A token-less
+  # request never touches the database.
+  #
+  # Both the env key and the token reader come from MemberAuthenticatable, which is the app-side
+  # owner of both. That is not tidiness: the controller now trusts whatever this leaves on the env,
+  # so a token this reads differently from `request.authorization` is a token that would resolve to
+  # nobody and 401 a housemate whose proxy put the header in X-HTTP_AUTHORIZATION. One reader, one
+  # header list, no way for the two to drift (BLO-1698).
+  def self.member_for(request)
+    env_key = MemberAuthenticatable::MEMBER_ENV_KEY
+
+    request.env.fetch(env_key) do
+      token = MemberAuthenticatable.bearer_token_from(request.env)
+      request.env[env_key] = token.present? ? Member.active.find_by(access_token: token) : nil
     end
+  end
+
+  # Just the id, which is all a throttle key needs. Same lookup, same memoisation.
+  def self.member_id_for(request)
+    member_for(request)&.id
   end
 end
 
-Rails.application.config.middleware.use Rack::Attack
+# NOTE there is deliberately no `config.middleware.use Rack::Attack` here. rack-attack's railtie
+# already inserts the middleware, and adding it again put a second identical instance in the stack
+# (`bin/rails middleware` listed `use Rack::Attack` twice). The gem guards re-entry so the limits
+# were never doubled, but the second instance ran the path checks on every request for nothing.

@@ -386,18 +386,14 @@ RSpec.describe "Api::GroupCalendar" do
   end
 
   # The connect and sync endpoints both fetch a third-party URL on the caller's behalf, which is the
-  # one thing on this API worth looping. The test env cache is null (so the throttle never interferes
-  # with any other spec); here a real store is swapped in so the limit can be reached.
+  # one thing on this API worth looping. The throttle counts into a real per-process MemoryStore here
+  # as it does in production (config/initializers/rack_attack.rb), so the limit can be reached;
+  # spec/support/rack_attack.rb empties it before each example, so these five syncs reach no other
+  # spec.
   describe "throttling" do
-    around do |example|
-      original = Rack::Attack.cache.store
-      Rack::Attack.cache.store = ActiveSupport::Cache::MemoryStore.new
-      example.run
-    ensure
-      Rack::Attack.cache.store = original
-      Rack::Attack.reset!
-    end
-
+    # The window is a fixed minute of wall-clock time, so a burst that straddled a minute boundary
+    # would start a fresh count and the sixth sync would pass. The file-wide `travel_to` above pins
+    # the clock for every example here, so the whole burst lands in one window.
     # One token, minted once and reused: the bucket is keyed on the Authorization header, and a fresh
     # `workos_headers` call would mint a different token and so a different bucket.
     let(:one_admin) { headers }

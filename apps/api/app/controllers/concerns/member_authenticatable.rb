@@ -14,6 +14,41 @@
 module MemberAuthenticatable
   extend ActiveSupport::Concern
 
+  # Where a request's member is left for whatever runs after the thing that resolved it.
+  #
+  # The key is owned HERE, by the concern that cannot work without it, rather than on Rack::Attack.
+  # The initializer reads it from this module. That way round, dropping rack-attack leaves the key
+  # simply never written and `resolved_member` falls back to its own query, which is a branch this
+  # file already has; the other way round, member authentication would NameError the moment the
+  # middleware went.
+  MEMBER_ENV_KEY = "member_api.member"
+
+  # Every header a bearer token can arrive in, in ActionDispatch::Request#authorization's own order.
+  #
+  # A token normally comes in `Authorization`, which Rack hands over as HTTP_AUTHORIZATION, but a
+  # proxy that strips or rewrites the header can leave it under one of the other three, and Rails has
+  # read all four for as long as `request.authorization` has existed. This list must therefore stay
+  # equal to that method's: anything that resolves a token from a Rack env has to agree with the
+  # controller about which headers count, or a request authenticates in one place and 401s in the
+  # other. That is exactly what happened when the throttle read HTTP_AUTHORIZATION alone and the
+  # controller started trusting the throttle's answer (BLO-1698).
+  AUTHORIZATION_HEADERS = %w[
+    HTTP_AUTHORIZATION
+    X-HTTP_AUTHORIZATION
+    X_HTTP_AUTHORIZATION
+    REDIRECT_X_HTTP_AUTHORIZATION
+  ].freeze
+
+  # The bearer token a Rack env carries, or nil. The ONE reader, shared by this concern and by the
+  # Rack::Attack throttles that resolve the member before the router has chosen a controller.
+  #
+  # Only the bearer scheme, and only a header. A token in the query string would already be in the
+  # access log by the time any filter ran.
+  def self.bearer_token_from(env)
+    header = AUTHORIZATION_HEADERS.filter_map { |name| env[name] }.first
+    header.to_s[/\ABearer\s+(.+)\z/i, 1]
+  end
+
   included do
     before_action :authenticate_member!
   end
@@ -21,11 +56,7 @@ module MemberAuthenticatable
   private
 
   def authenticate_member!
-    # `active` only: deactivation is how a member is *removed* from a house, and it deliberately does
-    # not rotate the token (see Member). Without this scope a removed housemate would keep a fully
-    # working magic link — able to read the live roster and act on shifts — which is the exact thing
-    # removal is supposed to end. A deactivated token therefore authenticates as nobody: a 401.
-    @current_member = Member.active.find_by(access_token: bearer_token) if bearer_token.present?
+    @current_member = resolved_member
 
     if @current_member
       record_last_seen
@@ -38,6 +69,32 @@ module MemberAuthenticatable
   end
 
   attr_reader :current_member
+
+  # Who the token names.
+  #
+  # `active` only: deactivation is how a member is *removed* from a house, and it deliberately does
+  # not rotate the token (see Member). Without that scope a removed housemate would keep a fully
+  # working magic link, able to read the live roster and act on shifts, which is the exact thing
+  # removal is supposed to end. A deactivated token therefore authenticates as nobody: a 401.
+  #
+  # The lookup normally happened already. Rack::Attack throttles every /api/member/* request and has
+  # to know which member is asking to key the bucket, so by the time this runs the middleware has
+  # resolved exactly this (same scope, same token) and left the record on the Rack env. Reading it
+  # back is what keeps a member request to ONE members lookup instead of two identical ones.
+  #
+  # `key?`, not a truthy check: a token that resolves to nobody is memoised as nil, and treating that
+  # as "not resolved yet" would send every unauthorised request back to the database, which is the
+  # enumeration path: exactly the traffic that must stay cheap.
+  #
+  # The find_by is the fallback for when the middleware did not run at all: Rack::Attack can be
+  # disabled, and the env key is then simply absent. Same query, same scope, same answer, because
+  # both sides read the token through `bearer_token_from` and so agree on every header it can
+  # arrive in.
+  def resolved_member
+    return request.env[MEMBER_ENV_KEY] if request.env.key?(MEMBER_ENV_KEY)
+
+    Member.active.find_by(access_token: bearer_token) if bearer_token.present?
+  end
 
   # "Did anyone actually open their link" — the one signal the member path has, and the only way to
   # tell a house whose texts land from one whose housemates never tap them. Same one-an-hour rule as
@@ -81,9 +138,9 @@ module MemberAuthenticatable
     AnalyticsEvent.record(AnalyticsEvent::FIRST_MEMBER_LINK_OPENED, group: member.group, member_id: member.id)
   end
 
-  # Only the header, and only the bearer scheme. A token in the query string would already be in the
-  # access log by the time any filter ran.
+  # This request's token, through the shared reader, so the controller and the throttle can never
+  # disagree about what counts as a token.
   def bearer_token
-    request.authorization.to_s[/\ABearer\s+(.+)\z/i, 1]
+    MemberAuthenticatable.bearer_token_from(request.env)
   end
 end

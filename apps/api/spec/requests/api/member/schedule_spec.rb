@@ -47,6 +47,27 @@ RSpec.describe "GET /api/member/schedule" do
       expect(response.parsed_body["members"].map { |m| m["name"] }).to eq(%w[Alice Bob Cara])
     end
 
+    # Nothing stops a house having two Sams, and `ORDER BY name` on its own cannot tell them apart:
+    # Postgres is then free to return the pair in whichever order it happened to read them, so the
+    # people list can reshuffle between two identical requests. Ordering by id after name pins it.
+    # This is a tie main did not break either; it is broken now (BLO-1698).
+    it "keeps two housemates who share a name in the same order on every request" do
+      first_sam = create(:member, group: group, name: "Sam")
+      second_sam = create(:member, group: group, name: "Sam")
+      # An update rewrites the row at the end of the heap, so a scan now reads the two Sams in the
+      # opposite order to the one they were created in. That is all it takes for a tie-blind ORDER BY
+      # to hand them back the other way round, which is the thing this example is here to catch.
+      first_sam.touch
+
+      ids = Array.new(2) do
+        get_schedule
+        response.parsed_body["members"].map { |m| m["id"] }
+      end
+
+      expect(ids.uniq.size).to eq(1)
+      expect(ids.first).to eq([ alice.id, first_sam.id, second_sam.id ])
+    end
+
     it "marks an opted-out member as not contactable, but still lists them" do
       create(:member, :opted_out, group: group, name: "Quiet")
 
@@ -173,6 +194,38 @@ RSpec.describe "GET /api/member/schedule" do
         "can_assign_cover" => true,
         "can_cancel_cover" => false
       )
+    end
+
+    # The payload's people list and its shifts are two different sets, and this is the row where they
+    # come apart. A housemate who has left is gone from `members`, because they do not live here any
+    # more, but the shift they agreed to cover before they went still names them: somebody has to be
+    # shown as responsible for it. Removal (MemberRemoval) drops a leaver's covers on STRICTLY FUTURE
+    # shifts only. Today's is already in motion and its reminder has gone out, so this is a state a
+    # real house can be in between a removal and the end of the day.
+    #
+    # The controller attaches these members from the ones it has already loaded, which is why it
+    # loads the whole house and not the active list: indexing only the actives would miss this row.
+    it "still names a housemate who has since been removed on the shift they were covering" do
+      gone = create(:member, group: group, name: "Gone")
+      shift = create(:shift, rota: kitchen, assigned_member: alice, covering_member: gone,
+        due_on: group.today)
+      gone.update!(active: false)
+
+      get_schedule
+
+      expect(parsed_shift(shift.id)).to eq(
+        "id" => shift.id,
+        "rota_id" => kitchen.id,
+        "rota_name" => "Kitchen",
+        "due_on" => shift.due_on.iso8601,
+        "covered" => true,
+        "assigned_member" => { "id" => alice.id, "name" => "Alice" },
+        "covering_member" => { "id" => gone.id, "name" => "Gone" },
+        "responsible_member" => { "id" => gone.id, "name" => "Gone" },
+        "can_assign_cover" => false,
+        "can_cancel_cover" => false
+      )
+      expect(response.parsed_body["members"].map { |m| m["name"] }).not_to include("Gone")
     end
 
     it "resolves the cover flags for the CALLER, not for whoever is on the shift" do
@@ -329,6 +382,39 @@ RSpec.describe "GET /api/member/schedule" do
       expect(response.parsed_body["shifts"]).to be_empty
       expect(response.parsed_body["members"].map { |m| m["name"] }).not_to include("Stranger")
       expect(response.parsed_body["rotas"].map { |r| r["name"] }).not_to include("Their kitchen")
+    end
+  end
+
+  # This is the member page's ONLY read, so what it costs is what the page costs. The action loads
+  # the house's rotas and the house's people up front and then attaches them to the shifts from
+  # memory; the numbers below are what says it is still doing that and has not quietly gone back to
+  # asking Postgres for rows it is already holding (BLO-1698).
+  describe "what it costs" do
+    it "reads the rotas once and the members twice, however many shifts there are" do
+      bins = create(:rota, :with_roster, group: group, name: "Bins")
+      12.times do |n|
+        create(:shift, rota: n.even? ? kitchen : bins, assigned_member: n.even? ? alice : bob,
+          covering_member: n == 3 ? alice : nil, due_on: n.days.from_now.to_date)
+      end
+
+      selects = sql_selects_during { get_schedule }
+
+      expect(response).to have_http_status(:ok)
+      # One: `visible_rotas`. The shifts query mentions rotas in a JOIN, which is not a second read.
+      expect(selects.grep(/FROM "rotas"/).size).to eq(1)
+      # Two, and only two: the token resolving to the caller, and the house's people. The shifts'
+      # assigned and covering members come out of that second one.
+      expect(selects.grep(/FROM "members"/).size).to eq(2)
+    end
+
+    it "costs the same for a house with one shift as for a house with a dozen" do
+      create(:shift, rota: kitchen, assigned_member: alice, due_on: 1.day.from_now.to_date)
+      small = sql_selects_during { get_schedule }.size
+
+      11.times { |n| create(:shift, rota: kitchen, assigned_member: bob, due_on: (n + 2).days.from_now.to_date) }
+      big = sql_selects_during { get_schedule }.size
+
+      expect(big).to eq(small)
     end
   end
 

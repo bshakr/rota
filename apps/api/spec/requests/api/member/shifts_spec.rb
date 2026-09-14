@@ -160,6 +160,35 @@ RSpec.describe "GET /api/member/shifts" do
       expect(response).to have_http_status(:unauthorized)
     end
 
+    # `request.authorization`, which is what this path has always read the token with, looks in four
+    # places: Authorization and the three proxy spellings a stripping or rewriting proxy can leave it
+    # under. The throttle resolves the member before the controller does and the controller now
+    # trusts its answer, so the two have to read the same four headers. When the throttle read only
+    # HTTP_AUTHORIZATION, a token arriving in one of the other three resolved to nobody, the env said
+    # so, and a housemate who authenticated fine yesterday got a 401 (BLO-1698). This is that
+    # request.
+    it "accepts a token a proxy left in X-HTTP_AUTHORIZATION" do
+      get "/api/member/shifts", headers: { "X-HTTP_AUTHORIZATION" => "Bearer #{alice.access_token}" }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["member"]).to eq("id" => alice.id, "name" => alice.name)
+    end
+
+    # The throttle on /api/member/* has to know which member is asking before it can key their
+    # bucket, so by the time authentication runs the token has already been resolved once, against
+    # the same scope, and left on the Rack env. Every member request used to pay for that lookup
+    # twice (BLO-1698). One SELECT that mentions access_token, not two.
+    it "resolves the token with a single members lookup" do
+      # Outside the block on purpose: creating a member validates its token for uniqueness, which is
+      # itself a SELECT mentioning access_token and has nothing to do with what is being counted.
+      headers = member_headers(alice)
+
+      selects = sql_selects_during { get "/api/member/shifts", headers: headers }
+
+      expect(response).to have_http_status(:ok)
+      expect(selects.grep(/"access_token"/).size).to eq(1)
+    end
+
     # Deactivation is how a member is removed from a house, and it does NOT rotate the token. So the
     # removed housemate's magic link must stop working immediately — otherwise they keep reading the
     # roster and acting on shifts, which is the exact thing removal is meant to end.
