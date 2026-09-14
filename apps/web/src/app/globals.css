@@ -253,7 +253,7 @@
   --blob-peach: var(--peach-300);
   --blob-lemon: var(--lemon-300);
   --blob-sky: var(--sky-300);
-  --blob-lilac: var(--lilac-300);
+  --blob-lilac: var(--lilac-200); /* what bg-lilac is, so day is unchanged */
 
   /* The admin sidebar is a WHITE CLAY PANEL against the lavender page, so the
      chrome stays in the paper family and the grape active item is the only

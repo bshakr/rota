@@ -885,7 +885,7 @@ export default function StyleguidePage() {
                   className="block"
                 >
                   <div className="w-full">
-                    <div className="bg-lavender-pane relative h-44 overflow-hidden rounded-4xl dark:bg-card">
+                    <div className="bg-lavender-pane relative h-44 overflow-hidden rounded-4xl dark:bg-background">
                       {BLOBS.map((b) => (
                         <span
                           key={b.cls}
