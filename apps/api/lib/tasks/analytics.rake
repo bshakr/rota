@@ -42,10 +42,13 @@ namespace :analytics do
   VISIT_TABLES = {
     "referrer_host" => "Which site linked here",
     "country" => "Country",
-    "device" => "Device"
+    "city" => "City",
+    "device" => "Device",
+    "browser" => "Browser",
+    "os" => "Operating system"
   }.freeze
 
-  desc "Where the last N days (default 7) came from: houses by first touch, visits by referrer, country and device"
+  desc "Where the last N days (default 7) came from: houses by first touch, then the visits by referrer, country, city, device, browser and system"
   task :sources, [ :days ] => :environment do |_task, args|
     days = Integer(args[:days] || 7)
     window = "last #{days} #{'day'.pluralize(days)}"
@@ -77,7 +80,7 @@ namespace :analytics do
 
       printable = table[:top].map { |row| [ row[:count], row[:value] ] }
       # Always last, whatever its size. It is the row that says what the table above it cannot see —
-      # a direct visit, or a country header that is not arriving — and reading it as the winner of a
+      # a direct visit, or a city header that is not arriving — and reading it as the winner of a
       # ranking would be the wrong way round.
       printable << [ table[:none], "(none)" ] if table[:none].positive?
 
@@ -90,8 +93,8 @@ namespace :analytics do
 
     puts
     puts "  (none) is a visit the property is missing from. A direct arrival for the referrer, and"
-    puts "  every visit for the country until the site sits behind the Cloudflare proxy: the header"
-    puts "  is not sent while the domain is DNS-only there."
+    puts "  every visit for the city until the Cloudflare zone's \"Add visitor location headers\""
+    puts "  transform is switched on: the header is not sent before that."
   end
 
   desc "Delete anonymous events older than N days (default 180). A house's own events are kept."
