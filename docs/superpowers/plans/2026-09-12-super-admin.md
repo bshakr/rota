@@ -52,8 +52,8 @@ Five surfaces were asked for:
 | Where spend is recorded | On the row that spent it: usage columns on `sms_messages`, and a new `ai_calls` table with one row per Claude request | A generic `charges` ledger | Both spends already have a natural row. A ledger would duplicate the SMS log's own history. |
 | Claude cost | Tokens stored as the model reported them, plus a snapshot `cost_usd` computed at write time from a rate table in config, keyed by model | Tokens only, priced at read time | Tokens are the truth and survive a price change; the snapshot means last quarter's spend does not silently move when the rate table is edited. |
 | Twilio cost | Actual `price` fetched from Twilio after delivery, backfilled by a nightly job; `num_segments` stored at send as the estimate until then | A per-country rate table | Twilio's price varies by destination network and changes without notice. Twilio knows what it charged; the app should ask. |
-| Currency | USD, as both vendors bill in it. No conversion | Converting to GBP | A conversion rate is one more thing to be wrong about. The pricing exercise can convert once, at the end. |
-| Fixed costs | An optional `FIXED_MONTHLY_COST_USD` env value (hosting, WorkOS, Twilio number rental), shown divided across active houses as a separate line | Ignoring them | Per-house variable cost is a fraction of what a subscription has to cover. The allocated line keeps that in view without pretending to be exact. |
+| Currency | **GBP for everything** (revised 2026-09-14, see the Currency note below) | USD, as originally planned | The original decision was wrong about the facts: the business is in the UK and Twilio bills this account in GBP, so a USD-only total showed $0.00 settled beside real charges. |
+| Fixed costs | An optional `FIXED_MONTHLY_COST_GBP` env value (hosting, WorkOS, Twilio number rental), shown divided across active houses as a separate line | Ignoring them | Per-house variable cost is a fraction of what a subscription has to cover. The allocated line keeps that in view without pretending to be exact. |
 
 ## Data model changes
 
@@ -225,9 +225,34 @@ The landing page of the super admin area. Answers "is anything wrong, and is any
 
 ### 5. Spend (`/super-admin/spend`)
 
+**Currency (decided 2026-09-14, revising the table above).** The reporting currency is **GBP**, for
+every figure the spend endpoint emits, at `MONEY_PRECISION` 6, with `currency: "GBP"` in the
+payload. The original "USD, no conversion" decision was made before anyone looked at a real Twilio
+invoice: the business is in the UK and Twilio bills the account in pounds, so summing only USD rows
+showed a settled total of £0.00 next to six real charges.
+
+- **Twilio.** Rows billed in GBP are the settled figure. A row in any other currency goes to the
+  existing "other currency" line, still unconverted — Twilio's rate for that destination is not a
+  fact we hold, and the rate we do have is Anthropic's.
+- **Anthropic.** Bills in USD, and is the one figure that crosses a currency. It converts at
+  `SPEND_GBP_PER_USD` (env, BigDecimal). Configuration rather than a live lookup, because a rate
+  that moved under a cached total would make two loads of the same page disagree. The rate is
+  published in the payload as `gbp_per_usd` so the page can print "converted at 0.79".
+- **No rate set.** Claude is reported as `claude_usd` (unconverted), `claude_cost` is **null** and
+  never zero, every combined total excludes it, and `claude_unconverted: true` says so — which the
+  page repeats in words. A zero would read as "Claude was free".
+- **The segment estimate** is `SMS_ESTIMATED_SEGMENT_COST_GBP`, default 0.04. Once twenty texts
+  have settled in the trailing ninety days, the measured mean (`SUM(price) / SUM(segments)` over
+  GBP rows) is used instead and wins over the configured figure; `sms_estimated_segment_cost_from_settled`
+  says how many texts it came from.
+- Env renames: `FIXED_MONTHLY_COST_USD` → `FIXED_MONTHLY_COST_GBP`,
+  `SMS_ESTIMATED_SEGMENT_COST_USD` → `SMS_ESTIMATED_SEGMENT_COST_GBP`. Cache key bumped to v3.
+- Out of scope: customer pricing (nothing about what houses are charged), and any history of FX
+  rates — one rate, applied to whatever the window holds.
+
 The page that answers "what does a house cost me", so a price can be set with the number in front of you. Range picker: 30 days, 90 days, 12 months.
 
-**Totals.** Texts and Claude as two flat bars per month, stacked, with the fixed-cost line drawn separately when `FIXED_MONTHLY_COST_USD` is set. Underneath, the same split as counts: segments sent, titles classified.
+**Totals.** Texts and Claude as two flat bars per month, stacked, with the fixed-cost line drawn separately when `FIXED_MONTHLY_COST_GBP` is set. Underneath, the same split as counts: segments sent, titles classified.
 
 **Per house.** One row per house, sorted by total spend, with every column derived from the two sources:
 
@@ -300,7 +325,7 @@ Migration for `suspended_at` and `notes`. Groups list and show endpoints with th
 `SuperAdmin::Traffic` with the funnel and weekly series, the range picker, the stacked bars, failures by error code. Test 4 for traffic. Landing views shows "not tracked yet".
 
 **Phase 5: spend.**
-`SuperAdmin::Spend` query object, the spend page with totals, the per-house table, unit economics and the margin calculator, the spend tile on the overview and the spend card on the group dashboard. `FIXED_MONTHLY_COST_USD` read and allocated. Test 7 for the query object.
+`SuperAdmin::Spend` query object, the spend page with totals, the per-house table, unit economics and the margin calculator, the spend tile on the overview and the spend card on the group dashboard. `FIXED_MONTHLY_COST_GBP` read and allocated. Test 7 for the query object.
 
 **Phase 6 (optional): anonymous traffic.**
 Decide first between first-party `page_views` counters and Plausible. If first-party: the table, `POST /internal/page_views` behind `INTERNAL_API_TOKEN`, fire-and-forget from `/` and `/h/[slug]` via `after()`, and the funnel's first step lights up. Bots inflate it; say so on the tile.

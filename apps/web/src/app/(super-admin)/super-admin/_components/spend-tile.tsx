@@ -4,7 +4,7 @@ import { Wallet } from "lucide-react";
 import { isSuperAdminSurfaceReady } from "@/components/super-admin-nav";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { OverviewSpend } from "@/lib/api/super-admin-spend";
-import { SPEND_RANGE_LABELS, formatUsd, monthLabel } from "@/lib/hq-spend";
+import { SPEND_RANGE_LABELS, formatMoney, monthLabel } from "@/lib/hq-spend";
 
 const SPEND_HREF = "/super-admin/spend";
 
@@ -73,11 +73,21 @@ export function SpendTile({ spend }: { spend: OverviewSpend | null }) {
                   className="font-heading text-foreground mt-1 text-2xl leading-none font-semibold"
                   data-numeric
                 >
-                  {formatUsd(spend.this_month.total)}
+                  {formatMoney(spend.this_month.total, spend.currency)}
                 </dd>
                 <dd className="text-muted-foreground mt-1.5 text-xs">
-                  <span data-numeric>{formatUsd(spend.this_month.sms_cost)}</span> texts,{" "}
-                  <span data-numeric>{formatUsd(spend.this_month.claude_cost)}</span> Claude
+                  <span data-numeric>{formatMoney(spend.this_month.sms_cost, spend.currency)}</span>{" "}
+                  texts,{" "}
+                  {/* Null is not zero: with no conversion rate there is no
+                      figure for Claude in this currency at all, and a "£0.00"
+                      beside the texts would read as a month Claude was free.
+                      The note under the tile says where the figure went. */}
+                  <span data-numeric={spend.this_month.claude_cost === null ? undefined : true}>
+                    {spend.this_month.claude_cost === null
+                      ? "no"
+                      : formatMoney(spend.this_month.claude_cost, spend.currency)}
+                  </span>{" "}
+                  Claude
                 </dd>
               </div>
 
@@ -91,15 +101,23 @@ export function SpendTile({ spend }: { spend: OverviewSpend | null }) {
                   className="font-heading text-foreground mt-1 text-2xl leading-none font-semibold"
                   data-numeric
                 >
-                  {spend.last_month === null ? "none yet" : formatUsd(spend.last_month.total)}
+                  {spend.last_month === null ? "none yet" : formatMoney(spend.last_month.total, spend.currency)}
                 </dd>
                 <dd className="text-muted-foreground mt-1.5 text-xs">
                   {spend.last_month === null ? (
                     "No whole month to compare with yet."
                   ) : (
                     <>
-                      <span data-numeric>{formatUsd(spend.last_month.sms_cost)}</span> texts,{" "}
-                      <span data-numeric>{formatUsd(spend.last_month.claude_cost)}</span> Claude
+                      <span data-numeric>
+                        {formatMoney(spend.last_month.sms_cost, spend.currency)}
+                      </span>{" "}
+                      texts,{" "}
+                      <span data-numeric={spend.last_month.claude_cost === null ? undefined : true}>
+                        {spend.last_month.claude_cost === null
+                          ? "no"
+                          : formatMoney(spend.last_month.claude_cost, spend.currency)}
+                      </span>{" "}
+                      Claude
                     </>
                   )}
                 </dd>
@@ -109,6 +127,9 @@ export function SpendTile({ spend }: { spend: OverviewSpend | null }) {
             <p className="text-muted-foreground mt-3 text-xs text-pretty">
               This month is still running, so it is not a like-for-like comparison. Every figure is{" "}
               {spend.currency}, read from the last {SPEND_RANGE_LABELS[spend.range]}.{" "}
+              {spend.claude_unconverted
+                ? "Claude is billed in USD and no conversion rate is configured, so these totals leave it out. "
+                : ""}
               {ready ? (
                 <Link
                   href={SPEND_HREF}

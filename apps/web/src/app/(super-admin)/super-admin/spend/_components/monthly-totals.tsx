@@ -6,7 +6,7 @@ import {
   SPEND_SERIES,
   claudeShortfallNote,
   fixedCostPerHousePerMonth,
-  formatUsd,
+  formatMoney,
   monthLabel,
   pricingNote,
   seriesSplitNote,
@@ -44,11 +44,11 @@ export function MonthlyTotals({ spend }: { spend: SuperAdminSpend }) {
     // the only place the split exists otherwise, and two of these chart cuts are
     // hard to tell apart for a protanopic reader (see SPEND_SERIES); printed,
     // the row is complete without them. The counts say what the money bought.
-    note: `${seriesSplitNote(month)} · ${formatCount(month.segments)} ${month.segments === 1 ? "segment" : "segments"}, ${formatCount(month.titles_classified)} ${month.titles_classified === 1 ? "title" : "titles"} classified`,
+    note: `${seriesSplitNote(month, spend.currency)} · ${formatCount(month.segments)} ${month.segments === 1 ? "segment" : "segments"}, ${formatCount(month.titles_classified)} ${month.titles_classified === 1 ? "title" : "titles"} classified`,
     segments: SPEND_SERIES.map((series) => ({
       key: series.key,
       label: series.label,
-      value: month[series.key],
+      value: month[series.key] ?? 0,
       tone: series.tone,
     })),
   }));
@@ -64,7 +64,7 @@ export function MonthlyTotals({ spend }: { spend: SuperAdminSpend }) {
       </CardHeader>
 
       <CardContent>
-        <StackedBars items={items} formatValue={formatUsd} />
+        <StackedBars items={items} formatValue={(value) => formatMoney(value, spend.currency)} />
 
         <StackLegend
           className="mt-6"
@@ -72,11 +72,16 @@ export function MonthlyTotals({ spend }: { spend: SuperAdminSpend }) {
             key: series.key,
             label: series.label,
             tone: series.tone,
-            total: formatUsd(spend.totals[series.key]),
+            // An unconverted Claude cost has no total to show in this
+            // currency. The words say so; a zero would not.
+            total:
+              spend.totals[series.key] === null
+                ? "not converted"
+                : formatMoney(spend.totals[series.key] as number, spend.currency),
           }))}
         />
 
-        {spend.fixed_monthly_cost_usd === null ? null : (
+        {spend.fixed_monthly_cost_gbp === null ? null : (
           <div className="border-border mt-6 border-t pt-4">
             <span className="flex items-baseline justify-between gap-3">
               <span className="text-sm font-medium">Fixed cost, every month</span>
@@ -84,7 +89,7 @@ export function MonthlyTotals({ spend }: { spend: SuperAdminSpend }) {
                 className="font-heading text-foreground shrink-0 text-lg leading-none font-semibold"
                 data-numeric
               >
-                {formatUsd(spend.fixed_monthly_cost_usd)}
+                {formatMoney(spend.fixed_monthly_cost_gbp, spend.currency)}
               </span>
             </span>
             {/* NO BAR HERE, deliberately. This figure cannot share the scale
@@ -100,13 +105,18 @@ export function MonthlyTotals({ spend }: { spend: SuperAdminSpend }) {
               never stacked into a month above.{" "}
               {fixedPerHouse === null
                 ? "No house spent anything in this window, so there is nobody to divide it among."
-                : `Across the ${formatCount(spend.houses_with_spend)} ${spend.houses_with_spend === 1 ? "house" : "houses"} that spent anything, that is ${formatUsd(fixedPerHouse)} each per month.`}
+                : `Across the ${formatCount(spend.houses_with_spend)} ${spend.houses_with_spend === 1 ? "house" : "houses"} that spent anything, that is ${formatMoney(fixedPerHouse, spend.currency)} each per month.`}
             </p>
           </div>
         )}
 
         <p className="text-muted-foreground mt-6 text-xs text-pretty">
-          {pricingNote(spend.totals, spend.sms_estimated_segment_cost_usd)}
+          {pricingNote(
+            spend.totals,
+            spend.sms_estimated_segment_cost_gbp,
+            spend.currency,
+            spend.sms_estimated_segment_cost_from_settled,
+          )}
         </p>
         {claudeShortfall === null ? null : (
           <p className="text-muted-foreground mt-2 text-xs text-pretty">{claudeShortfall}</p>

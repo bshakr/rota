@@ -19,7 +19,7 @@ RSpec.describe "Super admin spend" do
       kind: "member_login", shift: nil, days_before: nil,
       member: create(:member, group: group),
       status: "delivered", twilio_sid: sid,
-      price: amount.to_d, price_unit: "USD", price_fetched_at: Time.current
+      price: amount.to_d, price_unit: "GBP", price_fetched_at: Time.current
     )
   end
 
@@ -29,7 +29,40 @@ RSpec.describe "Super admin spend" do
     expect(response).to have_http_status(:ok)
     expect(response.parsed_body["range"]).to eq("30d")
     expect(response.parsed_body["months_in_range"]).to eq(0.985626)
-    expect(response.parsed_body["currency"]).to eq("USD")
+    expect(response.parsed_body["currency"]).to eq("GBP")
+  end
+
+  # The reporting currency is GBP and Anthropic bills in USD, so the rate that crossed them has to
+  # travel with the figures it moved: a converted total with no rate beside it cannot be checked,
+  # and a page that cannot say "converted at 0.79" ends up implying the figure was always pounds.
+  it "publishes the conversion rate beside the figures it converted" do
+    ENV["SPEND_GBP_PER_USD"] = "0.8"
+    create(:ai_call, group: create(:group), cost_usd: "0.5000".to_d, items_count: 20)
+
+    get "/api/super_admin/spend", headers: operator_headers
+
+    body = response.parsed_body
+    expect(body["gbp_per_usd"]).to eq(0.8)
+    expect(body["claude_unconverted"]).to be(false)
+    expect(body["totals"]["claude_usd"]).to eq(0.5)
+    expect(body["totals"]["claude_cost"]).to eq(0.4)
+  ensure
+    ENV.delete("SPEND_GBP_PER_USD")
+  end
+
+  # Unset is the state production is in until Bass sets the rate, so it is the state the endpoint
+  # has to answer honestly rather than the edge case.
+  it "flags Claude as unconverted rather than reporting a pound figure it cannot compute" do
+    ENV.delete("SPEND_GBP_PER_USD")
+    create(:ai_call, group: create(:group), cost_usd: "0.5000".to_d, items_count: 20)
+
+    get "/api/super_admin/spend", headers: operator_headers
+
+    body = response.parsed_body
+    expect(body["gbp_per_usd"]).to be_nil
+    expect(body["claude_unconverted"]).to be(true)
+    expect(body["totals"]["claude_usd"]).to eq(0.5)
+    expect(body["totals"]["claude_cost"]).to be_nil
   end
 
   it "accepts each range it documents, each measured in real months" do
@@ -63,7 +96,7 @@ RSpec.describe "Super admin spend" do
     expect(body["houses"].map { |house| house["name"] }).to eq([ "Bell Street", "Alma Road" ])
     expect(body["houses_with_spend"]).to eq(2)
     expect(body["totals"]["sms_cost_settled"]).to eq(0.51)
-    expect(body["totals"]["claude_cost"]).to eq(0.03)
+    expect(body["totals"]["claude_usd"]).to eq(0.03)
     expect(body["totals"]["titles_classified"]).to eq(20)
   end
 

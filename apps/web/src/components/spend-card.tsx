@@ -6,9 +6,10 @@ import { formatCount } from "@/lib/charts";
 import {
   type HouseSpendWindow,
   SPEND_RANGE_LABELS,
-  SPEND_SERIES,
+  drawableSeries,
   activeMembersNote,
-  formatUsd,
+  claudeUnconvertedNote,
+  formatMoney,
   monthsCoveredNote,
   perActiveMemberNote,
   pricingNote,
@@ -94,7 +95,7 @@ export function SpendCard({
                 className="font-heading text-foreground text-2xl leading-none font-semibold"
                 data-numeric
               >
-                {formatUsd(house.total)}
+                {formatMoney(house.total, spend.currency)}
               </span>
               <span className="text-muted-foreground text-xs">
                 {formatCount(house.texts_sent)} {house.texts_sent === 1 ? "text" : "texts"},{" "}
@@ -108,17 +109,17 @@ export function SpendCard({
                 so the three are scaled against each other and the split reads at
                 a glance. */}
             <StackedBars
-              formatValue={formatUsd}
-              items={SPEND_SERIES.map((series) => ({
+              formatValue={(value) => formatMoney(value, spend.currency)}
+              // Only the series that HAVE a figure in this currency — see
+              // `drawableSeries`. Each row here is its own bar with its own
+              // printed total, so an unconverted Claude cost drawn at zero
+              // would read as "Claude was free"; it is dropped and the note
+              // below says where it went.
+              items={drawableSeries(house).map((series) => ({
                 label: series.label,
-                value: house[series.key],
+                value: series.value,
                 segments: [
-                  {
-                    key: series.key,
-                    label: series.label,
-                    value: house[series.key],
-                    tone: series.tone,
-                  },
+                  { key: series.key, label: series.label, value: series.value, tone: series.tone },
                 ],
               }))}
             />
@@ -136,7 +137,7 @@ export function SpendCard({
                   className="font-heading text-foreground mt-1 text-xl leading-none font-semibold"
                   data-numeric
                 >
-                  {perActiveMemberNote(house)}
+                  {perActiveMemberNote(house, spend.currency)}
                 </dd>
               )}
               <dd className="text-muted-foreground mt-1.5 text-xs">
@@ -145,8 +146,25 @@ export function SpendCard({
             </dl>
 
             <p className="text-muted-foreground mt-4 text-xs text-pretty">
-              {pricingNote(house, spend.estimatedSegmentCost)}
+              {pricingNote(
+                house,
+                spend.estimatedSegmentCost,
+                spend.currency,
+                spend.estimatedSegmentCostFromSettled,
+              )}
             </p>
+            {/* The total above is SHORT by whatever Claude cost when no
+                conversion rate is set, and it renders looking complete. Said
+                here rather than left to the reader to notice. */}
+            {spend.claudeUnconverted ? (
+              <p className="text-muted-foreground mt-2 text-xs text-pretty">
+                {claudeUnconvertedNote({
+                  claude_unconverted: true,
+                  currency: spend.currency,
+                  totals: { claude_usd: house.claude_usd },
+                })}
+              </p>
+            ) : null}
           </>
         )}
       </CardContent>

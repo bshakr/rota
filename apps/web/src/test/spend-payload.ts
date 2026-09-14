@@ -18,8 +18,9 @@
  *     every bucket (the schema asserts this);
  *   - `sms_cost == sms_cost_settled + sms_cost_estimated` and
  *     `total == sms_cost + claude_cost`;
+ *   - `claude_cost == claude_usd × gbp_per_usd` at six decimals, both ways;
  *   - every estimate is `estimated segments × 0.0079`, the fixture's own
- *     `sms_estimated_segment_cost_usd`;
+ *     `sms_estimated_segment_cost_gbp`;
  *   - the unit economics are the nearest-rank percentiles of the house rows
  *     divided by `months_in_range` — 2.956879, the real length of 90 days in
  *     average calendar months, not 3.
@@ -29,19 +30,30 @@
  *
  * The cast of four is chosen to cover the cases the page has special words for:
  * Alma Road has texts that will never be priced, Bell Street has a charge in
- * another currency, Cobbler's Yard has nobody left to text (so its per-member
+ * a currency the API would not convert, Cobbler's Yard has nobody left to text (so its per-member
  * figure is null), and Dray Lane has nothing settled at all.
  */
 function base() {
   return {
     range: "90d",
-    currency: "USD",
+    currency: "GBP",
+    // Anthropic's dollars at this rate are the fixture's pound Claude figures.
+    // Both are carried at the payload's six decimals, which is where the
+    // equality `claude_cost == claude_usd × gbp_per_usd` holds — the real API
+    // rounds both the same way, so the fixture does too.
+    gbp_per_usd: 0.8,
+    claude_unconverted: false,
     starts_at: "2026-06-16T09:12:04.000Z",
     ends_at: "2026-09-14T09:12:04.000Z",
     // 90 days as average calendar months. NOT 3 — see the schema's note.
     months_in_range: 2.956879,
-    fixed_monthly_cost_usd: 42.0 as number | null,
-    sms_estimated_segment_cost_usd: 0.0079,
+    fixed_monthly_cost_gbp: 42.0 as number | null,
+    // The fixture's OWN rate, deliberately not the query object's default: these
+    // tests pin how a rate is rendered and multiplied, not what it happens to be.
+    sms_estimated_segment_cost_gbp: 0.0079,
+    // Null: the configured rate rather than one measured from settled texts.
+    // `withMeasuredRate()` below is the other case.
+    sms_estimated_segment_cost_from_settled: null as number | null,
     houses_with_spend: 4,
     houses_total: 6,
 
@@ -54,10 +66,12 @@ function base() {
       texts_unpriceable: 18,
       sms_cost_estimated: 0.7742,
       sms_cost: 15.7526,
-      sms_cost_other_currencies: [{ unit: "GBP", amount: 0.324 }],
+      sms_cost_other_currencies: [{ unit: "USD", amount: 0.324 }],
       claude_calls: 518,
       claude_tokens_in: 690_080,
       claude_tokens_out: 38_710,
+      claude_usd: 2.670788,
+
       claude_cost: 2.13663,
       claude_calls_unpriced: 3,
       titles_classified: 4144,
@@ -80,6 +94,8 @@ function base() {
         claude_calls: 78,
         claude_tokens_in: 104_000,
         claude_tokens_out: 5_800,
+        claude_usd: 0.4025,
+
         claude_cost: 0.322,
         claude_calls_unpriced: 0,
         titles_classified: 624,
@@ -100,6 +116,8 @@ function base() {
         claude_calls: 160,
         claude_tokens_in: 214_000,
         claude_tokens_out: 12_100,
+        claude_usd: 0.82625,
+
         claude_cost: 0.661,
         claude_calls_unpriced: 0,
         titles_classified: 1280,
@@ -120,6 +138,8 @@ function base() {
         claude_calls: 190,
         claude_tokens_in: 254_000,
         claude_tokens_out: 14_200,
+        claude_usd: 0.98,
+
         claude_cost: 0.784,
         claude_calls_unpriced: 0,
         titles_classified: 1520,
@@ -141,6 +161,8 @@ function base() {
         claude_calls: 90,
         claude_tokens_in: 118_080,
         claude_tokens_out: 6_610,
+        claude_usd: 0.462038,
+
         claude_cost: 0.36963,
         claude_calls_unpriced: 3,
         titles_classified: 720,
@@ -166,6 +188,8 @@ function base() {
         claude_calls: 310,
         claude_tokens_in: 412_880,
         claude_tokens_out: 24_110,
+        claude_usd: 1.605663,
+
         claude_cost: 1.28453,
         claude_calls_unpriced: 0,
         titles_classified: 2480,
@@ -191,6 +215,8 @@ function base() {
         claude_calls: 180,
         claude_tokens_in: 241_000,
         claude_tokens_out: 12_400,
+        claude_usd: 0.927625,
+
         claude_cost: 0.7421,
         claude_calls_unpriced: 3,
         titles_classified: 1440,
@@ -215,6 +241,8 @@ function base() {
         claude_calls: 24,
         claude_tokens_in: 31_000,
         claude_tokens_out: 1_900,
+        claude_usd: 0.11775,
+
         claude_cost: 0.0942,
         claude_calls_unpriced: 0,
         titles_classified: 192,
@@ -241,6 +269,8 @@ function base() {
         claude_calls: 4,
         claude_tokens_in: 5_200,
         claude_tokens_out: 300,
+        claude_usd: 0.01975,
+
         claude_cost: 0.0158,
         claude_calls_unpriced: 0,
         titles_classified: 32,
@@ -308,6 +338,7 @@ export function emptySpendPayload(overrides: Record<string, unknown> = {}): Spen
     claude_calls: 0,
     claude_tokens_in: 0,
     claude_tokens_out: 0,
+    claude_usd: 0,
     claude_cost: 0,
     claude_calls_unpriced: 0,
     titles_classified: 0,
@@ -316,7 +347,7 @@ export function emptySpendPayload(overrides: Record<string, unknown> = {}): Spen
 
   return {
     ...base(),
-    fixed_monthly_cost_usd: null,
+    fixed_monthly_cost_gbp: null,
     houses_with_spend: 0,
     houses_total: 3,
     totals: { ...zeroFigures },
@@ -333,6 +364,50 @@ export function emptySpendPayload(overrides: Record<string, unknown> = {}): Spen
       cost_per_title_classified: null,
       houses_measured: 0,
       houses_with_active_members: 0,
+    },
+    ...overrides,
+  } as SpendFixture;
+}
+
+/**
+ * The same payload with NO conversion rate configured — the state production is
+ * in until somebody sets `SPEND_GBP_PER_USD`.
+ *
+ * Claude keeps its dollar figure and loses its pound one (null, never zero), and
+ * every `total` drops back to the SMS half, because Rails leaves an unconvertible
+ * figure OUT of a total rather than folding in the wrong currency. Derived from
+ * `base()` rather than hand-written so the two cannot drift: the only difference
+ * between them is the rate, which is the point of the fixture.
+ */
+export function unconvertedSpendPayload(overrides: Record<string, unknown> = {}): SpendFixture {
+  const strip = <T extends { claude_cost: number; sms_cost: number }>(figures: T) => ({
+    ...figures,
+    claude_cost: null as number | null,
+    // Rails re-adds the total in BigDecimal; `sms_cost` is the figure it already
+    // added, so reading it back is exact where `total - claude_cost` would not be.
+    total: figures.sms_cost,
+  });
+
+  const payload = base();
+  return {
+    ...payload,
+    gbp_per_usd: null as number | null,
+    claude_unconverted: true,
+    totals: strip(payload.totals),
+    months: payload.months.map(strip),
+    houses: payload.houses.map((house) => ({
+      ...strip(house),
+      // Per-member follows the total it divides: SMS only, at six decimals.
+      total_per_active_member:
+        house.active_members === 0
+          ? null
+          : Math.round((house.sms_cost / house.active_members) * 1e6) / 1e6,
+    })),
+    unit_economics: {
+      ...payload.unit_economics,
+      // No pound cost per title without a rate. Null, like every other figure
+      // here that has no answer.
+      cost_per_title_classified: null as number | null,
     },
     ...overrides,
   } as SpendFixture;

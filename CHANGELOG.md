@@ -17,6 +17,17 @@
   `hello@bloombase.studio`, the same contact address the web app already uses. (#55)
 - The homepage's hero note says sign-in is by email or Google; the sign-in screen offers both and
   more (#58).
+- The super admin spend report is in **GBP**, everywhere. The business is in the UK and Twilio bills
+  the account in pounds, so the old USD-only sum showed £0.00 settled next to six real charges.
+  Twilio rows billed in pounds are now the settled figure and anything else keeps its own
+  unconverted line. Anthropic still bills in dollars and is converted at `SPEND_GBP_PER_USD`, a
+  configured rate published in the payload so the page can print what it converted at; with no rate
+  set, Claude is reported in dollars, its pound figure is null rather than zero, and every total
+  says in words that it leaves Claude out. The per-segment estimate is measured from the mean of the
+  last ninety days of settled texts once twenty of them exist, and falls back to a configured
+  `SMS_ESTIMATED_SEGMENT_COST_GBP` (default 0.04) before that. Env renames:
+  `FIXED_MONTHLY_COST_USD` → `FIXED_MONTHLY_COST_GBP`, `SMS_ESTIMATED_SEGMENT_COST_USD` →
+  `SMS_ESTIMATED_SEGMENT_COST_GBP`. Nothing about what houses are charged changes.
 
 ## [0.0.3.1] - 2026-09-13
 

@@ -9,7 +9,9 @@ import { formatTimestamp, relativeTime } from "@/lib/date";
 import { plural } from "@/lib/hq-overview";
 import {
   SPEND_RANGE_LABELS,
-  formatUsd,
+  claudeUnconvertedNote,
+  conversionNote,
+  formatMoney,
   marginInputs,
   otherCurrenciesNote,
 } from "@/lib/hq-spend";
@@ -41,7 +43,12 @@ import { UnitEconomics } from "./unit-economics";
  */
 export function SpendScreen({ spend, now }: { spend: SuperAdminSpend; now: Date }) {
   const countedAt = new Date(spend.ends_at);
-  const currencies = otherCurrenciesNote(spend.totals);
+  const currencies = otherCurrenciesNote(spend.totals, spend.currency);
+  // The two things this page has to say about currency, and they are opposites:
+  // one names a charge that could NOT be converted, the other the rate at which
+  // the one convertible figure was.
+  const unconverted = claudeUnconvertedNote(spend);
+  const conversion = conversionNote(spend.gbp_per_usd, spend.currency);
 
   return (
     <>
@@ -62,8 +69,20 @@ export function SpendScreen({ spend, now }: { spend: SuperAdminSpend; now: Date 
           Counted {formatTimestamp(countedAt)}
         </time>
         , across the last {SPEND_RANGE_LABELS[spend.range]}. Every figure is {spend.currency}, at the
-        precision it was computed.
+        precision it was computed.{conversion === null ? null : ` ${conversion}`}
       </p>
+
+      {/* The totals on this page are SHORT when Anthropic's dollars could not be
+          converted, and they render perfectly while being short — which is
+          exactly the failure a reader cannot see. So it is an alert, above the
+          figures, naming what is missing and what it cost. */}
+      {unconverted === null ? null : (
+        <Alert variant="warning" className="mb-6">
+          <TriangleAlert />
+          <AlertTitle>Claude is not in these figures</AlertTitle>
+          <AlertDescription>{unconverted}</AlertDescription>
+        </Alert>
+      )}
 
       {currencies === null ? null : (
         <Alert variant="warning" className="mb-6">
@@ -77,21 +96,29 @@ export function SpendScreen({ spend, now }: { spend: SuperAdminSpend; now: Date 
         <LedgerTile
           icon={Coins}
           coin="lemon"
-          value={formatUsd(spend.totals.total)}
+          value={formatMoney(spend.totals.total, spend.currency)}
           label="spent in this window"
           note={`${formatCount(spend.totals.texts_sent)} ${plural(spend.totals.texts_sent, "text", "texts")}, ${formatCount(spend.totals.claude_calls)} Claude ${plural(spend.totals.claude_calls, "call", "calls")}`}
         />
         <LedgerTile
           icon={MessageSquare}
           coin="sky"
-          value={formatUsd(spend.totals.sms_cost)}
+          value={formatMoney(spend.totals.sms_cost, spend.currency)}
           label="texts"
           note={`${formatCount(spend.totals.segments)} ${plural(spend.totals.segments, "segment", "segments")} sent`}
         />
         <LedgerTile
           icon={Sparkles}
           coin="mint"
-          value={formatUsd(spend.totals.claude_cost)}
+          value={
+            // Null is not zero, at 20px. With no conversion rate there is no
+            // pound figure for Claude at all, and "£0.00" in this tile would say
+            // Claude was free — the alert above spells out what is missing and
+            // what it cost in dollars.
+            spend.totals.claude_cost === null
+              ? "not converted"
+              : formatMoney(spend.totals.claude_cost, spend.currency)
+          }
           label="Claude"
           note={`${formatCount(spend.totals.titles_classified)} ${plural(spend.totals.titles_classified, "title", "titles")} classified`}
         />
@@ -101,9 +128,9 @@ export function SpendScreen({ spend, now }: { spend: SuperAdminSpend; now: Date 
           value={formatCount(spend.houses_with_spend)}
           label={`of ${formatCount(spend.houses_total)} ${plural(spend.houses_total, "house", "houses")} spent anything`}
           note={
-            spend.fixed_monthly_cost_usd === null
+            spend.fixed_monthly_cost_gbp === null
               ? "no fixed monthly cost configured"
-              : `${formatUsd(spend.fixed_monthly_cost_usd)} a month in fixed costs, split across them`
+              : `${formatMoney(spend.fixed_monthly_cost_gbp, spend.currency)} a month in fixed costs, split across them`
           }
         />
       </ul>

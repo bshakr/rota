@@ -11,11 +11,18 @@ RSpec.describe SuperAdmin::Spend do
   # midnight mid-suite would otherwise move the window under the rows.
   let(:now) { Time.utc(2026, 9, 13, 12, 0, 0) }
 
-  around { |example| travel_to(now) { example.run } }
+  # Anthropic bills in dollars and this page reports pounds, so almost every example needs a rate
+  # configured. 0.8 is round enough that a converted figure is checkable by eye, and not so round
+  # that a dropped conversion would slip past unnoticed. The describe about an UNSET rate clears it.
+  let(:gbp_per_usd) { "0.8".to_d }
 
-  # Twilio's per-segment estimate, as the query object defaults it. Written out rather than read
-  # from the constant so a change to the default has to change this file too.
-  let(:segment_rate) { "0.0079".to_d }
+  around do |example|
+    travel_to(now) { with_env("SPEND_GBP_PER_USD" => gbp_per_usd.to_s("F")) { example.run } }
+  end
+
+  # Twilio's per-segment estimate in pounds, as the query object defaults it. Written out rather
+  # than read from the constant so a change to the default has to change this file too.
+  let(:segment_rate) { "0.04".to_d }
 
   def result(range: nil)
     described_class.call(range: range)
@@ -51,7 +58,7 @@ RSpec.describe SuperAdmin::Spend do
 
   # A text Twilio has settled a charge for: price present and price_fetched_at stamped, which is
   # the pair that means "asked, and answered".
-  def settled_text(group, amount: "0.0079", unit: "USD", **attrs)
+  def settled_text(group, amount: "0.0423", unit: "GBP", **attrs)
     text(group, price: amount.to_d, price_unit: unit, price_fetched_at: attrs[:at] || now, **attrs)
   end
 
@@ -192,7 +199,7 @@ RSpec.describe SuperAdmin::Spend do
 
       text(group, status: "failed", error_code: "30006", num_segments: 1)
       estimated = result[:totals][:sms_cost]
-      SmsMessage.last.update!(price: segment_rate, price_unit: "USD", price_fetched_at: now)
+      SmsMessage.last.update!(price: segment_rate, price_unit: "GBP", price_fetched_at: now)
 
       expect(estimated).to be > before
       expect(result[:totals][:sms_cost]).to eq(estimated)
@@ -280,60 +287,68 @@ RSpec.describe SuperAdmin::Spend do
   describe "money at source precision" do
     let(:group) { create(:group) }
 
-    it "keeps the sixth decimal of a Claude cost rather than rounding it away" do
+    # The conversion into pounds must not be where a sub-cent figure is rounded away: 0.000125
+    # dollars at 0.8 is 0.0001 pounds, which six decimals hold and four would report as zero.
+    it "keeps the sixth decimal of a Claude cost through the conversion into pounds" do
       claude_call(group, cost_usd: "0.000125".to_d, items_count: 1)
 
       totals = result[:totals]
-      expect(totals[:claude_cost]).to eq(0.000125)
-      expect(totals[:total]).to eq(0.000125)
-      expect(result[:houses].first[:claude_cost]).to eq(0.000125)
+      expect(totals[:claude_usd]).to eq(0.000125)
+      expect(totals[:claude_cost]).to eq(0.0001)
+      expect(totals[:total]).to eq(0.0001)
+      expect(result[:houses].first[:claude_cost]).to eq(0.0001)
     end
 
     it "keeps it in the unit economics, which divide it further still" do
       claude_call(group, cost_usd: "0.000125".to_d, items_count: 1)
 
       economics = result[:unit_economics]
-      expect(economics[:cost_per_title_classified]).to eq(0.000125)
-      expect(economics[:cost_per_house_per_month][:median]).to eq(0.000127)
+      expect(economics[:cost_per_title_classified]).to eq(0.0001)
+      expect(economics[:cost_per_house_per_month][:median]).to eq(0.000101)
     end
 
     it "renders a settled Twilio price at the five decimals its column holds" do
-      settled_text(group, amount: "0.00795")
+      settled_text(group, amount: "0.00795", unit: "GBP")
 
       expect(result[:totals][:sms_cost_settled]).to eq(0.00795)
     end
   end
 
-  describe "a price billed in another currency" do
+  # Twilio bills this account in pounds, so a pound charge IS the settled figure and a charge in
+  # anything else is the exception. It is still never converted: Twilio's own rate for that
+  # destination is a fact we do not have, and guessing one would put an invented number in the
+  # column a price is set against. The rate that DOES exist, SPEND_GBP_PER_USD, is Anthropic's and
+  # is applied to Anthropic's bill; borrowing it for a Twilio charge would be a different lie.
+  describe "a price billed in a currency other than pounds" do
     let(:group) { create(:group) }
 
-    it "is kept out of the USD total and reported on its own" do
-      settled_text(group, amount: "0.0400", unit: "GBP")
+    it "is kept out of the pound total and reported on its own" do
       settled_text(group, amount: "0.0079", unit: "USD")
+      settled_text(group, amount: "0.0400", unit: "GBP")
 
       totals = result[:totals]
-      expect(totals[:sms_cost_settled]).to eq(0.0079)
-      expect(totals[:sms_cost_other_currencies]).to eq([ { unit: "GBP", amount: 0.04 } ])
-      expect(totals[:total]).to eq(0.0079)
+      expect(totals[:sms_cost_settled]).to eq(0.04)
+      expect(totals[:sms_cost_other_currencies]).to eq([ { unit: "USD", amount: 0.0079 } ])
+      expect(totals[:total]).to eq(0.04)
     end
 
-    it "reports nothing when every charge is in dollars" do
+    it "reports nothing when every charge is in pounds" do
       settled_text(group)
 
       expect(result[:totals][:sms_cost_other_currencies]).to eq([])
     end
 
-    it "treats a settled price with no unit as dollars, which is what Twilio bills us in" do
-      settled_text(group, amount: "0.0079", unit: nil)
+    it "treats a settled price with no unit as pounds, which is what Twilio bills us in" do
+      settled_text(group, amount: "0.0423", unit: nil)
 
-      expect(result[:totals][:sms_cost_settled]).to eq(0.0079)
+      expect(result[:totals][:sms_cost_settled]).to eq(0.0423)
       expect(result[:totals][:sms_cost_other_currencies]).to eq([])
     end
 
     it "surfaces the other currency on the house's own row too" do
-      settled_text(group, amount: "0.0400", unit: "GBP")
+      settled_text(group, amount: "0.0079", unit: "USD")
 
-      expect(result[:houses].first[:sms_cost_other_currencies]).to eq([ { unit: "GBP", amount: 0.04 } ])
+      expect(result[:houses].first[:sms_cost_other_currencies]).to eq([ { unit: "USD", amount: 0.0079 } ])
     end
   end
 
@@ -346,7 +361,8 @@ RSpec.describe SuperAdmin::Spend do
 
       totals = result[:totals]
       expect(totals[:claude_calls]).to eq(2)
-      expect(totals[:claude_cost]).to eq(0.003)
+      expect(totals[:claude_usd]).to eq(0.003)
+      expect(totals[:claude_cost]).to eq(0.0024)
       expect(totals[:claude_tokens_in]).to eq(1_500)
       expect(totals[:claude_tokens_out]).to eq(300)
       expect(totals[:titles_classified]).to eq(50)
@@ -367,15 +383,20 @@ RSpec.describe SuperAdmin::Spend do
 
       totals = result[:totals]
       expect(totals[:claude_calls]).to eq(1)
-      expect(totals[:claude_cost]).to eq(0.0004)
+      expect(totals[:claude_usd]).to eq(0.0004)
+      expect(totals[:claude_cost]).to eq(0.00032)
       expect(totals[:titles_classified]).to eq(0)
     end
 
     it "counts a call nobody could price rather than reading it as free" do
       claude_call(group, cost_usd: nil, items_count: 10)
 
-      expect(result[:totals][:claude_calls_unpriced]).to eq(1)
-      expect(result[:totals][:claude_cost]).to eq(0.0)
+      totals = result[:totals]
+      expect(totals[:claude_calls_unpriced]).to eq(1)
+      # Zero is the honest figure HERE and only here: the call was genuinely summed as nothing
+      # because no rate priced it, which `claude_calls_unpriced` is what says so.
+      expect(totals[:claude_usd]).to eq(0.0)
+      expect(totals[:claude_cost]).to eq(0.0)
     end
   end
 
@@ -431,11 +452,11 @@ RSpec.describe SuperAdmin::Spend do
   end
 
   describe "the allocated fixed cost" do
-    it "is nil everywhere when FIXED_MONTHLY_COST_USD is not set" do
+    it "is nil everywhere when FIXED_MONTHLY_COST_GBP is not set" do
       group = create(:group)
       settled_text(group)
 
-      expect(result[:fixed_monthly_cost_usd]).to be_nil
+      expect(result[:fixed_monthly_cost_gbp]).to be_nil
       expect(result[:houses].first[:allocated_fixed_cost]).to be_nil
     end
 
@@ -444,11 +465,11 @@ RSpec.describe SuperAdmin::Spend do
       create(:group)
       active.each { |group| settled_text(group) }
 
-      with_env("FIXED_MONTHLY_COST_USD" => "120") do
+      with_env("FIXED_MONTHLY_COST_GBP" => "120") do
         ninety = result(range: "90d")
 
         # 120 a month over 2.956879 months, split two ways.
-        expect(ninety[:fixed_monthly_cost_usd]).to eq(120.0)
+        expect(ninety[:fixed_monthly_cost_gbp]).to eq(120.0)
         expect(ninety[:houses].map { |house| house[:allocated_fixed_cost] })
           .to eq([ 177.412731, 177.412731 ])
       end
@@ -459,7 +480,7 @@ RSpec.describe SuperAdmin::Spend do
       create(:group)
       settled_text(group)
 
-      with_env("FIXED_MONTHLY_COST_USD" => "120") do
+      with_env("FIXED_MONTHLY_COST_GBP" => "120") do
         # 120 a month over the 30-day window's 0.985626 months, undivided.
         expect(result[:houses].first[:allocated_fixed_cost]).to eq(118.275154)
       end
@@ -469,7 +490,7 @@ RSpec.describe SuperAdmin::Spend do
       group = create(:group)
       settled_text(group, amount: "0.0079")
 
-      with_env("FIXED_MONTHLY_COST_USD" => "120") do
+      with_env("FIXED_MONTHLY_COST_GBP" => "120") do
         expect(result[:houses].first[:total]).to eq(0.0079)
       end
     end
@@ -478,8 +499,8 @@ RSpec.describe SuperAdmin::Spend do
       group = create(:group)
       settled_text(group)
 
-      with_env("FIXED_MONTHLY_COST_USD" => "$120/mo") do
-        expect(result[:fixed_monthly_cost_usd]).to be_nil
+      with_env("FIXED_MONTHLY_COST_GBP" => "$120/mo") do
+        expect(result[:fixed_monthly_cost_gbp]).to be_nil
         expect(result[:houses].first[:allocated_fixed_cost]).to be_nil
       end
     end
@@ -490,12 +511,12 @@ RSpec.describe SuperAdmin::Spend do
       group = create(:group)
       settled_text(group)
 
-      expect(Rails.logger).to receive(:warn).with(/FIXED_MONTHLY_COST_USD.*negative/)
+      expect(Rails.logger).to receive(:warn).with(/FIXED_MONTHLY_COST_GBP.*negative/)
 
-      with_env("FIXED_MONTHLY_COST_USD" => "-120") do
+      with_env("FIXED_MONTHLY_COST_GBP" => "-120") do
         answer = result
 
-        expect(answer[:fixed_monthly_cost_usd]).to be_nil
+        expect(answer[:fixed_monthly_cost_gbp]).to be_nil
         expect(answer[:houses].first[:allocated_fixed_cost]).to be_nil
       end
     end
@@ -504,10 +525,10 @@ RSpec.describe SuperAdmin::Spend do
       group = create(:group)
       settled_text(group)
 
-      with_env("FIXED_MONTHLY_COST_USD" => "0") do
+      with_env("FIXED_MONTHLY_COST_GBP" => "0") do
         answer = result
 
-        expect(answer[:fixed_monthly_cost_usd]).to eq(0.0)
+        expect(answer[:fixed_monthly_cost_gbp]).to eq(0.0)
         expect(answer[:houses].first[:allocated_fixed_cost]).to eq(0.0)
       end
     end
@@ -515,22 +536,25 @@ RSpec.describe SuperAdmin::Spend do
 
   describe "the per-segment estimate rate" do
     it "is reported so the reader can see what the estimate was built from" do
-      expect(result[:sms_estimated_segment_cost_usd]).to eq(segment_rate.to_f)
+      answer = result
+
+      expect(answer[:sms_estimated_segment_cost_gbp]).to eq(segment_rate.to_f)
+      expect(answer[:sms_estimated_segment_cost_from_settled]).to be_nil
     end
 
-    it "can be overridden with SMS_ESTIMATED_SEGMENT_COST_USD" do
+    it "can be overridden with SMS_ESTIMATED_SEGMENT_COST_GBP" do
       group = create(:group)
       text(group, num_segments: 2)
 
-      with_env("SMS_ESTIMATED_SEGMENT_COST_USD" => "0.01") do
-        expect(result[:sms_estimated_segment_cost_usd]).to eq(0.01)
+      with_env("SMS_ESTIMATED_SEGMENT_COST_GBP" => "0.01") do
+        expect(result[:sms_estimated_segment_cost_gbp]).to eq(0.01)
         expect(result[:totals][:sms_cost_estimated]).to eq(0.02)
       end
     end
 
     it "falls back to the default when the override is not a number" do
-      with_env("SMS_ESTIMATED_SEGMENT_COST_USD" => "cheap") do
-        expect(result[:sms_estimated_segment_cost_usd]).to eq(segment_rate.to_f)
+      with_env("SMS_ESTIMATED_SEGMENT_COST_GBP" => "cheap") do
+        expect(result[:sms_estimated_segment_cost_gbp]).to eq(segment_rate.to_f)
       end
     end
 
@@ -539,13 +563,174 @@ RSpec.describe SuperAdmin::Spend do
       group = create(:group)
       text(group, num_segments: 2)
 
-      expect(Rails.logger).to receive(:warn).with(/SMS_ESTIMATED_SEGMENT_COST_USD.*negative/)
+      expect(Rails.logger).to receive(:warn).with(/SMS_ESTIMATED_SEGMENT_COST_GBP.*negative/)
 
-      with_env("SMS_ESTIMATED_SEGMENT_COST_USD" => "-0.01") do
+      with_env("SMS_ESTIMATED_SEGMENT_COST_GBP" => "-0.01") do
         answer = result
 
-        expect(answer[:sms_estimated_segment_cost_usd]).to eq(segment_rate.to_f)
+        expect(answer[:sms_estimated_segment_cost_gbp]).to eq(segment_rate.to_f)
         expect(answer[:totals][:sms_cost_estimated]).to eq((segment_rate * 2).to_f)
+      end
+    end
+
+    # A list price is a guess about a mix of destinations; what this account was actually charged
+    # is not. Once enough texts have settled, the mean of those charges is the better estimate for
+    # the ones that have not — and it is the same account, the same carriers and the same message
+    # lengths, which no published rate can claim. It takes precedence over the configured figure
+    # for that reason, and the payload says how many texts it came from so nobody has to guess
+    # which of the two they are reading.
+    describe "once enough texts have settled" do
+      let(:group) { create(:group) }
+
+      # Two segments at 0.08 and one at 0.04 is 0.20 over 5 segments = 0.04 a segment. Weighted by
+      # segments rather than averaged per text, because a three-segment text is three times the
+      # charge and a mean over texts would let one long text drag the rate.
+      def settled_sample(count, at: now)
+        count.times do |index|
+          settled_text(group, amount: index.even? ? "0.0800" : "0.0400",
+                              num_segments: index.even? ? 2 : 1, at: at)
+        end
+      end
+
+      it "uses the mean settled price per segment, and says how many texts it came from" do
+        settled_sample(20)
+        text(group, num_segments: 1)
+
+        answer = result
+        expect(answer[:sms_estimated_segment_cost_gbp]).to eq(0.04)
+        expect(answer[:sms_estimated_segment_cost_from_settled]).to eq(20)
+      end
+
+      it "prices the unsettled texts at that measured rate" do
+        settled_sample(20)
+        text(group, num_segments: 3)
+
+        expect(result[:totals][:sms_cost_estimated]).to eq(0.12)
+      end
+
+      # Nineteen is not a sample. Below the floor the configured figure stands, and the payload
+      # says nil rather than 19 so the page never claims a measurement it did not make.
+      it "keeps the configured rate until the floor is reached" do
+        settled_sample(19)
+        text(group, num_segments: 1)
+
+        with_env("SMS_ESTIMATED_SEGMENT_COST_GBP" => "0.05") do
+          answer = result
+
+          expect(answer[:sms_estimated_segment_cost_gbp]).to eq(0.05)
+          expect(answer[:sms_estimated_segment_cost_from_settled]).to be_nil
+        end
+      end
+
+      # The rate is "what a segment costs lately", so the sample is the trailing 90 days whatever
+      # window is being looked at — otherwise the 12m page would price today's unsettled texts at
+      # last autumn's rate.
+      it "ignores settled texts older than the trailing ninety days" do
+        settled_sample(20, at: now - 100.days)
+
+        expect(result(range: "12m")[:sms_estimated_segment_cost_from_settled]).to be_nil
+      end
+
+      # A dollar charge is not evidence about a pound rate. Mixing the two would produce a mean in
+      # no currency at all.
+      it "measures only the charges billed in pounds" do
+        20.times { settled_text(group, amount: "0.0800", unit: "USD", num_segments: 2) }
+
+        expect(result[:sms_estimated_segment_cost_from_settled]).to be_nil
+      end
+    end
+  end
+
+  # Anthropic bills in dollars; this page reports pounds. That is the one figure here that has to
+  # cross a currency, and the only honest way across is a rate somebody decided on — so the rate is
+  # configuration, it is published in the payload beside the figures it moved, and when it is
+  # missing the page says Claude is missing rather than showing a pound figure nobody set a rate
+  # for. Never zero, never a guessed rate: both of those read as a fact.
+  describe "Claude, in pounds" do
+    let(:group) { create(:group) }
+
+    it "converts the dollar cost at the configured rate and says what the rate was" do
+      claude_call(group, cost_usd: "0.5000".to_d, items_count: 10)
+
+      answer = result
+      expect(answer[:gbp_per_usd]).to eq(0.8)
+      expect(answer[:claude_unconverted]).to be(false)
+      expect(answer[:totals][:claude_usd]).to eq(0.5)
+      expect(answer[:totals][:claude_cost]).to eq(0.4)
+      expect(answer[:totals][:total]).to eq(0.4)
+    end
+
+    it "adds the converted figure to the same total the texts are in" do
+      claude_call(group, cost_usd: "0.5000".to_d, items_count: 10)
+      settled_text(group, amount: "0.1000")
+
+      expect(result[:totals][:total]).to eq(0.5)
+      expect(result[:houses].first[:total]).to eq(0.5)
+    end
+
+    context "when no rate is configured" do
+      it "reports Claude in dollars, unconverted, and says so" do
+        with_env("SPEND_GBP_PER_USD" => nil) do
+          claude_call(group, cost_usd: "0.5000".to_d, items_count: 10)
+
+          answer = result
+          expect(answer[:gbp_per_usd]).to be_nil
+          expect(answer[:claude_unconverted]).to be(true)
+          expect(answer[:totals][:claude_usd]).to eq(0.5)
+        end
+      end
+
+      # Nil rather than 0.0, and the distinction is the whole point: a zero in the Claude column
+      # would read as "Claude was free this month", which is the most expensive thing this page
+      # could say wrongly. There is no pound figure, so there is no pound figure.
+      it "says nil for the pound figure rather than zero" do
+        with_env("SPEND_GBP_PER_USD" => nil) do
+          claude_call(group, cost_usd: "0.5000".to_d, items_count: 10)
+
+          expect(result[:totals][:claude_cost]).to be_nil
+          expect(result[:houses].first[:claude_cost]).to be_nil
+          expect(result[:unit_economics][:cost_per_title_classified]).to be_nil
+        end
+      end
+
+      it "leaves Claude out of every combined total rather than folding in a dollar figure" do
+        with_env("SPEND_GBP_PER_USD" => nil) do
+          claude_call(group, cost_usd: "0.5000".to_d, items_count: 10)
+          settled_text(group, amount: "0.1000")
+
+          expect(result[:totals][:total]).to eq(0.1)
+          expect(result[:houses].first[:total]).to eq(0.1)
+        end
+      end
+
+      it "still counts the calls, the tokens and the titles, which are not money" do
+        with_env("SPEND_GBP_PER_USD" => nil) do
+          claude_call(group, cost_usd: "0.5000".to_d, items_count: 10)
+
+          totals = result[:totals]
+          expect(totals[:claude_calls]).to eq(1)
+          expect(totals[:titles_classified]).to eq(10)
+        end
+      end
+    end
+
+    it "ignores a rate that is not a number rather than reporting a made-up conversion" do
+      expect(Rails.logger).to receive(:warn).with(/SPEND_GBP_PER_USD.*not a number/)
+
+      with_env("SPEND_GBP_PER_USD" => "about 0.8") do
+        claude_call(group, cost_usd: "0.5000".to_d, items_count: 10)
+        answer = result
+
+        expect(answer[:claude_unconverted]).to be(true)
+        expect(answer[:totals][:claude_cost]).to be_nil
+      end
+    end
+
+    it "ignores a negative rate, which would make Claude reduce the bill it belongs to" do
+      expect(Rails.logger).to receive(:warn).with(/SPEND_GBP_PER_USD.*negative/)
+
+      with_env("SPEND_GBP_PER_USD" => "-0.8") do
+        expect(result[:claude_unconverted]).to be(true)
       end
     end
   end
@@ -556,12 +741,12 @@ RSpec.describe SuperAdmin::Spend do
     # never an average of two.
     it "reads the median and p90 off real houses" do
       totals = [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ]
-      totals.each do |dollars|
+      totals.each do |pounds|
         group = create(:group)
-        settled_text(group, amount: format("%.4f", dollars))
+        settled_text(group, amount: format("%.4f", pounds))
       end
 
-      # Five dollars and nine dollars over a 30-day window, which is 0.985626 months.
+      # Five pounds and nine pounds over a 30-day window, which is 0.985626 months.
       economics = result[:unit_economics][:cost_per_house_per_month]
       expect(economics[:median]).to eq(5.072917)
       expect(economics[:p90]).to eq(9.13125)
@@ -625,7 +810,7 @@ RSpec.describe SuperAdmin::Spend do
 
       economics = result[:unit_economics]
       expect(economics[:cost_per_text_sent]).to eq(0.02)
-      expect(economics[:cost_per_title_classified]).to eq(0.002)
+      expect(economics[:cost_per_title_classified]).to eq(0.0016)
     end
   end
 
@@ -652,7 +837,8 @@ RSpec.describe SuperAdmin::Spend do
 
       expect(months["2026-08"][:sms_cost_settled]).to eq(0.05)
       expect(months["2026-08"][:claude_cost]).to eq(0.0)
-      expect(months["2026-09"][:claude_cost]).to eq(0.03)
+      expect(months["2026-09"][:claude_usd]).to eq(0.03)
+      expect(months["2026-09"][:claude_cost]).to eq(0.024)
       expect(months["2026-09"][:titles_classified]).to eq(12)
       expect(months["2026-09"][:sms_cost_settled]).to eq(0.0)
     end
@@ -707,7 +893,7 @@ RSpec.describe SuperAdmin::Spend do
     # page for a minute if the key were not versioned. Asserted rather than trusted, because the
     # suffix reads as clutter to anyone who does not know what it is for.
     it "versions the key, so a deploy that changes the payload cannot serve the old shape" do
-      expect(described_class.cache_key("30d")).to eq("super_admin/spend/v2/30d")
+      expect(described_class.cache_key("30d")).to eq("super_admin/spend/v3/30d")
     end
   end
 
@@ -715,7 +901,7 @@ RSpec.describe SuperAdmin::Spend do
     it "names the currency and the window it measured" do
       answer = result
 
-      expect(answer[:currency]).to eq("USD")
+      expect(answer[:currency]).to eq("GBP")
       expect(answer[:starts_at]).to eq((now - 30.days).iso8601)
       expect(answer[:ends_at]).to eq(now.iso8601)
     end
@@ -726,6 +912,7 @@ RSpec.describe SuperAdmin::Spend do
 
       expect(result[:totals][:sms_cost_settled]).to be_a(Numeric)
       expect(result.to_json).to include('"sms_cost_settled":0.0079')
+      expect(result.to_json).to include('"gbp_per_usd":0.8')
     end
   end
 end

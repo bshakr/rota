@@ -17,12 +17,24 @@ module SuperAdmin
   #   * Blend a settled charge with an estimate. Twilio settles a price minutes after delivery, so
   #     the last day of any range is always partly unpriced. Settled and estimated are separate
   #     figures with separate counts, and the page says which is which.
-  #   * Add a non-USD charge into the USD total. Twilio bills per destination network and can bill
-  #     in another currency; converting would need a rate, and a rate is one more thing to be wrong
-  #     about. A foreign charge is reported on its own line instead (BLO-1672's review asked for
-  #     this).
+  #   * Add a charge billed in something other than pounds into the pound total. Twilio bills per
+  #     destination network and can bill in another currency; converting THAT would need Twilio's
+  #     own rate for that destination, which is a fact we do not have. Such a charge is reported on
+  #     its own line instead (BLO-1672's review asked for this). Anthropic is the one exception and
+  #     it is an explicit one: see the Currency note below.
   #   * Touch a Float on the way to a total. Money is BigDecimal from the column to the last step,
   #     and becomes a JSON number only when the payload is built.
+  #
+  # Currency. Everything this emits is GBP, because the business is in the UK and Twilio bills the
+  # account in GBP — which the old USD-only version could not see, so production showed a settled
+  # total of zero next to real charges. Anthropic still bills in dollars, and dollars are the one
+  # thing here that has to cross a currency. The only honest way across is a rate somebody decided
+  # on, so SPEND_GBP_PER_USD is configuration rather than a lookup: it is published in the payload
+  # beside the figures it moved, and when it is unset the Claude figure is reported as dollars
+  # (`claude_usd`), the pound figure is nil rather than zero, and every combined total leaves it
+  # out under `claude_unconverted`. Nil rather than zero because "Claude was free" is the most
+  # expensive thing this page could say wrongly. No rate is ever invented and none is ever fetched:
+  # an FX rate that moved under a cached total would make two loads of the same page disagree.
   #
   # Precision, since a number that renders coarser than it was computed is a decision and not a
   # default: every money figure here serialises at 6 decimals, which is the precision of the columns
@@ -69,25 +81,48 @@ module SuperAdmin
     #
     # v2: texts_unpriceable added, houses_active renamed to houses_with_spend, money at 6 decimals
     # rather than 4, and months_in_range became the window's true length rather than a whole number.
-    CACHE_KEY = "super_admin/spend/v2".freeze
+    # v3: the reporting currency became GBP. Every money figure changed VALUE without changing its
+    # name, which is exactly the case this suffix exists for — a v2 entry parses perfectly and is a
+    # dollar figure wearing a pound sign. The `_usd` fields were renamed `_gbp` alongside it, and
+    # gbp_per_usd, claude_unconverted, claude_usd and sms_estimated_segment_cost_from_settled added.
+    CACHE_KEY = "super_admin/spend/v3".freeze
 
     # The same 60 seconds the rest of the operator console caches at. Tens of houses, live SQL, and
     # a page nobody reloads twice a second — see the plan's "Aggregation" decision.
     CACHE_TTL = 60.seconds
 
-    # Both vendors bill in dollars and nothing here converts. See the "Currency" decision.
-    CURRENCY = "USD"
+    # What this page reports in, and what Twilio bills the account in. See the Currency note on
+    # the class. Decided 2026-09-14.
+    CURRENCY = "GBP"
+
+    # The currency Anthropic bills in, and the only one SPEND_GBP_PER_USD is ever applied to.
+    CLAUDE_CURRENCY = "USD"
 
     # One rule for every money figure, totals and per-unit prices alike. See the note on the class.
     MONEY_PRECISION = 6
 
-    # What one segment costs when Twilio has not said yet. Twilio's US list price for an outbound
-    # SMS segment; override with SMS_ESTIMATED_SEGMENT_COST_USD when the mix is mostly elsewhere.
+    # What one segment costs when Twilio has not said yet, and no settled sample is big enough to
+    # measure it from. Override with SMS_ESTIMATED_SEGMENT_COST_GBP.
+    #
+    # Twilio publishes no GBP list price: https://www.twilio.com/en-us/sms/pricing/gb quotes UK
+    # outbound SMS at $0.056 a segment (USD, read 2026-09-14), and this account is billed in
+    # pounds at a rate that page does not give. So this is an approximation, and it is set from
+    # what the account has actually been charged rather than from the list: production's settled
+    # rows are £0.08465 and £0.12697, which divide by their 2 and 3 segments to £0.042 each.
+    # Rounded down to 0.04 because it is a placeholder — the measured rate below replaces it as
+    # soon as twenty texts have settled, and that is the figure meant to be used.
     #
     # It matters less as the backfill settles rows, but it never stops mattering: a row that aged
     # out of Twilio's retention before anyone asked is priced by this rate for good, which is what
     # `texts_unpriceable` counts.
-    DEFAULT_SEGMENT_COST_USD = "0.0079".to_d
+    DEFAULT_SEGMENT_COST_GBP = "0.04".to_d
+
+    # How far back the measured segment rate looks, and how many settled texts it needs before it
+    # will speak. Ninety days because the rate is meant to be "what a segment costs LATELY" — the
+    # 12m window must not price today's unsettled texts at last autumn's rate — and twenty because
+    # below that one three-segment text moves the mean more than the mix does.
+    SETTLED_SAMPLE_DAYS = 90
+    SETTLED_SAMPLE_MINIMUM = 20
 
     # A row with no segment count is a text sent before BLO-1672 added the column. One segment is
     # the floor, not the truth: it understates a long text and never overstates a short one, which
@@ -115,7 +150,10 @@ module SuperAdmin
       claude_calls: 0,
       claude_tokens_in: 0,
       claude_tokens_out: 0,
-      claude_cost: BigDecimal(0),
+      # Dollars, as Anthropic billed them, and named so. Every other money key in this hash is
+      # pounds; the conversion happens once on the way out (see `claude_gbp`), so nothing in here
+      # is ever a mix of the two.
+      claude_cost_usd: BigDecimal(0),
       claude_calls_unpriced: 0,
       titles_classified: 0
     }.freeze
@@ -152,7 +190,7 @@ module SuperAdmin
         SELECT
           members.group_id AS group_id,
           DATE_TRUNC('month', sms_messages.created_at) AS month_start,
-          COALESCE(NULLIF(UPPER(sms_messages.price_unit), ''), 'USD') AS price_unit,
+          COALESCE(NULLIF(UPPER(sms_messages.price_unit), ''), :currency) AS price_unit,
           COALESCE(sms_messages.num_segments, :assumed_segments) AS segments,
           sms_messages.price AS price,
           sms_messages.twilio_sid IS NOT NULL AS accepted,
@@ -201,7 +239,7 @@ module SuperAdmin
           + COALESCE(SUM(ai_calls.cache_creation_input_tokens), 0)
           + COALESCE(SUM(ai_calls.cache_read_input_tokens), 0) AS claude_tokens_in,
         COALESCE(SUM(ai_calls.output_tokens), 0) AS claude_tokens_out,
-        COALESCE(SUM(ai_calls.cost_usd), 0) AS claude_cost,
+        COALESCE(SUM(ai_calls.cost_usd), 0) AS claude_cost_usd,
         COUNT(*) FILTER (WHERE ai_calls.cost_usd IS NULL) AS claude_calls_unpriced,
         COALESCE(SUM(ai_calls.items_count) FILTER (WHERE ai_calls.succeeded), 0) AS titles_classified
       FROM ai_calls
@@ -209,6 +247,31 @@ module SuperAdmin
         AND ai_calls.created_at <= :ends_at
       GROUP BY ai_calls.group_id, DATE_TRUNC('month', ai_calls.created_at)
     SQL
+
+    # What a segment has actually cost lately, from the charges Twilio settled.
+    #
+    # Weighted by segments rather than averaged over texts — SUM(price) / SUM(segments) — because a
+    # three-segment text is three times the charge, and a mean per text would let one long message
+    # drag the rate for every short one. It is deliberately NOT scoped to the window being viewed:
+    # the rate answers "what does a segment cost now", which is the same answer on all three pages.
+    #
+    # Only rows billed in the reporting currency count. A dollar charge is not evidence about a
+    # pound rate, and mixing them would produce a mean in no currency at all.
+    SETTLED_RATE_SQL = <<~SQL.freeze
+      SELECT
+        COUNT(*) AS settled_rows,
+        COALESCE(SUM(sms_messages.price), 0) AS price,
+        COALESCE(SUM(COALESCE(sms_messages.num_segments, :assumed_segments)), 0) AS segments
+      FROM sms_messages
+      WHERE sms_messages.price_fetched_at IS NOT NULL
+        AND sms_messages.price IS NOT NULL
+        AND COALESCE(NULLIF(UPPER(sms_messages.price_unit), ''), :currency) = :currency
+        AND sms_messages.created_at >= :settled_since
+    SQL
+
+    # How the per-segment estimate was arrived at: the rate itself, and the number of settled texts
+    # it was measured from (nil when it came from configuration rather than from a measurement).
+    Estimate = Data.define(:rate, :settled_rows)
 
     class << self
       # Uncached. What specs and anything that wants today's figures rather than the last minute's
@@ -253,22 +316,51 @@ module SuperAdmin
       end
     end
 
-    attr_reader :window, :segment_cost, :fixed_monthly_cost
+    attr_reader :window, :fixed_monthly_cost, :gbp_per_usd
 
     def initialize(range: nil)
       # Raises before anything is read or cached, so a bad range costs one comparison.
       @window = self.class.window_for(range)
-      @segment_cost = parse_money(ENV["SMS_ESTIMATED_SEGMENT_COST_USD"], "SMS_ESTIMATED_SEGMENT_COST_USD") ||
-                      DEFAULT_SEGMENT_COST_USD
+      @configured_segment_cost = parse_money(
+        ENV["SMS_ESTIMATED_SEGMENT_COST_GBP"], "SMS_ESTIMATED_SEGMENT_COST_GBP"
+      )
       # Optional by design: unset means the page shows no allocated line at all rather than a zero
       # that could be read as "hosting is free". See the "Fixed costs" decision.
-      @fixed_monthly_cost = parse_money(ENV["FIXED_MONTHLY_COST_USD"], "FIXED_MONTHLY_COST_USD")
+      @fixed_monthly_cost = parse_money(ENV["FIXED_MONTHLY_COST_GBP"], "FIXED_MONTHLY_COST_GBP")
+      # Nil is a supported state, not a misconfiguration to paper over: until somebody decides a
+      # rate, Claude is reported in dollars and left out of the pound totals. See the class note.
+      @gbp_per_usd = parse_money(ENV["SPEND_GBP_PER_USD"], "SPEND_GBP_PER_USD")
     end
 
-    # The key is the range and nothing else. Changing FIXED_MONTHLY_COST_USD therefore takes up to
-    # a minute to show, which is the right trade: keying on the env values too would mean a cache
-    # entry per pricing experiment, and an operator typing a candidate price is doing it on the
-    # page's own calculator (BLO-1684), not here.
+    # What one unsettled segment is priced at, and where that figure came from.
+    #
+    # Measured beats configured, which is the opposite of the usual precedence and is the point:
+    # a list price is a guess about a mix of destinations, and what this account was actually
+    # charged is not a guess at all — same carriers, same message lengths, same account. The
+    # configured figure is the fallback for before there is anything to measure, and the payload
+    # publishes `sms_estimated_segment_cost_from_settled` so the two are never confused on screen.
+    #
+    # Memoised, and reached only from #call, so a cache hit does not run the query.
+    def estimate
+      @estimate ||= measured_estimate ||
+                    Estimate.new(rate: @configured_segment_cost || DEFAULT_SEGMENT_COST_GBP,
+                                 settled_rows: nil)
+    end
+
+    def segment_cost
+      estimate.rate
+    end
+
+    # Whether Claude's dollars could be expressed in pounds at all. When true, every combined total
+    # on this page excludes Claude and `claude_usd` is the only figure for it.
+    def claude_unconverted?
+      gbp_per_usd.nil?
+    end
+
+    # The key is the range and nothing else. Changing FIXED_MONTHLY_COST_GBP or SPEND_GBP_PER_USD
+    # therefore takes up to a minute to show, which is the right trade: keying on the env values
+    # too would mean a cache entry per pricing experiment, and an operator typing a candidate price
+    # is doing it on the page's own calculator (BLO-1684), not here.
     def cached
       Rails.cache.fetch(self.class.cache_key(window.key), expires_in: CACHE_TTL) { call }
     end
@@ -293,8 +385,16 @@ module SuperAdmin
         # same six decimals — and rounded here and only here: every division above used the
         # full-precision value.
         months_in_range: window.months.round(MONEY_PRECISION).to_f,
-        fixed_monthly_cost_usd: money(fixed_monthly_cost),
-        sms_estimated_segment_cost_usd: money(segment_cost),
+        # The rate that crossed Anthropic's dollars into this page's pounds, published beside the
+        # figures it moved so the page can print "converted at 0.79" and a reader can check the
+        # arithmetic. Nil when none is configured, which `claude_unconverted` then says in a word.
+        gbp_per_usd: money(gbp_per_usd),
+        claude_unconverted: claude_unconverted?,
+        fixed_monthly_cost_gbp: money(fixed_monthly_cost),
+        sms_estimated_segment_cost_gbp: money(segment_cost),
+        # How many settled texts that rate was measured from, or nil when it is the configured
+        # figure. Two very different claims, and the page has to be able to tell them apart.
+        sms_estimated_segment_cost_from_settled: estimate.settled_rows,
         houses_with_spend: houses.length,
         houses_total: Group.count,
         totals: figures(total),
@@ -328,10 +428,29 @@ module SuperAdmin
     end
 
     def each_row(sql, name, &)
-      bound = ApplicationRecord.sanitize_sql_array(
-        [ sql, { starts_at: window.starts_at, ends_at: window.ends_at, assumed_segments: ASSUMED_SEGMENTS } ]
+      ApplicationRecord.connection.select_all(bind(sql), name).each(&)
+    end
+
+    def bind(sql)
+      ApplicationRecord.sanitize_sql_array(
+        [ sql, { starts_at: window.starts_at, ends_at: window.ends_at,
+                 assumed_segments: ASSUMED_SEGMENTS, currency: CURRENCY,
+                 settled_since: window.ends_at - SETTLED_SAMPLE_DAYS.days } ]
       )
-      ApplicationRecord.connection.select_all(bound, name).each(&)
+    end
+
+    # The measured per-segment rate, or nil when there is not enough settled evidence to claim one.
+    # Zero segments cannot be divided by, and would only arise from a sample of rows that are all
+    # priced and all somehow segmentless.
+    def measured_estimate
+      row = ApplicationRecord.connection.select_one(bind(SETTLED_RATE_SQL), "SuperAdmin::Spend rate")
+      return nil if row.nil?
+
+      rows = integer(row["settled_rows"])
+      segments = integer(row["segments"])
+      return nil if rows < SETTLED_SAMPLE_MINIMUM || segments.zero?
+
+      Estimate.new(rate: decimal(row["price"]) / segments, settled_rows: rows)
     end
 
     def cell_key(row)
@@ -346,7 +465,7 @@ module SuperAdmin
         texts_sent: integer(row["texts_sent"]),
         segments: integer(row["segments"]),
         texts_settled: integer(row["texts_settled"]),
-        # Only dollars reach the headline figure. Anything else is carried beside it, unconverted.
+        # Only pounds reach the headline figure. Anything else is carried beside it, unconverted.
         sms_cost_settled: unit == CURRENCY ? settled : BigDecimal(0),
         texts_estimated: integer(row["texts_estimated"]),
         texts_unpriceable: integer(row["texts_unpriceable"]),
@@ -360,7 +479,7 @@ module SuperAdmin
         claude_calls: integer(row["claude_calls"]),
         claude_tokens_in: integer(row["claude_tokens_in"]),
         claude_tokens_out: integer(row["claude_tokens_out"]),
-        claude_cost: decimal(row["claude_cost"]),
+        claude_cost_usd: decimal(row["claude_cost_usd"]),
         claude_calls_unpriced: integer(row["claude_calls_unpriced"]),
         titles_classified: integer(row["titles_classified"])
       )
@@ -462,21 +581,41 @@ module SuperAdmin
         claude_calls: bucket[:claude_calls],
         claude_tokens_in: bucket[:claude_tokens_in],
         claude_tokens_out: bucket[:claude_tokens_out],
-        claude_cost: money(bucket[:claude_cost]),
+        # Two figures for one bill, and both are always here. `claude_usd` is what Anthropic
+        # charged, in the currency it charged in; `claude_cost` is that in pounds, or NIL when no
+        # rate is configured. Nil and not zero: a zero in this column would read as "Claude was
+        # free", which is the most expensive lie this page can tell, and it would add to the
+        # totals as if it were a fact.
+        claude_usd: money(bucket[:claude_cost_usd]),
+        claude_cost: money(claude_gbp(bucket)),
         claude_calls_unpriced: bucket[:claude_calls_unpriced],
         titles_classified: bucket[:titles_classified],
         total: money(total_of(bucket))
       }
     end
 
+    # Anthropic's bill in this page's currency, or nil when nobody has set a rate. The one
+    # conversion on the page, applied to the one vendor that bills in dollars. See the class note.
+    def claude_gbp(bucket)
+      return nil if claude_unconverted?
+
+      bucket[:claude_cost_usd] * gbp_per_usd
+    end
+
     def estimated_cost(bucket)
       segment_cost * bucket[:estimated_segments]
     end
 
+    # Everything this page can state in pounds. Claude joins it only once there is a rate to state
+    # it with — `claude_unconverted` is how the payload says the total is short by that much, so a
+    # reader is never left to infer it from a figure that looks complete.
     def total_of(bucket)
-      bucket[:sms_cost_settled] + estimated_cost(bucket) + bucket[:claude_cost]
+      bucket[:sms_cost_settled] + estimated_cost(bucket) + (claude_gbp(bucket) || BigDecimal(0))
     end
 
+    # Charges this page refuses to convert: Twilio billed them in something other than pounds and
+    # Twilio's rate for that destination is not a fact we hold. SPEND_GBP_PER_USD is Anthropic's
+    # rate, and borrowing it for a Twilio charge would be a different guess wearing a real number.
     def other_currencies(bucket)
       bucket[:other_currencies].sort.map { |unit, amount| { unit: unit, amount: money(amount) } }
     end
@@ -505,6 +644,9 @@ module SuperAdmin
       texts = total[:texts_sent]
       titles = total[:titles_classified]
       sms = total[:sms_cost_settled] + estimated_cost(total)
+      # Nil, like every other figure here that has no answer: with no rate there is no pound cost
+      # per title, and a dollar one in a column of pounds would be worse than none.
+      claude = claude_gbp(total)
       # Houses with nobody left to text are not in the per-member spread at all. They would have to
       # be divided by zero to join it, and dropping them is the only reading that is not a lie.
       housed = houses.select { |house| house[:active_members].positive? }
@@ -515,7 +657,7 @@ module SuperAdmin
           housed.map { |house| house[:total] / house[:active_members] / window.months }
         ),
         cost_per_text_sent: money(texts.positive? ? sms / texts : nil),
-        cost_per_title_classified: money(titles.positive? ? total[:claude_cost] / titles : nil),
+        cost_per_title_classified: money(claude && titles.positive? ? claude / titles : nil),
         houses_measured: houses.length,
         houses_with_active_members: housed.length
       }

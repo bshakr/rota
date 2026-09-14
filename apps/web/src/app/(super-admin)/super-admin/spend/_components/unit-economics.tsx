@@ -87,13 +87,13 @@ export function UnitEconomics({ spend }: { spend: SuperAdminSpend }) {
                   like. Never "$0.00" either — on a pricing page that is the most
                   expensive lie on screen. */}
               {figure.value === null ? (
-                <dd className="text-muted-foreground mt-1 text-sm">{unitFigure(null)}</dd>
+                <dd className="text-muted-foreground mt-1 text-sm">{unitFigure(null, spend.currency)}</dd>
               ) : (
                 <dd
                   className="font-heading text-foreground mt-1 text-xl leading-none font-semibold"
                   data-numeric
                 >
-                  {unitFigure(figure.value)}
+                  {unitFigure(figure.value, spend.currency)}
                 </dd>
               )}
               <dd className="text-muted-foreground mt-1.5 text-xs text-pretty">{figure.note}</dd>
