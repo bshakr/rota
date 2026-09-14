@@ -110,28 +110,88 @@ RSpec.describe NewSignupAlertJob do
     end
   end
 
+  # A name is whatever a stranger typed into AuthKit, and half the characters a person can type cost
+  # more than one GSM-7 septet: an accent takes the whole message to UCS-2 and its 70 character
+  # ceiling, an emoji costs more again, and a brace or a tilde quietly costs two. So nothing reaches
+  # the body until it has been flattened to characters that cost one each.
+  describe "a name or a house name with characters GSM-7 cannot carry" do
+    it "transliterates accents and drops emoji rather than sending a UCS-2 message" do
+      stub_twilio_send
+      user = create(:user, name: "Zoë Café 🎉", email: "zoe@example.com")
+
+      described_class.perform_now(user.id)
+
+      body = texted_body
+      expect(body).to be_ascii_only
+      expect(body).to include("Zoe Cafe <zoe@example.com>")
+    end
+
+    it "collapses newlines and runs of spaces a paste left behind" do
+      stub_twilio_send
+      user = create(:user, name: "Jane\n   van   Doe  ", email: "jane@example.com")
+
+      described_class.perform_now(user.id)
+
+      expect(texted_body).to include("signup: Jane van Doe <")
+    end
+
+    # Braces are in the GSM-7 extension table, not the basic one: they look like punctuation and
+    # cost two septets each.
+    it "drops the braces out of a house name" do
+      stub_twilio_send
+      user = create(:user, name: "Jane Doe", email: "jane@example.com")
+      create(:group_admin, user: user, group: create(:group, name: "Flat {2}"))
+
+      described_class.perform_now(user.id)
+
+      expect(texted_body).to include("House: Flat 2.")
+    end
+  end
+
   # Three fields a stranger chose, on a message that costs per segment. A name long enough to make
   # this a three-segment text is not a scenario to hope does not happen.
   describe "a name, an address and a house name that are all far too long" do
-    it "stays inside one GSM-7 segment, and still says something about each of them" do
+    let(:long_name) { "Jane #{'Doe' * 100}" }
+    let(:long_house) { "The #{'Beeches' * 100}" }
+
+    it "carries the address whole and gives the name and the house what is left" do
       stub_twilio_send
-      user = create(:user, name: "Jane #{'Doe' * 100}", email: "#{'jane' * 100}@example.com")
-      create(:group_admin, user: user, group: create(:group, name: "The #{'Beeches' * 100}"))
+      email = "alexandra.constantinopoulos@hollandandbarrett.example"
+      user = create(:user, name: long_name, email: email)
+      create(:group_admin, user: user, group: create(:group, name: long_house))
 
       described_class.perform_now(user.id)
 
       body = texted_body
       expect(body.length).to be <= NewSignupAlertJob::MAX_BODY_LENGTH
-      expect(body).to start_with("New Rota Monster signup: Jane Doe")
-      expect(body).to include("jane", "The Beeches")
+      # Whole, between the angle brackets. A trimmed address reads as deliverable and is not.
+      expect(body).to include("<#{email}>")
+      expect(body).to include(long_name.first(12), long_house.first(12))
       # The count is the last thing in the body and is never shaved, so an alert can always be read
       # for the one number it carries.
       expect(body).to end_with("Admins so far: 1.")
     end
 
+    # Past the point where the address and twelve characters each of the other two fit together, the
+    # address goes rather than the name and the house. The operator can still look the person up.
+    it "says the address was too long rather than texting half of one" do
+      stub_twilio_send
+      user = create(:user, name: long_name, email: "#{'jane' * 100}@example.com")
+      create(:group_admin, user: user, group: create(:group, name: long_house))
+
+      described_class.perform_now(user.id)
+
+      body = texted_body
+      expect(body.length).to be <= NewSignupAlertJob::MAX_BODY_LENGTH
+      expect(body).to include("email too long to text")
+      expect(body).not_to include("<")
+      expect(body).to include(long_name.first(12), long_house.first(12))
+      expect(body).to end_with("Admins so far: 1.")
+    end
+
     it "keeps every field readable rather than spending the whole message on the longest one" do
       stub_twilio_send
-      user = create(:user, name: "Jane #{'Doe' * 100}", email: "a@b.co")
+      user = create(:user, name: long_name, email: "a@b.co")
       create(:group_admin, user: user, group: create(:group, name: "The Beeches"))
 
       described_class.perform_now(user.id)
@@ -234,6 +294,41 @@ RSpec.describe NewSignupAlertJob do
       perform_enqueued_jobs { described_class.perform_later(user.id) }
 
       expect(Rails.error).not_to have_received(:report)
+    end
+  end
+
+  # Not a carrier problem: a bug on this path, or the database having a bad moment. The worst
+  # outcome already available here is an operator not hearing about a signup, and raising would only
+  # add a failed queue job to it.
+  describe "an unexpected error" do
+    let(:user) { create(:user, name: "Jane Doe", email: "jane@example.com") }
+
+    before { allow(Rails.error).to receive(:report) }
+
+    it "does not escape the job, and is reported once" do
+      allow(Sms).to receive(:deliver).and_raise(RuntimeError, "something nobody planned for")
+      user
+
+      expect { described_class.perform_now(user.id) }.not_to raise_error
+
+      expect(Rails.error).to have_received(:report).once.with(
+        kind_of(RuntimeError),
+        hash_including(
+          source: "rotamonster.sms",
+          severity: :warning,
+          context: { user_id: user.id }
+        )
+      )
+    end
+
+    it "says so in the log too" do
+      allow(Rails.logger).to receive(:error).and_call_original
+      allow(Sms).to receive(:deliver).and_raise(RuntimeError, "something nobody planned for")
+
+      described_class.perform_now(user.id)
+
+      expect(Rails.logger).to have_received(:error)
+        .with(/NewSignupAlertJob\(#{user.id}\) unexpected RuntimeError/)
     end
   end
 end
