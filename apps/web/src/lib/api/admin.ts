@@ -11,6 +11,7 @@ import type {
   CalendarEventsResponse,
   CalendarSyncResponse,
   GroupResponse,
+  GroupShiftsResponse,
   GroupUpdateParams,
   Me,
   MemberCreateParams,
@@ -206,6 +207,16 @@ export function previewRotaMessage(
 
 export function listShifts(rotaId: number): Promise<ShiftsResponse> {
   return adminRequest<ShiftsResponse>(`/api/rotas/${rotaId}/shifts`);
+}
+
+/**
+ * Every upcoming turn in the house, running rotas only, already ordered by due date then rota
+ * name (BLO-1697). The dashboard reads this instead of asking rota by rota: one request whatever
+ * the house's size, and each shift carries its own `rota_name`, so naming a turn needs nothing
+ * from any other response.
+ */
+export function listGroupShifts(): Promise<GroupShiftsResponse> {
+  return adminRequest<GroupShiftsResponse>("/api/shifts");
 }
 
 /** The admin override: set (`covering_member_id`) or clear (`null`) a shift's cover. */

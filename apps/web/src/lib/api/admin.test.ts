@@ -22,6 +22,8 @@ import {
   disconnectCalendar,
   getMe,
   listCalendarEvents,
+  listGroupShifts,
+  listShifts,
   listSmsMessages,
   syncCalendar,
   updateRota,
@@ -152,6 +154,32 @@ describe("admin API client", () => {
 
     await listCalendarEvents(7);
     expect(lastFetchCall().url).toBe("http://rails.test/api/group/calendar/events?days=7");
+  });
+
+  it("reads the whole house's upcoming turns from one un-nested path, each naming its rota", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      respond(200, { shifts: [{ id: 1, rota_id: 7, rota_name: "Bins", due_on: "2026-03-02" }] }),
+    );
+
+    const { shifts } = await listGroupShifts();
+    const { url, init } = lastFetchCall();
+
+    expect(init.method ?? "GET").toBe("GET");
+    // Bare, not nested under a rota: that is what makes it one request for the whole dashboard.
+    expect(url).toBe("http://rails.test/api/shifts");
+    // The name travels WITH the shift. The dashboard labels a turn from this and never from a
+    // rotas list fetched separately, which used to drop a turn whose rota had changed state.
+    expect(shifts[0].rota_name).toBe("Bins");
+  });
+
+  it("still reads one rota's shifts from the nested path, for the rota screen", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      respond(200, { shifts: [] }),
+    );
+
+    await listShifts(7);
+
+    expect(lastFetchCall().url).toBe("http://rails.test/api/rotas/7/shifts");
   });
 
   it("builds a query string for the SMS log filters", async () => {

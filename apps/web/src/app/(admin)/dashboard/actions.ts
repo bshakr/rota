@@ -48,6 +48,12 @@ export async function connectHouseCalendar(
   }
 }
 
+// EVERY calendar action revalidates /dashboard, this one and the disconnect below included. The
+// card puts the answer straight into its own state, but the card is not the only thing on the page
+// built from the calendar: the week glance's rows, the "What we found" list and the calendar
+// warning are all assembled on the SERVER out of the calendar preview, and a sync answers with the
+// connection summary alone, never with the events. Without a revalidate a sync that pulled in a
+// trip would leave that trip out of this week's rows until the next navigation.
 export async function syncHouseCalendar(): Promise<CalendarActionResult<{ calendar: CalendarSummary }>> {
   try {
     const { calendar } = await syncCalendar();
