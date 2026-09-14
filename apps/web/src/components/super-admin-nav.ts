@@ -26,9 +26,14 @@ export type SuperAdminNavItem = {
  * is not ready renders as a quiet "Soon" item rather than a link to a 404, and
  * anything else that would link to that surface asks here first. Each later
  * ticket flips its own flag and nothing else:
- *   Traffic  https://linear.app/bloombase/issue/BLO-1682 — landed
- *   Houses   https://linear.app/bloombase/issue/BLO-1676
  *   Spend    https://linear.app/bloombase/issue/BLO-1684
+ *
+ * Two have landed. Traffic was flipped by
+ * https://linear.app/bloombase/issue/BLO-1682, and Houses by
+ * https://linear.app/bloombase/issue/BLO-1676, which built both
+ * `/super-admin/groups` and `/super-admin/groups/[id]`. That second boolean also
+ * lit every house name on the overview — see `HouseRow`, which asks this list
+ * rather than keeping an answer of its own.
  *
  * "Houses" rather than "Groups": the path keeps the API's noun, the label keeps
  * the product's one.
@@ -36,7 +41,7 @@ export type SuperAdminNavItem = {
 export const SUPER_ADMIN_NAV: readonly SuperAdminNavItem[] = [
   { href: "/super-admin", label: "Overview", icon: LayoutDashboard, ready: true },
   { href: "/super-admin/traffic", label: "Traffic", icon: TrendingUp, ready: true },
-  { href: "/super-admin/groups", label: "Houses", icon: Building2, ready: false },
+  { href: "/super-admin/groups", label: "Houses", icon: Building2, ready: true },
   { href: "/super-admin/spend", label: "Spend", icon: Wallet, ready: false },
 ] as const;
 

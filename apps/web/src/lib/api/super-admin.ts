@@ -37,8 +37,13 @@ import {
  * A 404 from Rails is NOT special-cased here. Rails answers 404 both for "you
  * are not a super admin" and for "no such group", and the caller is better
  * placed to tell those apart than a shared helper is.
+ *
+ * Exported because the operator area has more than one payload module now:
+ * ./super-admin-groups.ts owns the house endpoints and their schemas and goes
+ * through this same gate rather than growing a second one. It is the transport
+ * and nothing else — every caller still decides what its own failures mean.
  */
-async function superAdminRequest<T>(path: string, init?: ApiRequestInit): Promise<T> {
+export async function superAdminRequest<T>(path: string, init?: ApiRequestInit): Promise<T> {
   const { accessToken } = await requireSuperAdmin();
 
   try {

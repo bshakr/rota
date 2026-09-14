@@ -1,6 +1,7 @@
 import "server-only";
 
 import { requestJson } from "./http";
+import type { PausedPayload } from "./paused";
 import type { MemberCoverResponse, MemberScheduleResponse, MemberShiftsResponse } from "./types";
 
 // The member magic-link API client — the second, deliberately narrow way in.
@@ -23,14 +24,23 @@ import type { MemberCoverResponse, MemberScheduleResponse, MemberShiftsResponse 
  * The whole house's upcoming rota: the group's today and timezone, every active
  * housemate, every active rota, and every upcoming shift across them. One request,
  * because the page renders it as a single feed and a partial answer would flicker.
+ *
+ * A SUSPENDED HOUSE answers 200 with `{ paused: true, house: { name } }` INSTEAD
+ * of this payload (https://linear.app/bloombase/issue/BLO-1675). Not a 403: a
+ * housemate who tapped a link in a text is owed a sentence, not an error page,
+ * and the house's name comes with it so the sentence can name their house. The
+ * union is in the type rather than left to a cast, so the page cannot forget to
+ * branch — see `isPaused` in ./paused.ts.
  */
-export function getMemberSchedule(token: string): Promise<MemberScheduleResponse> {
-  return requestJson<MemberScheduleResponse>("/api/member/schedule", token);
+export function getMemberSchedule(
+  token: string,
+): Promise<MemberScheduleResponse | PausedPayload> {
+  return requestJson<MemberScheduleResponse | PausedPayload>("/api/member/schedule", token);
 }
 
 /** This member's upcoming shifts across every rota, plus the people they can ask to cover. */
-export function getMemberShifts(token: string): Promise<MemberShiftsResponse> {
-  return requestJson<MemberShiftsResponse>("/api/member/shifts", token);
+export function getMemberShifts(token: string): Promise<MemberShiftsResponse | PausedPayload> {
+  return requestJson<MemberShiftsResponse | PausedPayload>("/api/member/shifts", token);
 }
 
 /** Hand this shift to another member. Only the numeric shift id is in the path — never the token. */

@@ -16,6 +16,13 @@ import { cn } from "@/lib/utils";
  * `action` is the way out of empty, as in "Add your first member". Keep it
  * optional: the member page's empty state is a reassurance, not a call to
  * action.
+ *
+ * `description` is a ReactNode rather than a string, so a sentence can carry a
+ * link inside it. The paused house screen needs that: "Email
+ * hello@bloombase.studio to pick it back up" is one sentence, and splitting the
+ * address out into `action` would turn the way back into a button that reads
+ * like a call to action on a screen where nothing has gone wrong. Every existing
+ * caller passes a string, which is a ReactNode.
  */
 export function EmptyState({
   icon: Icon,
@@ -26,7 +33,7 @@ export function EmptyState({
 }: {
   icon?: LucideIcon;
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   action?: React.ReactNode;
   className?: string;
 }) {

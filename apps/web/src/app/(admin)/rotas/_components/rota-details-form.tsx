@@ -18,6 +18,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
@@ -40,7 +41,6 @@ import type { ActionResult } from "../action-result";
 import { dayStringToDisplayDate, displayDateToDayString, sendHourLabel } from "../rota-logic";
 import { MessagePreview } from "./message-preview";
 import { ReminderOffsetsField } from "./reminder-offsets-field";
-import { Textarea } from "./textarea";
 
 const PLACEHOLDERS = ["{{name}}", "{{rota}}", "{{date}}", "{{days_until}}"];
 const HOURS = Array.from({ length: 24 }, (_, h) => h);

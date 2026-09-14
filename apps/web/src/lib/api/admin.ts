@@ -1,6 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { requireHousehold } from "@/lib/auth/household";
 
 import { isApiError } from "./errors";
@@ -79,9 +80,20 @@ export function getMe(): Promise<Me> {
 
 // --- Group ------------------------------------------------------------------
 
-export function getGroup(): Promise<GroupResponse> {
+/**
+ * GET /api/group — the house's own settings.
+ *
+ * `cache()`d for the same reason `requireHousehold` is: the `(admin)` layout now
+ * calls this too, to find out whether the house has been suspended
+ * (https://linear.app/bloombase/issue/BLO-1675 — `/api/me` is exempt from the
+ * refusal, so a layout that asked only that would never see it). Next renders the
+ * layout and the page concurrently, so without this the dashboard would fetch the
+ * same group twice on every navigation. Per-request, so `revalidatePath` after a
+ * settings save still takes effect.
+ */
+export const getGroup = cache(function getGroup(): Promise<GroupResponse> {
   return adminRequest<GroupResponse>("/api/group");
-}
+});
 
 /** Sending `timezone` at all confirms it (Rails stamps `timezone_confirmed_at`). */
 export function updateGroup(params: GroupUpdateParams): Promise<GroupResponse> {

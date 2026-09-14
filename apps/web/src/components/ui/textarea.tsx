@@ -12,8 +12,10 @@ import { cn } from "@/lib/utils";
 // would start inside the curve. So this takes the card step (24px) instead,
 // which is the nearest thing in the ramp to a pill that still has flat sides.
 //
-// Kept in the rota feature rather than added to the shared primitives, since the
-// template editor is the only surface that needs it.
+// Promoted out of the rota feature into the shared primitives by
+// https://linear.app/bloombase/issue/BLO-1676, which gave the operator console a
+// notes box: two surfaces needing the same control is the point at which one copy
+// beats two.
 function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
   return (
     <textarea
