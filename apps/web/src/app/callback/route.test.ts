@@ -28,7 +28,12 @@ beforeEach(() => {
   authenticateWithCode.mockResolvedValue({
     accessToken: "test-access-token",
     refreshToken: "test-refresh-token",
-    user: { id: "user_test" },
+    user: {
+      id: "user_test",
+      email: "alice@example.com",
+      firstName: "Alice",
+      lastName: "Nkemdirim",
+    },
   });
   vi.stubGlobal(
     "fetch",
@@ -81,6 +86,22 @@ it("tells Rails about the sign-in, carrying the fresh access token", async () =>
   expect(url).toBe("http://rails.test/api/sign_ins");
   expect(init.method).toBe("POST");
   expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-access-token");
+}, 30_000);
+
+// The access token carries no email and no name unless the WorkOS JWT template has been configured
+// to add them, so Rails provisioned every admin with a placeholder address and a null name and the
+// operator console could only say "No name yet / Not provided"
+// (https://linear.app/bloombase/issue/BLO-1696). This callback is the one place that holds the real
+// WorkOS user, so this is the one place the row can learn who it belongs to.
+it("forwards the identity WorkOS authenticated, not just the token", async () => {
+  await handleCallback();
+
+  const [, init] = vi.mocked(fetch).mock.calls.at(-1) as unknown as [string, RequestInit];
+  expect(JSON.parse(init.body as string)).toEqual({
+    email: "alice@example.com",
+    first_name: "Alice",
+    last_name: "Nkemdirim",
+  });
 }, 30_000);
 
 // AuthKit awaits this hook before it redirects, so a broken or unreachable Rails would otherwise be

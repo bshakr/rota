@@ -1,6 +1,12 @@
-# Rails never calls WorkOS. It verifies the JWT that Next.js forwards against WorkOS's published
-# key set, and the only thing it needs in order to do that is the client id, which is what names
-# the key set: https://api.workos.com/sso/jwks/<client_id>. No API key, no network call at boot.
+# Rails never calls WorkOS on a request. It verifies the JWT that Next.js forwards against WorkOS's
+# published key set, and the only thing it needs in order to do that is the client id, which is what
+# names the key set: https://api.workos.com/sso/jwks/<client_id>. No network call at boot, and none
+# in front of an authenticated request — WorkOS being slow must never make this API slow.
+#
+# The one exception is off every path: `users:refresh_from_workos` (lib/tasks/users.rake), a one-off
+# an operator runs by hand, asks the WorkOS directory for the email and name of admins provisioned
+# before the sign-in callback started forwarding them. That is the only thing WORKOS_API_KEY is for
+# here, and without it the task refuses to run while everything else carries on exactly as before.
 #
 # (The workos gem builds that URL for us. In 9.5 `UserManagement` is instantiated with a client
 # rather than being a singleton, so the call is not the `WorkOS::UserManagement.get_jwks_url(id)`
@@ -20,6 +26,10 @@ end
 client_id ||= "client_test" if Rails.env.test?
 
 Rails.application.config.x.workos.client_id = client_id
+
+# Read here rather than from ENV at the call site, so every WorkOS setting is resolved in one place
+# and a spec can stub one attribute instead of the environment.
+Rails.application.config.x.workos.api_key = ENV["WORKOS_API_KEY"].presence
 
 if client_id.present?
   jwks_url = WorkOS::Client.new(client_id: client_id).user_management.get_jwks_url(client_id: client_id)

@@ -19,6 +19,18 @@ class User < ApplicationRecord
   validates :workos_user_id, presence: true, uniqueness: true
   validates :email, presence: true
 
+  # The rows WorkOS could still tell us something about: provisioned from a token that carried
+  # neither an email nor a name, and never filled in since. `users:refresh_from_workos` walks exactly
+  # this set, and nothing else does.
+  #
+  # One literal with a bound parameter rather than three chained `or`s: the placeholder is a suffix,
+  # so it needs LIKE, and a name of spaces is as absent as a name of nil — WorkOS hands back both
+  # for the same empty signup field.
+  scope :missing_workos_identity, -> {
+    where("email LIKE :placeholder OR name IS NULL OR TRIM(name) = ''",
+      placeholder: "%@#{PLACEHOLDER_EMAIL_DOMAIN}")
+  }
+
   # The admin themselves, from claims that WorkOS signed and WorkosAccessToken verified — with no
   # house in sight.
   #
@@ -62,10 +74,60 @@ class User < ApplicationRecord
   end
   private_class_method :resync
 
+  # Fill what WorkOS can fill, and nothing else.
+  #
+  # Two callers, one rule. POST /api/sign_ins passes what the AuthKit session held (the web app has
+  # the WorkOS user object in its callback and forwards it); `users:refresh_from_workos` passes what
+  # the WorkOS directory answered. Both are idempotent, and a second call with the same identity
+  # writes nothing.
+  #
+  # GAP-FILLING ONLY, and that is the whole design. On the sign-in path this identity arrives in the
+  # request BODY, not in the signed token: the token proves who is asking, the body is only their
+  # word for what they are called. Three rules bound what that word can do, and together they are
+  # why a request body may be fed to it at all:
+  #
+  #   * it can name only the caller's OWN row — the one the token's `sub` found, never a row named
+  #     by anything in the body;
+  #   * it can write only into a slot that is empty, so an address WorkOS verified is never
+  #     overwritten and a blank never replaces a fact in either direction;
+  #   * it cannot claim an address another row already holds. `users.email` carries no unique index,
+  #     so nothing else stops a caller whose own address slot is empty from filling it with somebody
+  #     else's address and standing beside them under it on the operator console.
+  #
+  # What is left is the only thing this exists for: naming a person nothing had named.
+  #
+  # Returns whether anything was written, which is what the task counts.
+  def absorb_workos_identity!(identity)
+    changes = {}
+    changes[:email] = identity.email if fillable_email?(identity.email)
+    changes[:name] = identity.name if identity.name.present? && name.blank?
+    return false if changes.empty?
+
+    update!(changes)
+    true
+  end
+
   # Whether the stored address is the stand-in above rather than something WorkOS actually told us.
   # The super admin console shows "not provided" instead, so an operator is never handed an address
   # that looks deliverable and is not.
   def email_placeholder?
     email.to_s.end_with?("@#{PLACEHOLDER_EMAIL_DOMAIN}")
+  end
+
+  private
+
+  # Whether this address may be written into this row: there is something to write, the slot is
+  # still the placeholder, and no other row already holds it.
+  #
+  # The last one is refused rather than raised. Both callers have to carry on afterwards — a sign-in
+  # that must still be recorded, a backfill that must still reach the next row — and neither has
+  # anything to tell the caller anyway. It is logged without the address, because a line naming one
+  # person's address under another person's id is the very mix-up this prevents.
+  def fillable_email?(candidate)
+    return false unless candidate.present? && email_placeholder?
+    return true unless User.where(email: candidate).where.not(id: id).exists?
+
+    Rails.logger.info("Refused WorkOS email for #{workos_user_id}: email already belongs to another user")
+    false
   end
 end

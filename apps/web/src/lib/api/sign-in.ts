@@ -21,6 +21,18 @@ import { type ApiRequestInit, requestJson } from "./http";
 const TIMEOUT_MS = 2_000;
 
 /**
+ * The half of the WorkOS user object that belongs in a `users` row.
+ *
+ * Structural on purpose rather than the SDK's `User`: this needs three fields, and typing it as the
+ * whole WorkOS user would make every caller — and every test — construct one.
+ */
+export interface SignInIdentity {
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}
+
+/**
  * POST /api/sign_ins, best-effort.
  *
  * Never throws and never rejects: telemetry must not be able to break signing in. Every failure —
@@ -29,9 +41,28 @@ const TIMEOUT_MS = 2_000;
  *
  * Safe to call more than once with the same token: Rails deduplicates by the token's `jti`, so a
  * retried callback records one sign-in rather than two.
+ *
+ * `identity` is who WorkOS says this is (https://linear.app/bloombase/issue/BLO-1696). An AuthKit
+ * ACCESS TOKEN carries neither an email nor a name unless the WorkOS JWT template has been
+ * configured to add them, so Rails — which only ever sees the token — provisioned the only real
+ * admin in production with a placeholder address at an `.invalid` domain and no name at all, and the
+ * operator console had nothing to show but "No name yet / Not provided". The callback is not
+ * missing them: AuthKit hands it the whole authenticated WorkOS user. So it forwards them here, and
+ * Rails fills the gaps in its own row. Snake case because that is the shape of the row.
  */
-export async function recordSignIn(accessToken: string): Promise<void> {
-  const init: ApiRequestInit = { method: "POST", signal: AbortSignal.timeout(TIMEOUT_MS) };
+export async function recordSignIn(
+  accessToken: string,
+  identity: SignInIdentity = {},
+): Promise<void> {
+  const init: ApiRequestInit = {
+    method: "POST",
+    body: {
+      email: identity.email ?? null,
+      first_name: identity.firstName ?? null,
+      last_name: identity.lastName ?? null,
+    },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  };
 
   try {
     await requestJson<void>("/api/sign_ins", accessToken, init);

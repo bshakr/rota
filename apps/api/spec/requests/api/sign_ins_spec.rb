@@ -165,6 +165,93 @@ RSpec.describe "POST /api/sign_ins" do
     end
   end
 
+  # The fix for https://linear.app/bloombase/issue/BLO-1696. A token carries neither an email nor a
+  # name unless the WorkOS JWT template has been configured to add them, so the only real admin in
+  # production had a placeholder address and no name, and the operator console had nothing to show
+  # but "No name yet / Not provided". The web app is not missing them — AuthKit hands its callback
+  # the whole WorkOS user object — so the callback forwards them in the body of this very request.
+  describe "the identity the callback forwards" do
+    it "fills a placeholder address with the address WorkOS holds" do
+      post "/api/sign_ins",
+        params: { email: "alice@example.com", first_name: "Alice", last_name: "Nkemdirim" },
+        headers: workos_headers(sub: "user_01ALICE", email: nil), as: :json
+
+      expect(response).to have_http_status(:no_content)
+      expect(User.find_by!(workos_user_id: "user_01ALICE"))
+        .to have_attributes(email: "alice@example.com", name: "Alice Nkemdirim")
+    end
+
+    it "still accepts a callback that forwards nothing" do
+      post "/api/sign_ins", headers: workos_headers(sub: "user_01ALICE", email: nil)
+
+      expect(response).to have_http_status(:no_content)
+      expect(User.find_by!(workos_user_id: "user_01ALICE"))
+        .to have_attributes(email: "user_01ALICE@users.workos.invalid", name: nil)
+    end
+
+    # The body is the caller's word for what they are called; the token is WorkOS's signature on who
+    # they are. So the body may fill a gap and may never rewrite a fact — which is what keeps an
+    # admin from renaming themselves into somebody else's address on the operator console.
+    it "cannot overwrite an address the token itself carried" do
+      post "/api/sign_ins",
+        params: { email: "impostor@example.com" },
+        headers: workos_headers(sub: "user_01ALICE", email: "alice@example.com"), as: :json
+
+      expect(User.find_by!(workos_user_id: "user_01ALICE").email).to eq("alice@example.com")
+    end
+
+    # It writes the caller's OWN row and nothing else: the row is found by the token's `sub`, and no
+    # field in the body has any say in which row that is.
+    it "cannot touch anybody else's row" do
+      somebody_else = create(:user, workos_user_id: "user_01BOB", email: "bob@example.com", name: "Bob")
+
+      post "/api/sign_ins",
+        params: { workos_user_id: "user_01BOB", id: somebody_else.id, email: "impostor@example.com" },
+        headers: workos_headers(sub: "user_01ALICE", email: nil), as: :json
+
+      expect(somebody_else.reload).to have_attributes(email: "bob@example.com", name: "Bob")
+      expect(User.find_by!(workos_user_id: "user_01ALICE").email).to eq("impostor@example.com")
+    end
+
+    # `users.email` carries no unique index, so the check in User#absorb_workos_identity! is the only
+    # thing between a forwarded body and two admins holding one address on the operator console.
+    it "cannot claim an address another admin already holds" do
+      bob = create(:user, workos_user_id: "user_01BOB", email: "bob@example.com", name: "Bob")
+
+      post "/api/sign_ins",
+        params: { email: "bob@example.com", first_name: "Mallory" },
+        headers: workos_headers(sub: "user_01ALICE", email: nil), as: :json
+
+      expect(response).to have_http_status(:no_content)
+      expect(bob.reload).to have_attributes(email: "bob@example.com", name: "Bob")
+      expect(User.find_by!(workos_user_id: "user_01ALICE"))
+        .to have_attributes(email: "user_01ALICE@users.workos.invalid", name: "Mallory")
+    end
+
+    # The gap-fill is a nicety on an operator console; the `sign_ins` row is the one fact about this
+    # request that nothing else in the product can reconstruct. So the fill runs after the row is
+    # written and cannot take it down with it, however the body makes it fail.
+    it "still records the sign-in when the gap-fill fails outright" do
+      allow(WorkosIdentity).to receive(:from_params).and_raise(ArgumentError, "string contains null byte")
+
+      expect {
+        post "/api/sign_ins", headers: workos_headers(sub: "user_01ALICE")
+      }.to change(SignIn, :count).by(1)
+
+      expect(response).to have_http_status(:no_content)
+    end
+
+    it "ignores a field that is not a string rather than storing it" do
+      post "/api/sign_ins",
+        params: { email: { "$ne" => nil }, first_name: [ 1, 2 ] },
+        headers: workos_headers(sub: "user_01ALICE", email: nil), as: :json
+
+      expect(response).to have_http_status(:no_content)
+      expect(User.find_by!(workos_user_id: "user_01ALICE"))
+        .to have_attributes(email: "user_01ALICE@users.workos.invalid", name: nil)
+    end
+  end
+
   # The relaxation is this endpoint's alone. /api/me must still refuse the very token accepted
   # above, or "org_id is optional here" has quietly become "org_id is optional".
   describe "the rest of the API" do
