@@ -90,15 +90,16 @@ export default function PrivacyPage() {
 
       <Section heading="Counting visits">
         <P>
-          Rota Monster keeps a count of how many people open the site and how many get
+          Rota Monster keeps a count of how many visits the site gets and how many get
           through each step of setting a house up. The counts are kept cookie-free and only
           as totals, so they can say how many visits there were and never who made one.
-          About each visit, Rota Monster records:
+          About each visit, Rota Monster records the following and nothing else:
         </P>
         <Bullets
           items={[
             "Which page was opened.",
             "Which site linked to it, if any. The site’s address only, never the page on it and never anything after the question mark.",
+            "The campaign labels on the link that brought them, when the link carried any.",
             "The country, when the network in front of the site reports one. It often does not.",
             "Whether it was a phone, a tablet or a computer.",
           ]}

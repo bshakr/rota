@@ -183,8 +183,8 @@ export const DEVICE_CLASSES = ["mobile", "tablet", "desktop"] as const;
 export type DeviceClass = (typeof DEVICE_CLASSES)[number];
 
 /**
- * Where the visits in the window came from, three ways, worst to best by count
- * and at most ten rows each.
+ * Where the visits in the window came from, three ways, commonest first and at
+ * most ten rows each.
  *
  * A visit the property is MISSING from is not in any of these lists, and that is
  * deliberate rather than a gap: the funnel's first step above them is the total
@@ -195,11 +195,18 @@ export type DeviceClass = (typeof DEVICE_CLASSES)[number];
  * Cloudflare, so the `cf-ipcountry` header is never sent and no visit carries a
  * country. That is a configuration fact, not an absence of traffic, and the
  * page's empty state for that column has to say which.
+ *
+ * `referred_count` is NOT the sum of `referrers`, and the page must never
+ * compute it as one. The list is capped at ten hosts; this is every visit in the
+ * window that carried a referrer at all, counted ungrouped by Rails. From the
+ * eleventh host onwards the two diverge, and a sentence built from the visible
+ * rows would quietly start under-reporting without ever looking wrong.
  */
 const visitsSchema = z.object({
   referrers: z.array(z.object({ host: z.string(), count })).max(10),
   countries: z.array(z.object({ code: z.string(), count })).max(10),
   devices: z.array(z.object({ device: z.enum(DEVICE_CLASSES), count })).max(10),
+  referred_count: count,
 });
 
 const failuresSchema = z.object({

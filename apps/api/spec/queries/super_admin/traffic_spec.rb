@@ -615,7 +615,31 @@ RSpec.describe SuperAdmin::Traffic do
     end
 
     it "publishes three empty lists when nobody visited" do
-      expect(result[:visits]).to eq(referrers: [], countries: [], devices: [])
+      expect(result[:visits]).to eq(referrers: [], countries: [], devices: [], referred_count: 0)
+    end
+
+    # The figure the page's own sentence is built from, and the reason it is not the sum of the ten
+    # rows above: the eleventh host and everything under it is outside the LIMIT, so a total read off
+    # the visible column would silently start under-reporting the moment an eleventh appears.
+    it "counts every visit that carried a referrer, not just the ten it shows" do
+      12.times { |index| view(referrer_host: "host#{index}.example.com") }
+      3.times { view(device: "mobile") }
+
+      visits = result[:visits]
+
+      expect(visits[:referrers].length).to eq(described_class::VISIT_ROWS_SHOWN)
+      expect(visits[:referrers].sum { |row| row[:count] }).to eq(10)
+      expect(visits[:referred_count]).to eq(12)
+      expect(funnel_step("landing_views")[:count]).to eq(15)
+    end
+
+    it "counts a referrer only inside the window, and only on a landing view" do
+      view(at: now - 31.days, referrer_host: "reddit.com")
+      create(:analytics_event, name: "cta_click", occurred_at: now - 1.day,
+                               properties: { "referrer_host" => "reddit.com" })
+      view(referrer_host: "reddit.com")
+
+      expect(result[:visits][:referred_count]).to eq(1)
     end
   end
 

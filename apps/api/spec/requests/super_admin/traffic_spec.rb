@@ -69,6 +69,9 @@ RSpec.describe "Super admin traffic" do
     visits = response.parsed_body["visits"]
     expect(visits["referrers"]).to eq([ { "host" => "reddit.com", "count" => 1 } ])
     expect(visits["devices"]).to eq([ { "device" => "mobile", "count" => 1 } ])
+    # Counted over every matching row rather than summed off the ten above, which is what lets the
+    # page say how many visits arrived from another site once there are more than ten hosts.
+    expect(visits["referred_count"]).to eq(1)
     # The header is not sent while the domain is DNS-only on Cloudflare, so this is the state in
     # production today. Empty, and the page says why rather than drawing a blank chart.
     expect(visits["countries"]).to eq([])

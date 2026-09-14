@@ -9,6 +9,7 @@ import {
   type TrafficRange,
   type VisitDimension,
 } from "./api/super-admin-traffic";
+import { formatCount } from "./charts";
 import { formatCalendarDate } from "./date";
 import { FUNNEL_STEP_LABELS, formatRate, plural } from "./hq-overview";
 
@@ -206,12 +207,26 @@ export const DEVICE_LABELS: Record<DeviceClass, string> = {
  * never add up to the funnel's first bar, and a reader who notices that is owed
  * the reason rather than left to assume the page is broken. One decimal, like
  * every other rate here.
+ *
+ * `referred` MUST be the payload's `visits.referred_count` and never the sum of
+ * the referrer rows. The list stops at ten hosts, so from the eleventh onwards a
+ * summed figure is smaller than the truth and looks exactly as plausible.
+ *
+ * And the sentence stops at what is known. It does NOT say the remaining visits
+ * were direct, because a missing referrer has at least three causes that cannot
+ * be told apart from a stored row: somebody typed the address or opened it from
+ * a text, the referring page sent no referrer at all under its own policy, or
+ * the visit came from one of our own pages and the browser dropped it before the
+ * event was sent. "Arrived from another site" is the only half of that anybody
+ * can act on.
  */
-export function visitsCoverageNote(counted: number, views: number): string {
+export function visitsCoverageNote(referred: number, views: number): string {
   if (views === 0) return "No visit was counted in this window";
 
-  const share = formatRate((counted / views) * 100);
-  return `${counted} of ${views} ${plural(views, "visit", "visits")} said which site linked here (${share}). The rest arrived directly.`;
+  const share = formatRate((referred / views) * 100);
+  const counted = `${formatCount(referred)} of ${formatCount(views)}`;
+
+  return `${counted} ${plural(views, "visit", "visits")} arrived from another site (${share}). The rest carried no referrer, which can mean a typed address, a link from a text, or a browser that withheld it.`;
 }
 
 // --- The weekly series ------------------------------------------------------

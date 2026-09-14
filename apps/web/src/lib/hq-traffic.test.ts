@@ -253,14 +253,24 @@ describe("where the visits came from", () => {
   });
 
   // One decimal, like every other rate on this page: a figure never renders
-  // coarser than it was computed.
-  it("says how much of step 1 the referrer column could account for", () => {
-    expect(visitsCoverageNote(812, 1420)).toBe(
-      "812 of 1420 visits said which site linked here (57.2%). The rest arrived directly.",
+  // coarser than it was computed. Both counts go through formatCount, so the
+  // sentence and the tables above it separate thousands the same way.
+  it("says how many visits arrived from another site", () => {
+    expect(visitsCoverageNote(903, 1420)).toBe(
+      "903 of 1,420 visits arrived from another site (63.6%). The rest carried no referrer, which can mean a typed address, a link from a text, or a browser that withheld it.",
     );
     expect(visitsCoverageNote(1, 1)).toBe(
-      "1 of 1 visit said which site linked here (100.0%). The rest arrived directly.",
+      "1 of 1 visit arrived from another site (100.0%). The rest carried no referrer, which can mean a typed address, a link from a text, or a browser that withheld it.",
     );
+  });
+
+  // The sentence used to say the rest arrived DIRECTLY, and that was a claim the
+  // data cannot support: a referrer is also missing when the referring page's
+  // policy withholds it, and when the visit came from one of our own pages and
+  // the browser dropped it before the event was sent.
+  it("never claims the visits without a referrer were direct", () => {
+    expect(visitsCoverageNote(903, 1420)).not.toMatch(/arrived directly/);
+    expect(visitsCoverageNote(903, 1420)).toMatch(/withheld it/);
   });
 
   it("says nobody visited rather than dividing by an empty window", () => {

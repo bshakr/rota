@@ -58,7 +58,11 @@ export function VisitsPanel({ visits, views }: { visits: TrafficVisits; views: n
     },
   ];
 
-  const referred = visits.referrers.reduce((sum, row) => sum + row.count, 0);
+  // Rails' ungrouped count, NOT the sum of the rows above. The list stops at ten
+  // hosts, so summing it would answer "how many arrived from the ten commonest
+  // sites" while appearing to answer "how many arrived from another site" — and
+  // would keep appearing to, quietly, from the eleventh host onwards.
+  const referred = visits.referred_count;
 
   return (
     <Card>

@@ -233,6 +233,26 @@ describe("parseTraffic", () => {
       expect(traffic.visits.devices[0]).toEqual({ device: "mobile", count: 806 });
     });
 
+    // The figure the panel's sentence is built from. Rails counts it ungrouped
+    // over every visit that carried a referrer, and the list stops at ten hosts,
+    // so it is NOT the sum of the rows and the two diverge as soon as there is a
+    // tail. The fixture keeps them apart on purpose.
+    it("carries a referred count that is not the sum of the rows", () => {
+      const traffic = parseTraffic(payload());
+      const shown = traffic.visits.referrers.reduce((sum, row) => sum + row.count, 0);
+
+      expect(traffic.visits.referred_count).toBe(903);
+      expect(traffic.visits.referred_count).toBeGreaterThan(shown);
+    });
+
+    it("refuses a payload whose visits carry no referred count", () => {
+      const body = payload();
+      const visits: Record<string, unknown> = { ...body.visits };
+      delete visits.referred_count;
+
+      expect(() => parseTraffic({ ...body, visits })).toThrow(/referred_count/);
+    });
+
     // Empty is the state of production today: the domain is DNS-only on
     // Cloudflare, so no visit carries a country. A schema that demanded a row
     // would turn that into a blank dashboard.

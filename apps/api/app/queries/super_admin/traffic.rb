@@ -94,6 +94,16 @@ module SuperAdmin
     # A long tail of one-view referrers is not a finding. Ten is a column somebody reads.
     VISIT_ROWS_SHOWN = 10
 
+    # The fourth branch of VISITS_SQL, which is not a column on the page: an UNGROUPED count of the
+    # visits that carried a referrer at all.
+    #
+    # It exists because the ten rows above cannot be added up into one. The eleventh referrer and
+    # everything below it is outside the LIMIT, so a sentence built by summing the visible rows would
+    # under-report the moment an eleventh host appears and would quietly keep doing it. This figure
+    # is counted over every matching row, so "how many arrived from another site" is a fact about the
+    # window rather than a fact about the top of a list.
+    REFERRED_DIMENSION = "referred".freeze
+
     # Every kind, from the model's own constant, so a fourth kind of text cannot silently fall out
     # of the stacked bars.
     KINDS = SmsMessage::KINDS.values.map(&:to_sym).freeze
@@ -335,6 +345,17 @@ module SuperAdmin
       )
       UNION ALL
       (
+        SELECT 'referred',
+               NULL::text,
+               COUNT(*)
+        FROM analytics_events
+        WHERE analytics_events.name = 'landing_view'
+          AND analytics_events.occurred_at >= :starts_at
+          AND analytics_events.occurred_at <= :ends_at
+          AND analytics_events.properties ->> 'referrer_host' IS NOT NULL
+      )
+      UNION ALL
+      (
         SELECT 'devices',
                analytics_events.properties ->> 'device',
                COUNT(*)
@@ -534,16 +555,21 @@ module SuperAdmin
 
     # --- where the visits came from -----------------------------------------------------------------
 
-    # Three lists, each worst-to-best by count, each at most VISIT_ROWS_SHOWN long.
+    # Three lists, each commonest first, each at most VISIT_ROWS_SHOWN long, plus the one figure that
+    # cannot be read off them.
     #
     # Sorted again in Ruby rather than trusted from the UNION. Each branch orders and limits itself,
     # which is what keeps the long tail out of the round trip, but Postgres does not promise the
     # order of a UNION's result and a column whose rows quietly reshuffled between two reads of the
     # same data would be a chart nobody could compare with itself. Thirty rows is nothing to sort.
+    #
+    # `referred_count` is the ungrouped total described at REFERRED_DIMENSION: the page needs it to
+    # say how many visits arrived from another site, and summing the ten visible rows would have
+    # answered a different question from the eleventh host onwards.
     def visits
       rows = each_row(VISITS_SQL, "SuperAdmin::Traffic visits").group_by { |row| row["dimension"] }
 
-      VISIT_DIMENSIONS.to_h do |dimension, spec|
+      lists = VISIT_DIMENSIONS.to_h do |dimension, spec|
         list = rows.fetch(dimension, [])
           .map { |row| [ row["value"], row["count"].to_i ] }
           .sort_by { |value, count| [ -count, value ] }
@@ -551,6 +577,12 @@ module SuperAdmin
 
         [ dimension.to_sym, list ]
       end
+
+      # One row, always, because the branch is a bare COUNT(*) with no GROUP BY. Summed rather than
+      # indexed so that a branch returning nothing at all reads as zero instead of raising.
+      lists.merge(
+        referred_count: rows.fetch(REFERRED_DIMENSION, []).sum { |row| row["count"].to_i }
+      )
     end
 
     # --- the weekly series ------------------------------------------------------------------------

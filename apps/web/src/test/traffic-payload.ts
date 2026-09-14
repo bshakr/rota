@@ -239,13 +239,11 @@ export function trafficPayload() {
       }),
     ],
 
-    // 45 coded failures plus 5 with no code = the 50 failed texts in the weeks
-    // above. The shares are of 50, so the five rows add up to 90%, not 100.
     /**
-     * Where those 1420 visits came from. The referrers add up to 812, well short
-     * of 1420, because a direct arrival carries no referrer at all: the panel's
-     * own coverage line is what explains the gap, and a fixture whose columns
-     * summed to the funnel's step 1 would never exercise it.
+     * Where those 1420 visits came from. The rows fall well short of 1420,
+     * because a visit only appears in a column when it carried that property:
+     * the panel's own coverage line is what explains the gap, and a fixture
+     * whose columns summed to the funnel's step 1 would never exercise it.
      *
      * `countries` is EMPTY on purpose. It is the state of production today —
      * the domain is DNS-only on Cloudflare, so the `cf-ipcountry` header is
@@ -267,8 +265,16 @@ export function trafficPayload() {
         { device: "desktop", count: 559 },
         { device: "tablet", count: 55 },
       ],
+      // DELIBERATELY MORE than the 812 the five rows above add up to. Rails counts
+      // this ungrouped over every visit that carried a referrer, and the list is
+      // capped at ten hosts, so the two figures diverge in reality the moment
+      // there is a tail. A fixture where they matched would let the page go back
+      // to summing the rows without a single test noticing.
+      referred_count: 903,
     },
 
+    // 45 coded failures plus 5 with no code = the 50 failed texts in the weeks
+    // above. The shares are of 50, so the five rows add up to 90%, not 100.
     failures: {
       total: 50,
       uncoded: 5,
@@ -304,7 +310,7 @@ export function emptyTrafficPayload() {
     median_hours_to_first_text: null,
     median_hours_sample: 0,
     signed_in_without_house: 0,
-    visits: { referrers: [], countries: [], devices: [] },
+    visits: { referrers: [], countries: [], devices: [], referred_count: 0 },
     weeks: payload.weeks.map((w) => ({
       ...w,
       texts_sent: 0,
