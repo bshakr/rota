@@ -99,8 +99,8 @@ module SuperAdmin
     # A long tail of one-view referrers is not a finding. Ten is a column somebody reads.
     VISIT_ROWS_SHOWN = 10
 
-    # The fourth branch of VISITS_SQL, which is not a column on the page: an UNGROUPED count of the
-    # visits that carried a referrer at all.
+    # The ungrouped branch of VISITS_SQL, and the only one that is not a column on the page: a count
+    # of the visits that carried a referrer at all.
     #
     # It exists because the ten rows above cannot be added up into one. The eleventh referrer and
     # everything below it is outside the LIMIT, so a sentence built by summing the visible rows would

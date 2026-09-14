@@ -247,7 +247,7 @@ export const OS_LABELS: Record<OsFamily, string> = {
 };
 
 /**
- * The line under the three columns: how much of step 1 they could account for.
+ * The line under the six columns: how much of step 1 they could account for.
  *
  * Every column leaves out the visits its property was missing from, so the rows
  * never add up to the funnel's first bar, and a reader who notices that is owed

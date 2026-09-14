@@ -154,9 +154,32 @@ RSpec.describe AnalyticsEvent do
     # names of every place on earth, and title-casing would make "Saint-étienne" of the first of
     # these.
     it "keeps the accents, hyphens, apostrophes and full stops a city name really has" do
-      [ "Saint-Étienne", "St. Albans", "N'Djamena", "Ciudad Juárez", "Stratford-upon-Avon" ].each do |city|
-        expect(properties_for(city: city)).to eq("city" => city)
-      end
+      names = [
+        "Saint-Étienne", "St. Albans", "N'Djamena", "Ciudad Juárez", "Stratford-upon-Avon",
+        # Dutch names that genuinely START with an apostrophe, in both spellings: this hop carries
+        # JSON rather than a header, so a typographic apostrophe really can arrive here. Requiring a
+        # letter first would have cost both of them their city and nobody would have seen it happen.
+        "'s-Hertogenbosch", "’s-Gravenhage"
+      ]
+
+      names.each { |city| expect(properties_for(city: city)).to eq("city" => city) }
+    end
+
+    it "still needs a letter after that apostrophe" do
+      expect(properties_for(city: "'")).to eq({})
+      expect(properties_for(city: "''")).to eq({})
+      expect(properties_for(city: "'-")).to eq({})
+    end
+
+    # `clean_value` shortens an over-long string, because a campaign LABEL is worth keeping the front
+    # of. A city is not: storing the first 200 letters of a 250-letter run draws a row nobody can
+    # read, so a value that arrives at the cap is refused rather than filed.
+    it "refuses a city at the length cap rather than storing the front of one" do
+      expect(properties_for(city: "a" * (described_class::MAX_VALUE_LENGTH + 50))).to eq({})
+      expect(properties_for(city: "a" * described_class::MAX_VALUE_LENGTH)).to eq({})
+
+      just_under = "a" * (described_class::MAX_VALUE_LENGTH - 1)
+      expect(properties_for(city: just_under)).to eq("city" => just_under)
     end
 
     # The column is read by a person, so a value that is really an id or a sentence somebody chose is

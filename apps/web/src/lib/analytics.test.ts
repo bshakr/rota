@@ -276,9 +276,51 @@ describe("visitContext", () => {
   });
 
   it("keeps the accents, the hyphens, the full stops and the apostrophes a city name really has", () => {
-    for (const city of ["Saint-Étienne", "St. Albans", "N'Djamena", "Ciudad Juárez"]) {
+    const names = [
+      "Saint-Étienne",
+      "St. Albans",
+      "N'Djamena",
+      "Ciudad Juárez",
+      // Dutch names that genuinely START with an apostrophe. Requiring a letter first would have
+      // cost both of these their city and nobody would have seen it happen.
+      //
+      // Both spelt with the ASCII apostrophe here because a header value is a ByteString: a
+      // typographic one cannot travel in an HTTP header at all, and `new Headers` throws on it. The
+      // shape still accepts it, for the hop where the value is JSON rather than a header.
+      "'s-Hertogenbosch",
+      "'s-Gravenhage",
+    ];
+
+    for (const city of names) {
       expect(visitContext(headers({ "cf-ipcountry": "FR", "cf-ipcity": city }))).toMatchObject({ city });
     }
+  });
+
+  it("still needs a letter after that apostrophe", () => {
+    for (const city of ["'", "''", "'-"]) {
+      expect(
+        visitContext(headers({ "cf-ipcountry": "NL", "cf-ipcity": city })),
+        `${city} was taken as a city`,
+      ).not.toHaveProperty("city");
+    }
+  });
+
+  // Checked at its full length, never shortened to fit. Slicing first would turn a 250-letter run of
+  // junk into 200 letters that pass the shape check and draw a row nobody can read.
+  it("rejects a city that is too long rather than storing the front of it", () => {
+    const tooLong = "a".repeat(MAX_PROPERTY_LENGTH + 50);
+
+    expect(visitContext(headers({ "cf-ipcountry": "GB", "cf-ipcity": tooLong }))).not.toHaveProperty(
+      "city",
+    );
+    // At the cap exactly is refused too, because that is the one length Rails cannot tell apart from
+    // a value its own shared cap shortened. Both sides agree on "shorter than the cap".
+    expect(
+      visitContext(headers({ "cf-ipcountry": "GB", "cf-ipcity": "a".repeat(MAX_PROPERTY_LENGTH) })),
+    ).not.toHaveProperty("city");
+    expect(
+      visitContext(headers({ "cf-ipcountry": "GB", "cf-ipcity": "a".repeat(MAX_PROPERTY_LENGTH - 1) })),
+    ).toMatchObject({ city: "a".repeat(MAX_PROPERTY_LENGTH - 1) });
   });
 
   // A column an operator reads must not be able to grow a row that is really a sentence or an id
@@ -316,14 +358,79 @@ describe("visitContext", () => {
     const safari =
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
     const firefox = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0";
-    // Every browser on iOS is Safari underneath and says so, so the ones that name themselves have
-    // to be asked about first.
-    const chromeOnIos =
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0 Mobile/15E148 Safari/604.1";
 
-    expect(visitContext(headers({ "user-agent": safari }))).toMatchObject({ browser: "safari" });
-    expect(visitContext(headers({ "user-agent": firefox }))).toMatchObject({ browser: "firefox" });
-    expect(visitContext(headers({ "user-agent": chromeOnIos }))).toMatchObject({ browser: "chrome" });
+    expect(visitContext(headers({ "user-agent": safari }))).toMatchObject({
+      browser: "safari",
+      os: "macos",
+    });
+    expect(visitContext(headers({ "user-agent": firefox }))).toMatchObject({
+      browser: "firefox",
+      os: "linux",
+    });
+  });
+
+  // Every browser on iOS is Safari underneath and says "Safari" in its agent, so each one that names
+  // itself has to be asked about first. These are the agents that would otherwise all read as Safari,
+  // plus the two Android skins that would otherwise read as Chrome.
+  it("tells the browsers that wear another browser's agent apart", () => {
+    const agents: ReadonlyArray<[string, string, string]> = [
+      [
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0 Mobile/15E148 Safari/604.1",
+        "chrome",
+        "ios",
+      ],
+      [
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/130.0 Mobile/15E148 Safari/605.1.15",
+        "firefox",
+        "ios",
+      ],
+      [
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) EdgiOS/141.0.0.0 Mobile/15E148 Safari/605.1.15",
+        "edge",
+        "ios",
+      ],
+      [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0",
+        "edge",
+        "windows",
+      ],
+      [
+        "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36 EdgA/141.0.0.0",
+        "edge",
+        "android",
+      ],
+      [
+        "Mozilla/5.0 (Linux; Android 14; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/27.0 Chrome/125.0.0.0 Mobile Safari/537.36",
+        "samsung",
+        "android",
+      ],
+      // An app's in-app WebView. It is Chromium and is counted as one, which is the honest answer to
+      // "what rendered our page".
+      [
+        "Mozilla/5.0 (Linux; Android 14; Pixel 8; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/141.0.0.0 Mobile Safari/537.36",
+        "chrome",
+        "android",
+      ],
+    ];
+
+    for (const [agent, browser, os] of agents) {
+      expect(visitContext(headers({ "user-agent": agent })), agent).toMatchObject({ browser, os });
+    }
+  });
+
+  // THE DOCUMENTED LIMIT, asserted so it stays a known answer rather than becoming a surprise. An
+  // iPad in its default desktop mode sends a Macintosh agent and nothing in the request separates
+  // the two, so it is counted as Safari on macOS — the same iPad the device class counts as a
+  // computer, for the same reason.
+  it("counts an iPad in desktop mode as Safari on macOS", () => {
+    const ipadDesktopMode =
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
+
+    expect(visitContext(headers({ "user-agent": ipadDesktopMode }))).toMatchObject({
+      browser: "safari",
+      os: "macos",
+      device: "desktop",
+    });
   });
 
   it("counts a browser it cannot name rather than losing the visit", () => {

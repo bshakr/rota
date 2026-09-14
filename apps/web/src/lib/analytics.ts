@@ -231,12 +231,15 @@ export function referrerHost(referrer: string, origin: string): string | undefin
 /**
  * A city name and nothing that is merely shaped like one.
  *
- * A letter, then letters, combining marks, spaces, hyphens, apostrophes and full stops. Wide enough
- * for "Saint-Étienne", "St. Albans", "N'Djamena" and "Ciudad Juárez"; narrow enough that the column
- * on the traffic page cannot grow a row that is really a sentence somebody chose. No digits: no city
- * Cloudflare names has one, and allowing them would admit the id-shaped junk this check exists for.
+ * An optional leading apostrophe, then a letter, then letters, combining marks, spaces, hyphens,
+ * apostrophes and full stops. Wide enough for "Saint-Étienne", "St. Albans", "N'Djamena",
+ * "Ciudad Juárez" and the Dutch names that genuinely begin with one — 's-Hertogenbosch,
+ * 's-Gravenhage — and narrow enough that the column on the traffic page cannot grow a row that is
+ * really a sentence somebody chose. The apostrophe is optional and a letter is still required after
+ * it, so a bare "'" or "''" is not a city. No digits: no city Cloudflare names has one, and allowing
+ * them would admit the id-shaped junk this check exists for.
  */
-const CITY = /^\p{L}[\p{L}\p{M} .'’-]*$/u;
+const CITY = /^['’]?\p{L}[\p{L}\p{M} .'’-]*$/u;
 
 /**
  * What a server can tell about a visit from the request it already received, and nothing more.
@@ -280,8 +283,15 @@ export function visitContext(headers: Headers): AnalyticsProperties {
   // and a lone city name is also the one shape of this value that would be hard to read as coarse.
   // With the country beside it, "Manchester, GB" is a bucket of half a million people.
   if (context.country) {
-    const city = headers.get("cf-ipcity")?.trim().slice(0, MAX_PROPERTY_LENGTH);
-    if (city && CITY.test(city)) context.city = city;
+    // Checked at its full length and never shortened to fit. A 250-letter run is not a long city
+    // name, it is junk, and slicing it to the cap first would turn something to reject into
+    // something to store: 200 letters that pass the shape check and draw a row nobody can read.
+    //
+    // Rejected AT the cap rather than under it, which is the one length Rails cannot tell apart
+    // from a value its own shared cap shortened. Nothing real is anywhere near, so both sides
+    // agreeing on "shorter than the cap" costs nothing and keeps them saying the same thing.
+    const city = headers.get("cf-ipcity")?.trim();
+    if (city && city.length < MAX_PROPERTY_LENGTH && CITY.test(city)) context.city = city;
   }
 
   const device = deviceClass(headers);

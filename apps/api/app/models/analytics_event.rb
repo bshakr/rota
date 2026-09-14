@@ -103,12 +103,15 @@ class AnalyticsEvent < ApplicationRecord
   # ISO 3166-1 alpha-2, as Cloudflare's `cf-ipcountry` sends it.
   COUNTRY_CODE = /\A[A-Z]{2}\z/
 
-  # A city name, as Cloudflare's `cf-ipcity` sends it: a letter, then letters, combining marks,
-  # spaces, hyphens, apostrophes and full stops. Wide enough for "Saint-Étienne", "St. Albans" and
-  # "N'Djamena"; narrow enough that the column an operator reads cannot grow a row that is really an
-  # id or a sentence somebody chose. No digits, because no city has one and allowing them would admit
-  # exactly the junk this check exists for. Anchored with \A and \z for the reason HOSTNAME is.
-  CITY_NAME = /\A\p{L}[\p{L}\p{M} .'’-]*\z/
+  # A city name, as Cloudflare's `cf-ipcity` sends it: an optional leading apostrophe, then a letter,
+  # then letters, combining marks, spaces, hyphens, apostrophes and full stops. Wide enough for
+  # "Saint-Étienne", "St. Albans", "N'Djamena" and the Dutch names that genuinely begin with one,
+  # 's-Hertogenbosch and 's-Gravenhage; narrow enough that the column an operator reads cannot grow a
+  # row that is really an id or a sentence somebody chose. The apostrophe is optional and a letter is
+  # still required after it, so a bare "'" is not a city. No digits, because no city has one and
+  # allowing them would admit exactly the junk this check exists for. Anchored with \A and \z for the
+  # reason HOSTNAME is.
+  CITY_NAME = /\A['’]?\p{L}[\p{L}\p{M} .'’-]*\z/
 
   # Cloudflare's own words for "could not tell" and "came out of Tor". Neither is a country, and a
   # bar labelled with one on the traffic page would be a bar about nothing. The web route drops them
@@ -220,7 +223,12 @@ class AnalyticsEvent < ApplicationRecord
       case key
       when "referrer_host" then string_matching?(value, HOSTNAME)
       when "country" then string_matching?(value, COUNTRY_CODE) && NON_COUNTRIES.exclude?(value)
-      when "city" then string_matching?(value, CITY_NAME)
+      # Rejected at the cap rather than accepted at it. `clean_value` shortens an over-long string
+      # because a campaign LABEL is worth keeping the front of, and a city is not: a value that
+      # arrived longer than the cap is junk, and storing the first 200 letters of it would draw a row
+      # nobody can read. Nothing real reaches 200 characters, so "exactly at the cap" is the one
+      # signal left after the truncation that says the value did not fit.
+      when "city" then string_matching?(value, CITY_NAME) && value.length < MAX_VALUE_LENGTH
       when "device" then DEVICE_CLASSES.include?(value)
       when "browser" then BROWSER_FAMILIES.include?(value)
       when "os" then OS_FAMILIES.include?(value)
