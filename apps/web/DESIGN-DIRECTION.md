@@ -201,6 +201,13 @@ are deliberately theme independent, because a peach date coin with plum
 numerals is a physical object and a sticker does not invert. Pair a pastel fill
 with `text-plum`, never with `text-foreground`.
 
+The one exception is the hero blob. Words sit on top of a blob rather than
+inside it, and those words are `text-foreground`, which goes white at night, so
+a blob follows the theme: `bg-blob-mint`, `bg-blob-peach`, `bg-blob-lemon`,
+`bg-blob-sky` and `bg-blob-lilac` are the -300 sticker by day and a -700 night
+cut (L 0.40, C 0.10, same hue) after dark. Night text clears 7.6:1 on every
+one; `check:tokens` gates it. A blob never wears a plain pastel utility.
+
 `npm run check:tokens` verifies WCAG AA for every pairing in both registers,
 4.5:1 for text and 3:1 for controls and focus rings, with translucent fills
 composited over their real backdrops. Its PAINT regex names the families

@@ -6,23 +6,25 @@ import { cn } from "@/lib/utils";
 // The blobs behind the hero. Organic rather than circular, each with its own
 // lopsided radius so no two read as the same shape, drifting on the slow 6s bob
 // (translate only, stilled outright under prefers-reduced-motion by globals.css).
-// Decorative. The blobs are stickers and keep their pastels at night; the pane
-// itself becomes a plum panel (dark:bg-card), matching the landing hero.
+// Decorative. `bg-blob-*` is the one theme-aware pastel: the sticker by day
+// and its -700 night cut after dark, because the hero's words sit on top of
+// these and `text-foreground` goes white at night. The pane itself becomes a
+// plum panel (dark:bg-card), matching the landing hero.
 const BLOBS = [
   {
-    tint: "bg-peach",
+    tint: "bg-blob-peach",
     radius: "58% 42% 45% 55% / 55% 48% 52% 45%",
     position: "-top-16 -left-10 size-48 md:size-56",
     delay: "0s",
   },
   {
-    tint: "bg-lemon",
+    tint: "bg-blob-lemon",
     radius: "42% 58% 62% 38% / 47% 56% 44% 53%",
     position: "-right-12 -bottom-20 size-52 md:size-64",
     delay: "-2s",
   },
   {
-    tint: "bg-sky",
+    tint: "bg-blob-sky",
     radius: "50% 50% 38% 62% / 60% 40% 60% 40%",
     position: "top-1/3 right-1/3 hidden size-32 lg:block",
     delay: "-4s",

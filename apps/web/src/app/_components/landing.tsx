@@ -166,10 +166,12 @@ export function Landing() {
               and the paragraph at every width. They bob on a 6s loop, offset so
               they never move in step, and the reduced-motion block in
               globals.css stops them dead rather than speeding them up. Blobs
-              live behind the hero and nowhere else. */}
+              live behind the hero and nowhere else, and wear `bg-blob-*`: the
+              pastel by day, its night cut after dark, so the headline stays
+              legible on top of them in both themes. */}
           <div className="pointer-events-none absolute inset-0" aria-hidden>
             <span
-              className="animate-bob absolute -top-16 -right-16 size-32 bg-peach shadow-sm md:-top-20 md:-right-20 md:size-56"
+              className="animate-bob absolute -top-16 -right-16 size-32 bg-blob-peach shadow-sm md:-top-20 md:-right-20 md:size-56"
               style={{ borderRadius: BLOB_SHAPES.corner }}
             />
           </div>
@@ -228,11 +230,11 @@ export function Landing() {
             <div className="relative mx-auto w-full max-w-sm lg:w-[22rem]" aria-hidden>
               <div className="pointer-events-none absolute inset-0">
                 <span
-                  className="animate-bob absolute -right-10 -bottom-12 size-28 bg-mint shadow-sm md:size-36"
+                  className="animate-bob absolute -right-10 -bottom-12 size-28 bg-blob-mint shadow-sm md:size-36"
                   style={{ borderRadius: BLOB_SHAPES.under, animationDelay: "-2s" }}
                 />
                 <span
-                  className="animate-bob absolute -top-10 -left-8 size-24 bg-lemon shadow-sm md:size-28"
+                  className="animate-bob absolute -top-10 -left-8 size-24 bg-blob-lemon shadow-sm md:size-28"
                   style={{ borderRadius: BLOB_SHAPES.over, animationDelay: "-4s" }}
                 />
               </div>

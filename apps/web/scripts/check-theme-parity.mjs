@@ -183,6 +183,7 @@ const surfaces = ["--background", "--card", "--muted"];
 // The pastel sticker sheet, published as theme-independent utilities
 // (bg-mint, bg-peach…). Every one of them is designed to carry plum ink, in
 // BOTH themes, because a sticker does not invert.
+const BLOBS = ["--blob-mint", "--blob-peach", "--blob-lemon", "--blob-sky", "--blob-lilac"];
 const STICKERS = [
   "--mint-300",
   "--peach-300",
@@ -236,6 +237,18 @@ const PAIRS = [
   // safe on them is plum ink — never --foreground, which goes white at night.
   // This is the promise `bg-peach text-plum` rests on.
   ...STICKERS.map((bg) => ({ fg: "--plum-800", bg, min: TEXT, note: "plum ink on a sticker" })),
+
+  // Blobs are the exception: the hero's words sit ON TOP of them in
+  // --foreground, so the blob is the one pastel that follows the theme
+  // (sticker by day, -700 night cut after dark). This is the promise that
+  // keeps the dashboard title readable on a peach blob at night. The muted
+  // eyebrow is only ever laid over the peach blob (top-left of the dashboard
+  // hero), so that is the one blob it is measured against — and dark only: by
+  // day plum-400 on peach-300 is 4.11:1, a gap that predates the theme-aware
+  // blob and belongs to the muted ink, not the blob. Tracked as a follow-up
+  // rather than hidden, and not gated on a value this change did not touch.
+  ...BLOBS.map((bg) => ({ fg: "--foreground", bg, min: TEXT, note: "hero text on a blob" })),
+  { fg: "--muted-foreground", bg: "--blob-peach", min: TEXT, themes: ["dark"], note: "hero eyebrow on the peach blob" },
 
   // Control borders — real UI boundary.
   ...surfaces.map((bg) => ({ fg: "--input", bg, min: UI, note: "input border" })),
@@ -325,6 +338,8 @@ for (const [themeName, scope] of [
   ["dark", dark],
 ]) {
   for (const pair of PAIRS) {
+    // A pair may opt into one theme when the other side is a known, older gap.
+    if (pair.themes && !pair.themes.includes(themeName)) continue;
     const bg = flattenBackground(pair.bg, scope);
     if (bg.error) {
       failures.push(`contrast: ${themeName} — ${bg.error}.`);

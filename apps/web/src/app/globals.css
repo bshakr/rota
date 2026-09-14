@@ -116,6 +116,16 @@
   --sky-500: oklch(0.7 0.12 234);
   --blush-300: oklch(0.9 0.06 354); /* #FFCEE0 went wrong */
   --blush-500: oklch(0.7 0.15 354);
+  /* The -700 cuts: the same hues taken down to L 0.40 for the one place a
+     pastel has TEXT laid over it rather than ink inside it — the hero blobs.
+     Night text (plum-50) clears 7.6:1 on every one and night muted text
+     (plum-200) clears 4.6:1, while the hue still separates the blob from the
+     plum panel behind it. See --blob-* below. */
+  --mint-700: oklch(0.4 0.1 160);
+  --peach-700: oklch(0.4 0.1 60);
+  --lemon-700: oklch(0.4 0.1 95);
+  --sky-700: oklch(0.4 0.1 234);
+  --lilac-700: oklch(0.4 0.1 296);
   /* The two saturated pigments in the set: a real destructive BUTTON, which has
      to shout where the blush sticker only whispers, plus the cut that carries
      that same job after dark. Pulled a little towards red (hue 15) so nobody
@@ -234,6 +244,17 @@
   --chart-4: var(--sky-500);
   --chart-5: var(--blush-500);
 
+  /* The hero blobs. The one pastel that is NOT a sticker: a sticker carries
+     plum ink inside it, but a blob sits BEHIND the hero's words, and those are
+     `text-foreground`, which goes white at night. So a blob is the one pastel
+     that changes with the theme — the -300 sticker by day, the -700 night cut
+     after dark — and `bg-blob-*` is the only class a blob may wear. */
+  --blob-mint: var(--mint-300);
+  --blob-peach: var(--peach-300);
+  --blob-lemon: var(--lemon-300);
+  --blob-sky: var(--sky-300);
+  --blob-lilac: var(--lilac-200); /* what bg-lilac is, so day is unchanged */
+
   /* The admin sidebar is a WHITE CLAY PANEL against the lavender page, so the
      chrome stays in the paper family and the grape active item is the only
      saturated thing on it. The brand hue survives as the lilac hover blush. */
@@ -342,6 +363,14 @@
   --chart-4: var(--sky-500);
   --chart-5: var(--blush-500);
 
+  /* Blobs go to the night cuts so the hero's white words stay readable on
+     top of them; the hue is what keeps them visible against the plum panel. */
+  --blob-mint: var(--mint-700);
+  --blob-peach: var(--peach-700);
+  --blob-lemon: var(--lemon-700);
+  --blob-sky: var(--sky-700);
+  --blob-lilac: var(--lilac-700);
+
   --sidebar: var(--plum-850);
   --sidebar-foreground: var(--plum-50);
   --sidebar-primary: var(--grape-500);
@@ -419,6 +448,13 @@
   --color-lemon: var(--lemon-300);
   --color-sky: var(--sky-300);
   --color-blush: var(--blush-300);
+
+  /* Blobs: theme-aware on purpose, the one exception to the rule above. */
+  --color-blob-mint: var(--blob-mint);
+  --color-blob-peach: var(--blob-peach);
+  --color-blob-lemon: var(--blob-lemon);
+  --color-blob-sky: var(--blob-sky);
+  --color-blob-lilac: var(--blob-lilac);
 
   /* Type. A ROUNDED pairing:
        --font-heading  Fredoka — a soft, wide-shouldered display face with a
