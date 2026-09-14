@@ -85,10 +85,24 @@ steps rather than one person's journey. That is a deliberate limit, and it is wh
 consent banner.
 
 Allowlisted properties, and there will never be one that is not on this list: `position`, `path`,
-`ref`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `member_id`. No names, no phone
-numbers, no tokens, no calendar URLs, no free text. The list is defined twice, in
-`AnalyticsEvent::PROPERTY_KEYS` and in `apps/web/src/lib/analytics.ts`, and a web test reads the Ruby
-file and fails if the two ever drift apart.
+`ref`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `member_id`, `referrer_host`,
+`country`, `device`. No names, no phone numbers, no tokens, no calendar URLs, no free text. The list
+is defined twice, in `AnalyticsEvent::PROPERTY_KEYS` and in `apps/web/src/lib/analytics.ts`, and a
+web test reads the Ruby file and fails if the two ever drift apart.
+
+The last three are the coarse facts about a visit that the traffic page's "Where visits come from"
+panel is drawn from, and each is deliberately too broad to narrow anybody down:
+
+| Property | Where it comes from | What it can be |
+| --- | --- | --- |
+| `referrer_host` | the browser, from `document.referrer` | the HOST only, lowercased. The path and the query are dropped before the event is sent, because that is where a search term or an email address would be. Omitted for a direct visit and for one of our own pages |
+| `country` | the server, from Cloudflare's `cf-ipcountry` header | two uppercase letters. Cloudflare's `XX` (unknown) and `T1` (Tor) are dropped. **Absent in production today**, because the domain is still DNS-only on Cloudflare and the header only appears once traffic is proxied. No GeoIP library is used and the IP is never stored, logged or forwarded |
+| `device` | the server, from the `sec-ch-ua-mobile` client hint, falling back to the user agent | one of `mobile`, `tablet`, `desktop`. The agent string is matched and discarded; it is never stored |
+
+`country` and `device` are set server-side in `apps/web/src/app/api/analytics/route.ts` and are NOT
+on the browser's own allowlist, so a value posted by hand is dropped on the way through rather than
+deleted afterwards. Rails checks all three again on arrival and drops one whose shape is wrong,
+keeping the event.
 
 ## First-touch attribution, and why there is still one cookie
 

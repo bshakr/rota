@@ -102,6 +102,79 @@ describe("POST /api/analytics", () => {
     }
   });
 
+  // The two properties this side derives, and the one it re-checks. Everything here is really the
+  // same question as the event allowlist above: can a stranger with curl decide what a chart says?
+  describe("what the server adds to a visit", () => {
+    it("reads the country off Cloudflare's header and the device off the client hint", async () => {
+      await post(
+        { name: "landing_view", properties: { path: "/" } },
+        { "cf-ipcountry": "GB", "sec-ch-ua-mobile": "?1" },
+      );
+
+      expect(forward).toHaveBeenCalledWith("landing_view", {
+        path: "/",
+        country: "GB",
+        device: "mobile",
+      });
+    });
+
+    // The state in production today: the domain is DNS-only on Cloudflare, so the header is simply
+    // not there. The country is omitted rather than guessed at, and no GeoIP lookup replaces it.
+    it("omits the country when Cloudflare is not in front of the request", async () => {
+      await post({ name: "landing_view" }, { "user-agent": "Mozilla/5.0 (Macintosh)" });
+
+      expect(forward).toHaveBeenCalledWith("landing_view", { device: "desktop" });
+    });
+
+    it("drops Cloudflare's markers for unknown and for Tor rather than charting them", async () => {
+      await post({ name: "landing_view" }, { "cf-ipcountry": "XX" });
+
+      expect(forward).toHaveBeenCalledWith("landing_view", {});
+    });
+
+    // The point of deriving them here. A country the browser supplied would be a country the
+    // browser made up, and the traffic page's country column would be a chart of whatever a script
+    // felt like claiming.
+    it("refuses to take the sender's word for the country or the device", async () => {
+      await post(
+        { name: "landing_view", properties: { country: "US", device: "desktop", path: "/" } },
+        { "cf-ipcountry": "GB", "sec-ch-ua-mobile": "?1" },
+      );
+
+      expect(forward).toHaveBeenCalledWith("landing_view", {
+        path: "/",
+        country: "GB",
+        device: "mobile",
+      });
+    });
+
+    it("keeps a claimed country out even when it has no header of its own to use", async () => {
+      await post({ name: "landing_view", properties: { country: "US", device: "tablet" } });
+
+      expect(forward).toHaveBeenCalledWith("landing_view", {});
+    });
+
+    it("forwards a referrer host the page derived", async () => {
+      await post({ name: "landing_view", properties: { referrer_host: "news.ycombinator.com" } });
+
+      expect(forward).toHaveBeenCalledWith("landing_view", {
+        referrer_host: "news.ycombinator.com",
+      });
+    });
+
+    // The page sends only a host. A stranger with curl did not, and a referrer table is read by a
+    // person: an entry that is really a sentence somebody chose is how a dashboard becomes a
+    // noticeboard.
+    it("drops a referrer that is a whole URL or a sentence, and keeps the event", async () => {
+      await post({
+        name: "landing_view",
+        properties: { referrer_host: "https://reddit.com/r/uk?q=secret", path: "/" },
+      });
+
+      expect(forward).toHaveBeenCalledWith("landing_view", { path: "/" });
+    });
+  });
+
   describe("abuse limits", () => {
     it("refuses a body over 2 KB, by its declared size", async () => {
       const response = await post({ name: "landing_view" }, { "content-length": String(MAX_BODY_BYTES + 1) });

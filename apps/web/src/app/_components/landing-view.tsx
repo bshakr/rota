@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { track } from "@/lib/analytics";
+import { referrerHost, track } from "@/lib/analytics";
 import { firstTouchFromSearchParams } from "@/lib/first-touch";
 
 /**
@@ -17,6 +17,12 @@ import { firstTouchFromSearchParams } from "@/lib/first-touch";
  * house. That is a different question from `groups.first_touch`, which is about the visits that DO:
  * one measures traffic, the other measures conversion, and both are wanted.
  *
+ * So does the referring HOST, and only the host: a referring URL can carry somebody's search terms
+ * or their email address in a query parameter, and a host cannot. It is read here rather than in
+ * `track` because this is the one event it means anything for. A `cta_click` fires on a page whose
+ * referrer is usually our own, and counting our own pages would put Rota Monster at the top of its
+ * own referrer table.
+ *
  * Fires once. React invokes effects twice in development's strict mode, and a doubled top-of-funnel
  * count would halve every conversion rate on the report.
  */
@@ -28,7 +34,14 @@ export function LandingView() {
     sent.current = true;
 
     const campaign = firstTouchFromSearchParams(new URLSearchParams(window.location.search));
-    track("landing_view", { path: window.location.pathname, ...campaign });
+    const from = referrerHost(document.referrer, window.location.origin);
+
+    track("landing_view", {
+      path: window.location.pathname,
+      ...campaign,
+      // Spread rather than assigned, so a direct visit sends no key at all instead of an empty one.
+      ...(from ? { referrer_host: from } : {}),
+    });
   }, []);
 
   return null;
