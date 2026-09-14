@@ -37,7 +37,7 @@ export function OverviewUnavailable({ error }: { error: unknown }) {
         description={
           shape
             ? "The API answered, but not in the shape this page reads. Nothing is shown rather than something wrong. It usually means one side of a deploy is ahead of the other."
-            : "The API didn't answer. Nothing here is lost — try again in a moment."
+            : "The API didn't answer. Nothing here is lost. Try again in a moment."
         }
       />
       {shape ? (

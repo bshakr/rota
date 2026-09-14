@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import { CloudOff } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
+import { HousePaused } from "@/components/house-paused";
 import { InvalidLink } from "@/components/member/invalid-link";
 import { apiErrorMessage, isApiError } from "@/lib/api/errors";
 import { getMemberSchedule } from "@/lib/api/member";
+import { isPaused, pausedHouseName } from "@/lib/api/paused";
 import { formatLongDate } from "@/lib/date";
 import { civilDate } from "@/lib/group-dates";
 
@@ -80,6 +82,16 @@ export default async function MemberSchedulePage({
     // Truly unexpected (the API host unreachable, so fetch rejected before Rails
     // answered): let the error boundary show its warm "try again".
     throw error;
+  }
+
+  // A suspended house answers 200 with the paused shape instead of the rota
+  // (https://linear.app/bloombase/issue/BLO-1675), so this is not an error path
+  // and must not look like one. There is no feed, which is also how the hand-off
+  // action disappears: a cover is a write, the API refuses it outright, and an
+  // offer to hand over a turn that cannot be handed over would be a lie on the
+  // one screen a housemate actually reads.
+  if (isPaused(schedule)) {
+    return <HousePaused name={pausedHouseName(schedule)} />;
   }
 
   const firstName = schedule.member.name.split(" ")[0];
