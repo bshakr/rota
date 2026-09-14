@@ -45,7 +45,7 @@ Five surfaces were asked for:
 | Suspend, not delete | `groups.suspended_at`. Suspended: admin API answers 403 `group_suspended`, reminder sweep skips it, member pages say paused. Nothing is deleted | Hard delete in v1 | Delete cascades through shift history and needs a WorkOS org deletion too. Suspend is reversible and covers abuse and cost control. Delete is a later phase. |
 | Member PII shown to super admin | Phone numbers shown in full; magic-link tokens never returned; `/s/<token>` lines redacted from SMS bodies | Masking phone numbers | The operator needs the number to diagnose a wrong-country or duplicate-number delivery failure. The token is a different matter: it is a permanent login to someone else's house, and the operator never needs it. |
 | Identity funnel events | First-party: `POST /api/sign_ins` from the AuthKit callback, authenticated by the same WorkOS JWT | A shared internal secret; a third-party analytics SDK | Reuses the one trust model. No new secret, no cookies, no vendor. |
-| Anonymous page traffic | Optional last phase: `page_views` daily counters (day, path, referrer host), no IP, no cookie, written from Server Components via `after()` | Plausible or PostHog script in the landing page | Kept first-party to match the app's stance on data. If richer geo/referrer analytics is wanted later, Plausible is the drop-in and this phase is skipped. Decide when the phase arrives. |
+| Anonymous page traffic | **Decided 2026-09-14:** read landing views off `analytics_events`, which PR #44 already writes from the homepage. No `page_views` table, no `INTERNAL_API_TOKEN`, no Plausible. Referrer host, country and device class ride along as coarse, identifier-free properties | A `page_views` table written from Server Components via `after()`; a Plausible or PostHog script | The events table and its write path already existed, so a second counter would have been a second source of truth for the same bar. The cost is that the count is browser-side and so undercounts crawlers and no-JS clients, which is the opposite of the error a server-side counter would have made and is published as a note on the step. |
 | Aggregation | Live SQL in `SuperAdmin::*` query objects, cached 60s in Solid Cache, plus two indexes | Materialised daily stats tables | Tens of houses, not thousands. Add rollups when a page takes over 500ms, not before. |
 | Charts | Flat pastel bars and inline SVG sparklines, hand-rolled, tokens only | Recharts or similar | Soft Clay forbids gradients and raw colours, the lint would fight a library, and the charts needed are bars and lines. |
 | Impersonation | Not built. Link to WorkOS dashboard impersonation | In-app "open as this house's admin" | WorkOS already does it with an audit trail. |
@@ -81,8 +81,9 @@ ai_calls        id, group_id → groups, calendar_connection_id → calendar_con
                 cost_usd decimal(12,6), created_at
                 index (group_id, created_at), index (created_at)
 
-page_views      day date, path string, referrer_host string (null), count integer   (Phase 5)
-                unique (day, path, referrer_host)
+                (no page_views table: decided 2026-09-14, see Phase 6 below. Landing views are
+                 counted from analytics_events, which PR #44 added, and the referrer host,
+                 country and device class are allowlisted properties on those rows)
 ```
 
 **Why `sign_ins` is a table and not a column.** Weekly active admins, returning users, and "signed in N times before making a house" all need history. A `last_sign_in_at` column answers only one question.
@@ -327,8 +328,12 @@ Migration for `suspended_at` and `notes`. Groups list and show endpoints with th
 **Phase 5: spend.**
 `SuperAdmin::Spend` query object, the spend page with totals, the per-house table, unit economics and the margin calculator, the spend tile on the overview and the spend card on the group dashboard. `FIXED_MONTHLY_COST_GBP` read and allocated. Test 7 for the query object.
 
-**Phase 6 (optional): anonymous traffic.**
-Decide first between first-party `page_views` counters and Plausible. If first-party: the table, `POST /internal/page_views` behind `INTERNAL_API_TOKEN`, fire-and-forget from `/` and `/h/[slug]` via `after()`, and the funnel's first step lights up. Bots inflate it; say so on the tile.
+**Phase 6: anonymous traffic. Decided 2026-09-14, and it is neither of the two options above.**
+Landing views are read from `analytics_events`, which PR #44 already writes: the homepage posts a `landing_view` on mount, through `/api/analytics` to `POST /internal/analytics/events` behind `ANALYTICS_SHARED_SECRET`. So there is no `page_views` table, no `INTERNAL_API_TOKEN`, no `after()` write path and no Plausible.
+
+The funnel's first step counts those rows and rates step 2 against them. Referrer host, country and device class are captured as coarse, identifier-free properties on the same rows and drawn as a "Where visits come from" panel under the funnel: the referring HOST only (never the path or the query), the country from Cloudflare's `cf-ipcountry` header where it is sent, and one of phone, tablet or computer. No cookie, no visitor id, no IP stored, no user agent stored.
+
+Two consequences worth writing down. The count is browser-side, so it UNDERCOUNTS rather than being inflated by bots: the plan's warning about bots applies to the counter that was not built. And `country` is empty in production today, because the domain is still DNS-only on Cloudflare and the header only arrives once traffic is proxied; the page says that in the column's empty state rather than showing a blank chart. Anonymous events are kept 180 days, twice the page's longest window.
 
 ## Later, deliberately
 
