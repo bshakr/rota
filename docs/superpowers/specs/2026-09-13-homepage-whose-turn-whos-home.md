@@ -182,3 +182,8 @@ hosting region is recorded anywhere in the repo, and neither document has been r
 a lawyer.
 
 Wave 4 (the demo house and analytics) is tracked in the review round, not here.
+
+## 9. Revisions 2026-09-14 (hero note correction)
+
+Bass confirmed on 2026-09-14 that AuthKit offers email, Google, Microsoft, GitHub and
+Apple; the hero note now says email or Google.

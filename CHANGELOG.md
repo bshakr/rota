@@ -8,6 +8,8 @@
   request. (#55)
 - The mailer's default sender moved from `hello@rota.monster`, a domain that does not exist, to
   `hello@bloombase.studio`, the same contact address the web app already uses. (#55)
+- The homepage's hero note says sign-in is by email or Google; the sign-in screen offers both and
+  more (#58).
 
 ## [0.0.3.1] - 2026-09-13
 
