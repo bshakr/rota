@@ -33,6 +33,18 @@
   browser is not allowed to set the country or the device class: both are derived server-side and
   overwrite anything the body claimed. `analytics:sources` prints the same three as tables, each
   with a `(none)` row for the visits the property was missing from. (#69)
+- Three more coarse facts on that panel, which now reads as six columns in two rows: where a visit
+  came from (site, country, **city**) and what it arrived on (device, **browser**, **operating
+  system**). The city is Cloudflare's `cf-ipcity` and is only kept beside a country, because a city
+  with no country is not the output of a working lookup; the finer location headers a network can
+  send — a postcode, a region, a latitude and longitude — are never read at all. The browser and the
+  system are FAMILIES and never versions: one of `chrome, safari, firefox, edge, samsung, other` and
+  one of `ios, android, macos, windows, linux, other`, from the `sec-ch-ua` and `sec-ch-ua-platform`
+  client hints, falling back to a user agent that is still matched and discarded rather than stored.
+  All three are derived server-side like the country and the device class, so a value posted by hand
+  is dropped on the way through. The city column is empty until the Cloudflare zone's "Add visitor
+  location headers" transform is switched on, and says so. `analytics:sources` prints the three new
+  tables too. (#PR_NUMBER)
 
 ### Changed
 
