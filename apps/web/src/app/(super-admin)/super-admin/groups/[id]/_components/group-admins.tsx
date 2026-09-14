@@ -5,19 +5,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import type { ReportAdmin } from "@/lib/api/super-admin-groups";
 import { formatTimestamp, relativeTime } from "@/lib/date";
 import { ADMIN_SIGN_INS_LABEL, GROUP_SECTION } from "@/lib/hq-group-report";
-import { NO_EMAIL, workosUserUrl } from "@/lib/hq-groups";
+import { adminLabel, workosUserUrl } from "@/lib/hq-groups";
 import { plural } from "@/lib/hq-overview";
+import { cn } from "@/lib/utils";
 
 /**
  * Who runs the house.
  *
- * Two things here are decisions rather than layout.
+ * Four things here are decisions rather than layout.
  *
  * **"Not provided" rather than an address.** An AuthKit access token carries no
  * email unless the WorkOS JWT template was configured to add one, so a first
  * sighting is provisioned with a placeholder at an `.invalid` domain and Rails
  * serves that as null. Printing the placeholder would put an address on screen
  * that looks deliverable and is not, and somebody would eventually email it.
+ *
+ * **A row where WorkOS never sent a NAME either.** The same token carries no
+ * `name` claim unless the template adds one, so `users.name` can be null too and
+ * Rails serves it as null. The heading falls back to the address, and to "No name
+ * yet" when there is not even one — `adminLabel` in src/lib/hq-groups.ts owns the
+ * decision, because the two lines swap roles and that is logic, not layout
+ * (https://linear.app/bloombase/issue/BLO-1694).
  *
  * **A link out to WorkOS rather than a button here.** Impersonation and password
  * resets live in the WorkOS dashboard, where they have an audit trail. Rebuilding
@@ -67,17 +75,26 @@ export function GroupAdmins({ admins, now }: { admins: ReportAdmin[]; now: Date 
 
 function AdminRow({ admin, now }: { admin: ReportAdmin; now: Date }) {
   const lastSeen = admin.last_seen_at ? new Date(admin.last_seen_at) : null;
+  // Both lines at once, because which fact goes in which slot depends on which
+  // of the two we actually hold. See `adminLabel` in src/lib/hq-groups.ts.
+  const label = adminLabel(admin);
 
   return (
     <li className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0">
       <div className="min-w-0 space-y-1">
-        <p className="font-heading text-sm font-semibold break-words">{admin.name}</p>
         <p
-          className={
-            admin.email ? "text-muted-foreground text-xs break-all" : "text-muted-foreground text-xs"
-          }
+          className={cn(
+            "font-heading text-sm font-semibold",
+            label.headingIsEmail ? "break-all" : "break-words",
+            // Muted only when the heading is the phrase itself: an address
+            // standing in for a name is still a fact about this person.
+            label.headingIsPlaceholder && "text-muted-foreground font-normal",
+          )}
         >
-          {admin.email ?? NO_EMAIL}
+          {label.heading}
+        </p>
+        <p className={cn("text-muted-foreground text-xs", label.noteIsEmail && "break-all")}>
+          {label.note}
         </p>
         <p className="text-muted-foreground text-xs text-pretty">
           {lastSeen ? (

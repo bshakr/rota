@@ -75,6 +75,28 @@ RSpec.describe "GET /api/super_admin/groups/:id" do
 
       expect(show.fetch("admins").first.fetch("email")).to be_nil
     end
+
+    # `users.name` carries no NOT NULL for the same reason the email can be a placeholder: an
+    # AuthKit access token has no `name` claim unless the WorkOS JWT template was configured to
+    # add one. Null is served rather than "" or a coalesced stand-in, so the console can say what
+    # it holds instead of the API asserting something it was never told.
+    # https://linear.app/bloombase/issue/BLO-1694
+    it "shows no name at all where WorkOS never sent one" do
+      nameless = create(:user, name: nil, email: "noname@example.com", workos_user_id: "user_01NONAME")
+      create(:group_admin, group: group, user: nameless)
+
+      row = show.fetch("admins").first
+      expect(row.fetch("name")).to be_nil
+      expect(row.fetch("email")).to eq("noname@example.com")
+    end
+
+    it "shows neither where WorkOS sent neither" do
+      user = create(:user, name: nil, email: User.placeholder_email("user_01NEITHER"),
+                           workos_user_id: "user_01NEITHER")
+      create(:group_admin, group: group, user: user)
+
+      expect(show.fetch("admins").first).to include("name" => nil, "email" => nil)
+    end
   end
 
   describe "members" do

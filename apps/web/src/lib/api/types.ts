@@ -33,7 +33,15 @@ export interface AuthUser {
   id: number;
   workos_user_id: string;
   email: string;
-  name: string;
+  /**
+   * NULLABLE. `users.name` carries no NOT NULL and an AuthKit access token has no
+   * `name` claim unless the WorkOS JWT template was configured to add one, so
+   * Rails serves whatever it was given — which may be nothing. Nothing renders
+   * this today; typed honestly so that the first thing which does is made to
+   * decide what it says instead, rather than printing "undefined"
+   * (https://linear.app/bloombase/issue/BLO-1694).
+   */
+  name: string | null;
 }
 
 /** The group the token named. `timezone` here is the raw value; `Group` adds the confirmed flags. */
