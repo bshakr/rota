@@ -3,7 +3,9 @@ import type { BarTone } from "@/components/charts/bars";
 import {
   DEFAULT_TRAFFIC_RANGE,
   TRAFFIC_RANGES,
+  type BrowserFamily,
   type DeviceClass,
+  type OsFamily,
   type TextKind,
   type TrafficFunnelStep,
   type TrafficRange,
@@ -157,23 +159,28 @@ export function leakNote(count: number): string {
 // --- Where the visits came from ---------------------------------------------
 
 /**
- * The three columns under the funnel, and what each says when it is empty.
+ * The six columns under the funnel, and what each says when it is empty.
  *
- * The empty states are the point of this constant. An empty column has three
- * quite different causes here and they must not read alike:
+ * The empty states are the point of this constant. An empty column has quite
+ * different causes here and they must not read alike:
  *
  *   referrers  nobody was linked here, or everybody arrived directly. A direct
  *              visit carries no referrer at all, so an empty column is normal
  *              for a site whose traffic is word of mouth.
- *   countries  NOT a fact about traffic. The `cf-ipcountry` header only arrives
- *              once the domain is proxied through Cloudflare, and it is DNS-only
- *              there today, so this column is empty however many people visit.
- *              Saying "no countries" would read as "nobody visited", which is
- *              false and is exactly the misreading the funnel's step 1 above it
- *              would then confirm.
- *   devices    nobody visited, near enough: every request carries a user agent
- *              or a client hint, so a visit almost always lands in one of three
- *              buckets.
+ *   cities     NOT a fact about traffic. The `cf-ipcity` header only arrives
+ *              once the Cloudflare zone's "Add visitor location headers"
+ *              transform is switched on, so this column is empty however many
+ *              people visit. Saying "no cities" would read as "nobody visited",
+ *              which is false and is exactly the misreading the funnel's step 1
+ *              above it would then confirm. The country column carried this
+ *              warning until the domain was proxied and it started arriving.
+ *   the rest   nobody visited, near enough: every request carries a user agent
+ *              or a client hint, and every one that reaches Cloudflare carries a
+ *              country, so a visit almost always lands in a bucket.
+ *
+ * The ORDER of the keys is the order the columns are drawn in, and it is what
+ * makes the panel's two rows of three read as two questions rather than six
+ * lists: where the visit came from, then what it arrived on.
  */
 export const VISIT_COLUMNS: Record<VisitDimension, { heading: string; empty: string }> = {
   referrers: {
@@ -182,10 +189,22 @@ export const VISIT_COLUMNS: Record<VisitDimension, { heading: string; empty: str
   },
   countries: {
     heading: "Country",
-    empty: "Country arrives once the site is behind the Cloudflare proxy. The header is not sent while the domain is DNS-only there.",
+    empty: "No visit in this window.",
+  },
+  cities: {
+    heading: "City",
+    empty: "City arrives once Cloudflare's visitor location headers are switched on for the zone. The header is not sent before that.",
   },
   devices: {
     heading: "Device",
+    empty: "No visit in this window.",
+  },
+  browsers: {
+    heading: "Browser",
+    empty: "No visit in this window.",
+  },
+  operating_systems: {
+    heading: "Operating system",
     empty: "No visit in this window.",
   },
 };
@@ -198,6 +217,33 @@ export const DEVICE_LABELS: Record<DeviceClass, string> = {
   mobile: "Phone",
   tablet: "Tablet",
   desktop: "Computer",
+};
+
+/**
+ * The browser and system families as a person writes them, from the lowercase
+ * words Rails stores. "iOS" and "macOS" are the two that matter: a column that
+ * printed them as "Ios" and "Macos" would look like a page that does not know
+ * what it is talking about.
+ *
+ * "Other" is a real bucket and gets a real label. It is every engine the derivation
+ * could not name, and the honest thing to show is that it was counted.
+ */
+export const BROWSER_LABELS: Record<BrowserFamily, string> = {
+  chrome: "Chrome",
+  safari: "Safari",
+  firefox: "Firefox",
+  edge: "Edge",
+  samsung: "Samsung Internet",
+  other: "Other",
+};
+
+export const OS_LABELS: Record<OsFamily, string> = {
+  ios: "iOS",
+  android: "Android",
+  macos: "macOS",
+  windows: "Windows",
+  linux: "Linux",
+  other: "Other",
 };
 
 /**

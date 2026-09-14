@@ -245,11 +245,13 @@ export function trafficPayload() {
      * the panel's own coverage line is what explains the gap, and a fixture
      * whose columns summed to the funnel's step 1 would never exercise it.
      *
-     * `countries` is EMPTY on purpose. It is the state of production today —
-     * the domain is DNS-only on Cloudflare, so the `cf-ipcountry` header is
-     * never sent — and the one empty state on this page that must not read as
-     * "nobody visited". A fixture that filled it in would photograph a column
-     * that does not exist yet.
+     * The city rows fall further short than the rest, and that is the shape the
+     * real data has: Cloudflare sends `cf-ipcity` only once the zone's "Add
+     * visitor location headers" transform is on, and even then not for every
+     * address, so the city column is always thinner than the country column
+     * above it. The day-one payload below is where the empty version of this
+     * column is photographed, and hq-traffic.ts owns the words that say which
+     * kind of empty it is.
      */
     visits: {
       referrers: [
@@ -259,11 +261,46 @@ export function trafficPayload() {
         { host: "t.co", count: 61 },
         { host: "mumsnet.com", count: 36 },
       ],
-      countries: [],
+      countries: [
+        { code: "GB", count: 1044 },
+        { code: "IE", count: 132 },
+        { code: "US", count: 96 },
+        { code: "AU", count: 41 },
+        { code: "NL", count: 18 },
+        { code: "DE", count: 12 },
+      ],
+      cities: [
+        { city: "London", count: 412 },
+        { city: "Manchester", count: 96 },
+        { city: "Birmingham", count: 74 },
+        { city: "Bristol", count: 63 },
+        { city: "Dublin", count: 58 },
+        { city: "Leeds", count: 41 },
+        { city: "Glasgow", count: 37 },
+        { city: "Edinburgh", count: 29 },
+        { city: "Brighton", count: 22 },
+        { city: "Cardiff", count: 18 },
+      ],
       devices: [
         { device: "mobile", count: 806 },
         { device: "desktop", count: 559 },
         { device: "tablet", count: 55 },
+      ],
+      browsers: [
+        { browser: "chrome", count: 614 },
+        { browser: "safari", count: 508 },
+        { browser: "firefox", count: 142 },
+        { browser: "edge", count: 88 },
+        { browser: "samsung", count: 47 },
+        { browser: "other", count: 21 },
+      ],
+      operating_systems: [
+        { os: "ios", count: 521 },
+        { os: "android", count: 338 },
+        { os: "windows", count: 301 },
+        { os: "macos", count: 264 },
+        { os: "linux", count: 39 },
+        { os: "other", count: 17 },
       ],
       // DELIBERATELY MORE than the 812 the five rows above add up to. Rails counts
       // this ungrouped over every visit that carried a referrer, and the list is
@@ -310,7 +347,15 @@ export function emptyTrafficPayload() {
     median_hours_to_first_text: null,
     median_hours_sample: 0,
     signed_in_without_house: 0,
-    visits: { referrers: [], countries: [], devices: [], referred_count: 0 },
+    visits: {
+      referrers: [],
+      countries: [],
+      cities: [],
+      devices: [],
+      browsers: [],
+      operating_systems: [],
+      referred_count: 0,
+    },
     weeks: payload.weeks.map((w) => ({
       ...w,
       texts_sent: 0,

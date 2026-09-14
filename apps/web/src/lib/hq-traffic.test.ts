@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { TEXT_KINDS, TRAFFIC_FUNNEL_STEPS } from "./api/super-admin-traffic";
+import { TEXT_KINDS, TRAFFIC_FUNNEL_STEPS, VISIT_DIMENSIONS } from "./api/super-admin-traffic";
 import { FUNNEL_STEP_LABELS } from "./hq-overview";
 import {
+  BROWSER_LABELS,
   DEVICE_LABELS,
+  OS_LABELS,
   RANGE_LABELS,
   TEXT_KIND_SERIES,
   TRAFFIC_STEP_LABELS,
@@ -237,19 +239,42 @@ describe("where the visits came from", () => {
     expect(DEVICE_LABELS).toEqual({ mobile: "Phone", tablet: "Tablet", desktop: "Computer" });
   });
 
-  // THE POINT OF THE CONSTANT. An empty country column is not "nobody visited
-  // from anywhere": the `cf-ipcountry` header only arrives once the domain is
-  // proxied through Cloudflare, and it is DNS-only there today, so the column is
-  // empty however busy the site is. Three identical "no data" lines would turn a
-  // configuration fact into an apparent absence of traffic and contradict the
-  // funnel's first bar directly above it.
-  it("says something different in each empty column", () => {
-    const empties = Object.values(VISIT_COLUMNS).map((column) => column.empty);
+  // A family and never a version, written the way a person writes it. "Ios" and
+  // "Macos" would look like a page that does not know what it is talking about.
+  it("names each browser and system family the way it is spelt", () => {
+    expect(BROWSER_LABELS.samsung).toBe("Samsung Internet");
+    expect(OS_LABELS.ios).toBe("iOS");
+    expect(OS_LABELS.macos).toBe("macOS");
 
-    expect(new Set(empties).size).toBe(3);
-    expect(VISIT_COLUMNS.countries.empty).toMatch(/Cloudflare/);
-    expect(VISIT_COLUMNS.countries.empty).not.toMatch(/no visit/i);
+    for (const label of [...Object.values(BROWSER_LABELS), ...Object.values(OS_LABELS)]) {
+      expect(label, `${label} carries a version`).not.toMatch(/\d/);
+    }
+  });
+
+  // Every column has a heading and a line for when it is empty, so a column
+  // added to the payload cannot reach the page unlabelled.
+  it("has words for all six columns", () => {
+    expect([...VISIT_DIMENSIONS].sort()).toEqual(Object.keys(VISIT_COLUMNS).sort());
+
+    for (const column of Object.values(VISIT_COLUMNS)) {
+      expect(column.heading).not.toBe("");
+      expect(column.empty).not.toBe("");
+    }
+  });
+
+  // THE POINT OF THE CONSTANT. An empty city column is not "nobody visited from
+  // anywhere": the `cf-ipcity` header only arrives once the Cloudflare zone's
+  // visitor location headers are switched on, so the column is empty however
+  // busy the site is. One "no data" line everywhere would turn a configuration
+  // fact into an apparent absence of traffic and contradict the funnel's first
+  // bar directly above it. The country column carried this warning until the
+  // domain was proxied and the country started arriving on every visit.
+  it("says something different in the two columns that are empty for their own reasons", () => {
+    expect(VISIT_COLUMNS.cities.empty).toMatch(/Cloudflare/);
+    expect(VISIT_COLUMNS.cities.empty).not.toMatch(/no visit/i);
     expect(VISIT_COLUMNS.referrers.empty).toMatch(/no referrer/i);
+    // Not the city's sentence any more. The header arrives now.
+    expect(VISIT_COLUMNS.countries.empty).not.toMatch(/Cloudflare/);
   });
 
   // One decimal, like every other rate on this page: a figure never renders

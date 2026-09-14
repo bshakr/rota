@@ -172,10 +172,20 @@ const weekSchema = z.object({
 });
 
 /**
- * The three coarse properties a landing view carries, as the payload spells
- * them. MUST stay in step with `SuperAdmin::Traffic::VISIT_DIMENSIONS`.
+ * The six coarse properties a landing view carries, as the payload spells them.
+ * MUST stay in step with `SuperAdmin::Traffic::VISIT_DIMENSIONS`, order
+ * included: it is the order the page lays the columns out in, and it is what
+ * makes its two rows of three read as two questions — where the visit came
+ * from, then what it arrived on.
  */
-export const VISIT_DIMENSIONS = ["referrers", "countries", "devices"] as const;
+export const VISIT_DIMENSIONS = [
+  "referrers",
+  "countries",
+  "cities",
+  "devices",
+  "browsers",
+  "operating_systems",
+] as const;
 export type VisitDimension = (typeof VISIT_DIMENSIONS)[number];
 
 /** One of `AnalyticsEvent::DEVICE_CLASSES`, which is the closed set Rails stores. */
@@ -183,7 +193,19 @@ export const DEVICE_CLASSES = ["mobile", "tablet", "desktop"] as const;
 export type DeviceClass = (typeof DEVICE_CLASSES)[number];
 
 /**
- * Where the visits in the window came from, three ways, commonest first and at
+ * The browser and system families, from `AnalyticsEvent::BROWSER_FAMILIES` and
+ * `OS_FAMILIES`. A FAMILY and never a version: the version is the half that
+ * would make the pair a fingerprint, so it is thrown away where the properties
+ * are derived and there is nowhere in these shapes to put one.
+ */
+export const BROWSER_FAMILIES = ["chrome", "safari", "firefox", "edge", "samsung", "other"] as const;
+export type BrowserFamily = (typeof BROWSER_FAMILIES)[number];
+
+export const OS_FAMILIES = ["ios", "android", "macos", "windows", "linux", "other"] as const;
+export type OsFamily = (typeof OS_FAMILIES)[number];
+
+/**
+ * Where the visits in the window came from, six ways, commonest first and at
  * most ten rows each.
  *
  * A visit the property is MISSING from is not in any of these lists, and that is
@@ -191,10 +213,11 @@ export type DeviceClass = (typeof DEVICE_CLASSES)[number];
  * they are all shares of, so the difference between it and a column's sum is the
  * "we could not see" figure without a row that would otherwise top every chart.
  *
- * `countries` is empty in production today. The domain is DNS-only on
- * Cloudflare, so the `cf-ipcountry` header is never sent and no visit carries a
- * country. That is a configuration fact, not an absence of traffic, and the
- * page's empty state for that column has to say which.
+ * `cities` is empty in production today. Cloudflare sends the `cf-ipcity` header
+ * only once the zone's "Add visitor location headers" transform is switched on,
+ * so no visit carries a city until it is. That is a configuration fact, not an
+ * absence of traffic, and the page's empty state for that column has to say
+ * which.
  *
  * `referred_count` is NOT the sum of `referrers`, and the page must never
  * compute it as one. The list is capped at ten hosts; this is every visit in the
@@ -205,7 +228,10 @@ export type DeviceClass = (typeof DEVICE_CLASSES)[number];
 const visitsSchema = z.object({
   referrers: z.array(z.object({ host: z.string(), count })).max(10),
   countries: z.array(z.object({ code: z.string(), count })).max(10),
+  cities: z.array(z.object({ city: z.string(), count })).max(10),
   devices: z.array(z.object({ device: z.enum(DEVICE_CLASSES), count })).max(10),
+  browsers: z.array(z.object({ browser: z.enum(BROWSER_FAMILIES), count })).max(10),
+  operating_systems: z.array(z.object({ os: z.enum(OS_FAMILIES), count })).max(10),
   referred_count: count,
 });
 
@@ -290,7 +316,10 @@ export const trafficSchema = z.object({
   /** Signed in during the window and has no house at all, as of now. The leak. */
   signed_in_without_house: count,
 
-  /** Where the funnel's first step came from: referrer, country, device class. */
+  /**
+   * Where the funnel's first step came from: referrer, country and city, then
+   * device class, browser family and system family.
+   */
   visits: visitsSchema,
 
   /**
