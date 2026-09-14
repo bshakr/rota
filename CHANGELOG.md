@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-14
+
+### Changed
+
+- Dropped the root `VERSION` file. Nothing read it, and it conflicted on every parallel pull
+  request. (#55)
+- The mailer's default sender moved from `hello@rota.monster`, a domain that does not exist, to
+  `hello@bloombase.studio`, the same contact address the web app already uses. (#55)
+
 ## [0.0.3.1] - 2026-09-13
 
 ### Added
