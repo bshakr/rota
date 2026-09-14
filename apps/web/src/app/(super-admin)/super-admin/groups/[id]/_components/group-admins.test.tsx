@@ -52,6 +52,18 @@ describe("GroupAdmins", () => {
     expect(html.split(NO_EMAIL)).toHaveLength(3);
   });
 
+  // The operator-facing half of https://linear.app/bloombase/issue/BLO-1696. The card does not
+  // change at all: once a real email actually reaches the `users` row — which is what the sign-in
+  // callback and `users:refresh_from_workos` now see to — this is what the operator gets for the
+  // admin production had nothing for. Once, as the heading, and never printed a second time as its
+  // own note line.
+  it("names a real-email, nameless admin by their address exactly once", () => {
+    const html = markup();
+
+    expect(headings(html)).toContain("rosa@example.com");
+    expect(html.split("rosa@example.com")).toHaveLength(2);
+  });
+
   it("never renders an empty heading", () => {
     const html = markup();
     expect(headings(html)).toHaveLength(4);

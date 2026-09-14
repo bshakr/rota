@@ -19,6 +19,18 @@ class User < ApplicationRecord
   validates :workos_user_id, presence: true, uniqueness: true
   validates :email, presence: true
 
+  # The rows WorkOS could still tell us something about: provisioned from a token that carried
+  # neither an email nor a name, and never filled in since. `users:refresh_from_workos` walks exactly
+  # this set, and nothing else does.
+  #
+  # One literal with a bound parameter rather than three chained `or`s: the placeholder is a suffix,
+  # so it needs LIKE, and a name of spaces is as absent as a name of nil — WorkOS hands back both
+  # for the same empty signup field.
+  scope :missing_workos_identity, -> {
+    where("email LIKE :placeholder OR name IS NULL OR TRIM(name) = ''",
+      placeholder: "%@#{PLACEHOLDER_EMAIL_DOMAIN}")
+  }
+
   # The admin themselves, from claims that WorkOS signed and WorkosAccessToken verified — with no
   # house in sight.
   #
@@ -61,6 +73,31 @@ class User < ApplicationRecord
     user.update!(name: claims.name) if claims.name && claims.name != user.name
   end
   private_class_method :resync
+
+  # Fill what WorkOS can fill, and nothing else.
+  #
+  # Two callers, one rule. POST /api/sign_ins passes what the AuthKit session held (the web app has
+  # the WorkOS user object in its callback and forwards it); `users:refresh_from_workos` passes what
+  # the WorkOS directory answered. Both are idempotent, and a second call with the same identity
+  # writes nothing.
+  #
+  # GAP-FILLING ONLY, and that is the whole design. On the sign-in path this identity arrives in the
+  # request BODY, not in the signed token: the token proves who is asking, the body is only their
+  # word for what they are called. Because it can write nothing but the caller's own row, and only
+  # into a slot that is empty, the worst a lie can do is name a person nothing had named — which is
+  # what this exists for. A stored address WorkOS verified is never overwritten by it, and a blank
+  # never replaces a fact in either direction.
+  #
+  # Returns whether anything was written, which is what the task counts.
+  def absorb_workos_identity!(identity)
+    changes = {}
+    changes[:email] = identity.email if identity.email.present? && email_placeholder?
+    changes[:name] = identity.name if identity.name.present? && name.blank?
+    return false if changes.empty?
+
+    update!(changes)
+    true
+  end
 
   # Whether the stored address is the stand-in above rather than something WorkOS actually told us.
   # The super admin console shows "not provided" instead, so an operator is never handed an address

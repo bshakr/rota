@@ -101,6 +101,99 @@ RSpec.describe User do
     end
   end
 
+  # The fix for https://linear.app/bloombase/issue/BLO-1696: the operator console showed
+  # "No name yet / Not provided" for the only real admin in production, because a token carries
+  # neither claim and nothing else ever wrote the columns. Two callers now do — the sign-in callback
+  # and `users:refresh_from_workos` — and they share this one rule.
+  describe "#absorb_workos_identity!" do
+    def identity(**attributes) = WorkosIdentity.new(**attributes)
+
+    it "replaces a placeholder address with the real one" do
+      user = create(:user, email: described_class.placeholder_email("user_01ALICE"))
+
+      expect(user.absorb_workos_identity!(identity(email: "alice@example.com"))).to be(true)
+      expect(user.reload.email).to eq("alice@example.com")
+    end
+
+    it "fills a name nothing had ever filled" do
+      user = create(:user, name: nil)
+
+      expect(user.absorb_workos_identity!(identity(first_name: "Alice", last_name: "Nkemdirim"))).to be(true)
+      expect(user.reload.name).to eq("Alice Nkemdirim")
+    end
+
+    it "treats a name of whitespace as no name at all" do
+      user = create(:user, name: "   ")
+
+      user.absorb_workos_identity!(identity(first_name: "Alice"))
+
+      expect(user.reload.name).to eq("Alice")
+    end
+
+    # The gap-filling rule, and the reason it is safe for this to be fed from a request body: the
+    # body may name somebody nothing had named, and it may never rename them.
+    it "never overwrites an address WorkOS already verified" do
+      user = create(:user, email: "alice@example.com")
+
+      expect(user.absorb_workos_identity!(identity(email: "impostor@example.com"))).to be(false)
+      expect(user.reload.email).to eq("alice@example.com")
+    end
+
+    it "never overwrites a name that is already there" do
+      user = create(:user, name: "Alice Nkemdirim")
+
+      expect(user.absorb_workos_identity!(identity(first_name: "Somebody", last_name: "Else"))).to be(false)
+      expect(user.reload.name).to eq("Alice Nkemdirim")
+    end
+
+    it "never replaces a fact with a blank" do
+      user = create(:user, email: "alice@example.com", name: "Alice Nkemdirim")
+
+      expect(user.absorb_workos_identity!(identity(email: "", first_name: " ", last_name: nil))).to be(false)
+      expect(user.reload).to have_attributes(email: "alice@example.com", name: "Alice Nkemdirim")
+    end
+
+    # It runs on every sign-in, so the steady state has to cost no write at all.
+    it "writes nothing at all the second time" do
+      user = create(:user, email: described_class.placeholder_email("user_01ALICE"), name: nil)
+      user.absorb_workos_identity!(identity(email: "alice@example.com", first_name: "Alice"))
+
+      expect {
+        expect(user.absorb_workos_identity!(identity(email: "alice@example.com", first_name: "Alice"))).to be(false)
+      }.not_to change { user.reload.updated_at }
+    end
+
+    it "fills only the half that is missing" do
+      user = create(:user, email: "alice@example.com", name: nil)
+
+      expect(user.absorb_workos_identity!(identity(email: "other@example.com", first_name: "Alice"))).to be(true)
+      expect(user.reload).to have_attributes(email: "alice@example.com", name: "Alice")
+    end
+  end
+
+  # What `users:refresh_from_workos` walks. Everything else is already as good as WorkOS could make
+  # it, and asking about it would be a round trip for nothing.
+  describe ".missing_workos_identity" do
+    it "finds a placeholder address" do
+      user = create(:user, email: described_class.placeholder_email("user_01ALICE"))
+
+      expect(described_class.missing_workos_identity).to include(user)
+    end
+
+    it "finds a null name and a name of spaces alike" do
+      null_name = create(:user, name: nil)
+      blank_name = create(:user, name: "  ")
+
+      expect(described_class.missing_workos_identity).to include(null_name, blank_name)
+    end
+
+    it "leaves alone a user WorkOS has already told us about" do
+      complete = create(:user, email: "alice@example.com", name: "Alice Nkemdirim")
+
+      expect(described_class.missing_workos_identity).not_to include(complete)
+    end
+  end
+
   it "reaches its groups through group_admins" do
     user = create(:user)
     group = create(:group)

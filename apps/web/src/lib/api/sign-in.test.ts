@@ -35,6 +35,46 @@ describe("recording a sign-in", () => {
     expect(url).not.toContain("JWT_FROM_AUTHKIT");
   });
 
+  // https://linear.app/bloombase/issue/BLO-1696. The access token carries no email and no name, so
+  // without this the operator console shows "No name yet / Not provided" for every admin. AuthKit
+  // hands the callback the real WorkOS user; this is how it reaches the row.
+  it("carries the identity WorkOS gave the callback, in the shape of the row", async () => {
+    await recordSignIn("JWT", {
+      email: "alice@example.com",
+      firstName: "Alice",
+      lastName: "Nkemdirim",
+    });
+
+    expect(JSON.parse(lastFetchCall().init.body as string)).toEqual({
+      email: "alice@example.com",
+      first_name: "Alice",
+      last_name: "Nkemdirim",
+    });
+    expect(lastFetchCall().headers["Content-Type"]).toBe("application/json");
+  });
+
+  // A WorkOS user with no name at all is the common case, and it is not a failure: Rails treats a
+  // null as "nothing to add" and leaves the column exactly as it was.
+  it("says nothing rather than guessing when WorkOS holds no name", async () => {
+    await recordSignIn("JWT", { email: "alice@example.com" });
+
+    expect(JSON.parse(lastFetchCall().init.body as string)).toEqual({
+      email: "alice@example.com",
+      first_name: null,
+      last_name: null,
+    });
+  });
+
+  it("still posts when there is no identity to carry at all", async () => {
+    await expect(recordSignIn("JWT")).resolves.toBeUndefined();
+
+    expect(JSON.parse(lastFetchCall().init.body as string)).toEqual({
+      email: null,
+      first_name: null,
+      last_name: null,
+    });
+  });
+
   it("bounds how long it can delay the redirect", async () => {
     await recordSignIn("JWT");
 

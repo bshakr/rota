@@ -31,10 +31,17 @@ export const GET = handleAuth({
   // anonymous row to the funnel, carrying no user id and no properties at all, because the event
   // store has no visitor identity in it. A sign-in is counted there, never attributed.
   //
+  // `user` goes with the token because the token does not carry it
+  // (https://linear.app/bloombase/issue/BLO-1696). An AuthKit access token has no `email` and no
+  // `name` claim unless the WorkOS JWT template has been configured to add them, so Rails — which
+  // sees nothing but the token — had a placeholder address and a null name for every admin. This
+  // callback is the one place that holds the real WorkOS user object, so it is the one place that
+  // can say. Rails only ever fills a gap with it; it cannot rewrite what WorkOS itself signed.
+  //
   // Only the first is awaited. The analytics capture is fire-and-forget on purpose: `onSuccess` is
   // awaited before the redirect is issued, and a point on a chart is not worth a slower login.
-  onSuccess: ({ accessToken }) => {
+  onSuccess: ({ accessToken, user }) => {
     captureServerEvent("signin_completed");
-    return recordSignIn(accessToken);
+    return recordSignIn(accessToken, user);
   },
 });
