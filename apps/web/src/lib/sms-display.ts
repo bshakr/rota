@@ -1,6 +1,14 @@
-// The words the SMS log puts on screen. Kept out of the components — and unit
-// tested — because "explain the carrier error in human terms" is the whole point
-// of this screen, and a mistranslated code is worse than a bare one.
+// The words a delivery log puts on screen, and the values its filters offer.
+// Kept out of the components — and unit tested — because "explain the carrier
+// error in human terms" is the whole point of this screen, and a mistranslated
+// code is worse than a bare one.
+//
+// It sits in `lib/` rather than beside the house's own /sms page because TWO
+// screens render the same rows: the house's log, and the operator's redacted view
+// of one house's log on the group page
+// (https://linear.app/bloombase/issue/BLO-1680). Same statuses, same kinds, same
+// carrier codes — a second copy of any of them is how an operator ends up reading
+// a different explanation of a failure than the admin who reported it.
 
 import type { SmsKind, SmsStatus } from "@/lib/api/types";
 
@@ -31,10 +39,76 @@ export function statusDisplay(status: SmsStatus): { label: string; tone: StatusT
   return STATUS[status] ?? { label: status, tone: "secondary" };
 }
 
-/** The message kinds this house sends, in human words. */
-export function kindDisplay(kind: SmsKind): string {
-  if (kind === "member_login") return "Personal link";
-  return kind === "cover_notice" ? "Cover notice" : "Reminder";
+/**
+ * The wash a failed message wears, across BOTH of its rows.
+ *
+ * Blush is the design system's "went wrong" sticker, used here at low strength
+ * so a tinted row reads as a marked row and not as an alert. It lives beside the
+ * status words rather than in either page because the house's own log and the
+ * operator's redacted view of it both render the same failures: two copies of
+ * the same class string is how one screen ends up marking a failure the other
+ * does not. No left rail — Soft Clay has no accent-bordered surfaces, so the
+ * tint carries it alone.
+ */
+export const FAILED_ROW = "bg-blush/25 hover:bg-blush/40";
+
+/**
+ * What the two dropdown filters offer, and — the same list read the other way —
+ * what a page will accept out of a query string.
+ *
+ * ONE list each, because a filter bar offering a value the page then validates
+ * away is a control that silently does nothing. The order here is the order the
+ * menu shows: statuses run from the happy end to the failed one, kinds from the
+ * text a housemate asked for to the two the rotas send.
+ *
+ * Statuses are the five `SmsMessage::STATUSES` Rails writes. `statusDisplay`
+ * above still tolerates a status that is not on this list — a new carrier state
+ * must render rather than throw — but the FILTER will not offer it, because Rails
+ * would match nothing and the operator would read an empty log as "no texts".
+ */
+export const SMS_STATUS_OPTIONS: readonly { value: SmsStatus; label: string }[] = [
+  { value: "delivered", label: "Delivered" },
+  { value: "sent", label: "Sent" },
+  { value: "sending", label: "Sending" },
+  { value: "pending", label: "Queued" },
+  { value: "failed", label: "Failed" },
+];
+
+export const SMS_KIND_OPTIONS: readonly { value: SmsKind; label: string }[] = [
+  { value: "member_login", label: "Personal link" },
+  { value: "reminder", label: "Reminder" },
+  { value: "cover_notice", label: "Cover notice" },
+];
+
+const STATUS_VALUES = new Set<string>(SMS_STATUS_OPTIONS.map((option) => option.value));
+const KIND_VALUES = new Set<string>(SMS_KIND_OPTIONS.map((option) => option.value));
+
+/** Is this a status the log may be narrowed by? Guards a hand-edited query string. */
+export function isKnownSmsStatus(value: string | undefined): value is SmsStatus {
+  return value !== undefined && STATUS_VALUES.has(value);
+}
+
+/** Is this a kind the log may be narrowed by? */
+export function isKnownSmsKind(value: string | undefined): value is SmsKind {
+  return value !== undefined && KIND_VALUES.has(value);
+}
+
+const KIND_LABELS: Record<string, string> = Object.fromEntries(
+  SMS_KIND_OPTIONS.map((option) => [option.value, option.label]),
+);
+
+/**
+ * A message kind in human words, off the SAME list the filter menu offers — one
+ * spelling of "Cover notice" in the product, not two.
+ *
+ * Takes a bare string as well as a `SmsKind`, because the operator's log parses
+ * `kind` as a string on purpose: a fourth kind Rails learns to send must render
+ * rather than blank the console. An unmapped kind prints its own raw value, the
+ * same degradation `statusDisplay` makes, rather than being quietly labelled as
+ * one of the three we happen to know.
+ */
+export function kindDisplay(kind: SmsKind | string): string {
+  return KIND_LABELS[kind] ?? kind;
 }
 
 /**

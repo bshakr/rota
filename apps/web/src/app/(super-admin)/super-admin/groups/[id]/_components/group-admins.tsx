@@ -2,8 +2,9 @@ import { ExternalLink } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import type { GroupAdmin, ReportAdmin } from "@/lib/api/super-admin-groups";
+import type { ReportAdmin } from "@/lib/api/super-admin-groups";
 import { formatTimestamp, relativeTime } from "@/lib/date";
+import { ADMIN_SIGN_INS_LABEL, GROUP_SECTION } from "@/lib/hq-group-report";
 import { NO_EMAIL, workosUserUrl } from "@/lib/hq-groups";
 import { plural } from "@/lib/hq-overview";
 
@@ -23,14 +24,23 @@ import { plural } from "@/lib/hq-overview";
  * either in this console would mean building the audit trail too, so the console
  * hands over the id and gets out of the way — the plan's own decision.
  *
- * Last seen and the sign-in counts come from `report`
- * (https://linear.app/bloombase/issue/BLO-1679) and are simply omitted when that
- * key is not on the payload: they decorate a row whose identity comes from the
- * plain serializer, and a missing decoration is not a reason to show no admins.
+ * **Last seen and the two sign-in counts are always here.** They come from
+ * `report.admins` (https://linear.app/bloombase/issue/BLO-1679), which is the
+ * house's own `SuperAdmin::AdminSerializer` row plus the three columns a plain
+ * serializer has no way to know. This card used to take either shape and degrade;
+ * it does not any more, because the page dropped the duplicated top-level
+ * `admins` read in favour of this one. One list of people, one answer.
+ *
+ * The sign-in counts are said in full — "sign-ins, all houses" — rather than
+ * printed as bare numbers. They are facts about the PERSON, every organization
+ * and none (Rails' own `user_` prefix says so), so an admin of two houses shows
+ * the same figure on both pages. A bare "12 sign-ins" on a page that is otherwise
+ * entirely about one house reads as "signed in to this house", which is exactly
+ * what it is not.
  */
-export function GroupAdmins({ admins, now }: { admins: (GroupAdmin | ReportAdmin)[]; now: Date }) {
+export function GroupAdmins({ admins, now }: { admins: ReportAdmin[]; now: Date }) {
   return (
-    <Card>
+    <Card id={GROUP_SECTION.admins} className="scroll-mt-24">
       <CardHeader>
         <CardTitle>Admins</CardTitle>
         <CardDescription>
@@ -55,14 +65,8 @@ export function GroupAdmins({ admins, now }: { admins: (GroupAdmin | ReportAdmin
   );
 }
 
-/** `report`'s extra columns, when the payload carried them. */
-function reportFields(admin: GroupAdmin | ReportAdmin): ReportAdmin | null {
-  return "user_sign_in_count" in admin ? admin : null;
-}
-
-function AdminRow({ admin, now }: { admin: GroupAdmin | ReportAdmin; now: Date }) {
-  const extra = reportFields(admin);
-  const lastSeen = extra?.last_seen_at ? new Date(extra.last_seen_at) : null;
+function AdminRow({ admin, now }: { admin: ReportAdmin; now: Date }) {
+  const lastSeen = admin.last_seen_at ? new Date(admin.last_seen_at) : null;
 
   return (
     <li className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0">
@@ -75,30 +79,23 @@ function AdminRow({ admin, now }: { admin: GroupAdmin | ReportAdmin; now: Date }
         >
           {admin.email ?? NO_EMAIL}
         </p>
-        {extra ? (
-          <p className="text-muted-foreground text-xs">
-            {/* `user_`, and said out loud, because these are facts about the
-                PERSON and not about this house: an admin of two houses shows the
-                same count on both pages. A bare "12 sign-ins" on a page that is
-                otherwise all about one house would read as "signed in to this
-                house", which is exactly what it is not. */}
-            {lastSeen ? (
-              <>
-                Last seen{" "}
-                <time dateTime={extra.last_seen_at ?? undefined} title={formatTimestamp(lastSeen)}>
-                  {relativeTime(lastSeen, now)}
-                </time>
-              </>
-            ) : (
-              // Not "Last seen nothing yet": a person who has never opened the app
-              // has no last time, and the sentence has to say that rather than
-              // fill the slot with a phrase that means nothing after "Last seen".
-              "Never seen here"
-            )}{" "}
-            · {extra.user_sign_in_count_30d} sign-ins in the last 30 days,{" "}
-            {extra.user_sign_in_count} all time, anywhere on Rota Monster
-          </p>
-        ) : null}
+        <p className="text-muted-foreground text-xs text-pretty">
+          {lastSeen ? (
+            <>
+              Last seen{" "}
+              <time dateTime={admin.last_seen_at ?? undefined} title={formatTimestamp(lastSeen)}>
+                {relativeTime(lastSeen, now)}
+              </time>
+            </>
+          ) : (
+            // Not "Last seen nothing yet": a person who has never opened the app
+            // has no last time, and the sentence has to say that rather than fill
+            // the slot with a phrase that means nothing after "Last seen".
+            "Never seen here"
+          )}{" "}
+          · {ADMIN_SIGN_INS_LABEL}: {admin.user_sign_in_count_30d} in the last 30 days,{" "}
+          {admin.user_sign_in_count} all time
+        </p>
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">

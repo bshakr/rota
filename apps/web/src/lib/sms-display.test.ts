@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { explainError, kindDisplay, reminderTiming, statusDisplay } from "./display";
+import { explainError, kindDisplay, reminderTiming, statusDisplay } from "./sms-display";
 
 describe("statusDisplay", () => {
   it("maps each carrier status to a label and a Badge tone", () => {

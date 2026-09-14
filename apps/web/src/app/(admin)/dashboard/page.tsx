@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarCheck, Repeat } from "lucide-react";
 
+import { DashboardWarnings } from "@/components/dashboard-warnings";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +27,6 @@ import { buildDayRows, eventsByDay, nextWeekRangeLabel } from "@/lib/day-rows";
 import { compareCivil, groupToday, isNextWeek, isThisWeek } from "@/lib/group-dates";
 
 import { DashboardHero } from "./_components/dashboard-hero";
-import { DashboardWarnings } from "./_components/dashboard-warnings";
 import { GroupSettings } from "./_components/group-settings";
 import { HouseholdEntryLink } from "./_components/household-entry-link";
 import { NextWeek } from "./_components/next-week";

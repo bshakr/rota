@@ -29,12 +29,34 @@ export interface DashboardWarning {
   action: string;
 }
 
+/**
+ * The two shapes below are NARROWED to what this collector actually reads, and
+ * that is deliberate rather than fussy.
+ *
+ * The operator's console runs this exact function over the same house's facts, so
+ * that the alerts on a group page are the alerts its own admins are looking at
+ * (https://linear.app/bloombase/issue/BLO-1680). Rails composes those facts with
+ * the house's own serializers and then makes two credential-shaped changes, both
+ * of them mandated by the plan: `access_token` is dropped from every member (it
+ * is a permanent login to somebody else's house), and a text's `body` comes back
+ * null once the magic link has been struck out of an unsent row. Neither field is
+ * read here. Demanding them anyway would mean either shipping a magic link to an
+ * operator in order to type-check — the opposite of the rule — or writing a
+ * second, parallel collector, which is exactly how the two screens would start
+ * disagreeing about what is wrong with a house.
+ *
+ * The house's own dashboard passes whole `Member`s and `SmsMessage`s and is
+ * unaffected: they satisfy these.
+ */
+export type WarningMember = Pick<Member, "name" | "active" | "contactable">;
+export type WarningFailedSms = Pick<SmsMessage, "member">;
+
 export interface DashboardWarningInput {
   group: Group;
   rotas: Rota[];
-  members: Member[];
+  members: WarningMember[];
   /** SMS log rows already filtered to status=failed. */
-  failedSms: SmsMessage[];
+  failedSms: WarningFailedSms[];
   /**
    * Route of the group-settings screen (name, timezone, house calendar). Owned by
    * the rotas area. A fragment on it is replaced when a warning aims at one section.
