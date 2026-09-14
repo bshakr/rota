@@ -2,6 +2,13 @@
 
 ## 2026-09-14
 
+### Added
+
+- Soft Clay for the WorkOS sign-in page: `docs/authkit/` holds the custom CSS to paste into the
+  AuthKit branding editor, the dashboard recipe (wordmark, colours, Outfit, dark mode) and a
+  Playwright script that previews the CSS against the live hosted page. No app code changes; the
+  page is styled in the WorkOS dashboard. (#60)
+
 ### Changed
 
 - Dropped the root `VERSION` file. Nothing read it, and it conflicted on every parallel pull
