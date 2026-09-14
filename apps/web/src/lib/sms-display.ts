@@ -40,6 +40,19 @@ export function statusDisplay(status: SmsStatus): { label: string; tone: StatusT
 }
 
 /**
+ * The wash a failed message wears, across BOTH of its rows.
+ *
+ * Blush is the design system's "went wrong" sticker, used here at low strength
+ * so a tinted row reads as a marked row and not as an alert. It lives beside the
+ * status words rather than in either page because the house's own log and the
+ * operator's redacted view of it both render the same failures: two copies of
+ * the same class string is how one screen ends up marking a failure the other
+ * does not. No left rail — Soft Clay has no accent-bordered surfaces, so the
+ * tint carries it alone.
+ */
+export const FAILED_ROW = "bg-blush/25 hover:bg-blush/40";
+
+/**
  * What the two dropdown filters offer, and — the same list read the other way —
  * what a page will accept out of a query string.
  *

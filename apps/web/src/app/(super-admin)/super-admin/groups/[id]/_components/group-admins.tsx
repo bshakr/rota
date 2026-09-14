@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ReportAdmin } from "@/lib/api/super-admin-groups";
 import { formatTimestamp, relativeTime } from "@/lib/date";
-import { ADMIN_SIGN_INS_LABEL } from "@/lib/hq-group-report";
+import { ADMIN_SIGN_INS_LABEL, GROUP_SECTION } from "@/lib/hq-group-report";
 import { NO_EMAIL, workosUserUrl } from "@/lib/hq-groups";
 import { plural } from "@/lib/hq-overview";
 
@@ -40,7 +40,7 @@ import { plural } from "@/lib/hq-overview";
  */
 export function GroupAdmins({ admins, now }: { admins: ReportAdmin[]; now: Date }) {
   return (
-    <Card>
+    <Card id={GROUP_SECTION.admins} className="scroll-mt-24">
       <CardHeader>
         <CardTitle>Admins</CardTitle>
         <CardDescription>

@@ -1,3 +1,7 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import type { UpcomingShift, WeeklyWeek } from "./api/super-admin-groups";
@@ -126,6 +130,41 @@ describe("the operator's warning destinations", () => {
     // Nothing on this console can re-enter somebody's iCal URL, so the honest
     // destination is the people who can.
     expect(byId["calendar-sync"]).toBe(`#${GROUP_SECTION.admins}`);
+  });
+
+  // The one thing the assertions above cannot catch. They compare two strings
+  // that are built from the same constant, so they agree with each other whether
+  // or not anything on the page ever renders the anchor — and a `#house-admins`
+  // that no element carries scrolls nowhere at all, silently. So the components
+  // are read off disk and every destination has to be found in one of them.
+  it("aims every warning at an anchor a component actually renders", () => {
+    const dir = fileURLToPath(
+      new URL("../app/(super-admin)/super-admin/groups/[id]/_components/", import.meta.url),
+    );
+    const components = readdirSync(dir).filter((name) => name.endsWith(".tsx"));
+    const sources = components.map((name) => readFileSync(join(dir, name), "utf8")).join("\n");
+
+    // If the folder ever moves, fail here rather than passing on an empty read.
+    expect(components.length).toBeGreaterThan(0);
+
+    const keyOf = new Map<string, string>(
+      Object.entries(GROUP_SECTION).map(([key, anchor]) => [anchor, key]),
+    );
+    const destinations = [
+      OPERATOR_SETTINGS_HREF,
+      ...Object.values(OPERATOR_WARNING_TARGETS).map((target) => target.href),
+    ];
+
+    for (const href of destinations) {
+      const key = keyOf.get(href.replace(/^#/, ""));
+
+      // Hand-typed anchors are how the two halves drift apart; every
+      // destination has to be a GROUP_SECTION value.
+      expect(key, `${href} is not a GROUP_SECTION value`).toBeDefined();
+      expect(sources, `${href} is rendered by no component in ${dir}`).toContain(
+        `id={GROUP_SECTION.${key}}`,
+      );
+    }
   });
 
   it("points an unknown warning at the top of the house rather than off it", () => {
@@ -384,6 +423,12 @@ describe("the delivery log's filters", () => {
     expect(parseSmsLogFilters({ limit: "100000" }).limit).toBe(SMS_LOG_MAX_LIMIT);
     expect(parseSmsLogFilters({ limit: "0" }).limit).toBe(SMS_LOG_PAGE);
     expect(parseSmsLogFilters({ limit: "soon" }).limit).toBe(SMS_LOG_PAGE);
+  });
+
+  // "?limit=25.5" is a hand-edited URL, and half a row is not a page size Rails
+  // can be asked for.
+  it("floors a fractional limit", () => {
+    expect(parseSmsLogFilters({ limit: "25.5" }).limit).toBe(25);
   });
 
   it("takes the first of a repeated parameter rather than a comma-joined string", () => {

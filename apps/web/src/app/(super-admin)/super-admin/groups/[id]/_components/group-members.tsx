@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ReportMember } from "@/lib/api/super-admin-groups";
 import { formatTimestamp, relativeTime } from "@/lib/date";
-import { MEMBER_LAST_SEEN_LABEL } from "@/lib/hq-group-report";
+import { GROUP_SECTION, MEMBER_LAST_SEEN_LABEL } from "@/lib/hq-group-report";
 import { MEMBER_STATUS_PILL, memberRotasNote } from "@/lib/hq-groups";
 import { plural } from "@/lib/hq-overview";
 
@@ -37,7 +37,7 @@ export function GroupMembers({ members, now }: { members: ReportMember[]; now: D
   const active = members.filter((member) => member.status === "active").length;
 
   return (
-    <Card>
+    <Card id={GROUP_SECTION.members} className="scroll-mt-24">
       <CardHeader>
         <CardTitle>Housemates</CardTitle>
         <CardDescription>

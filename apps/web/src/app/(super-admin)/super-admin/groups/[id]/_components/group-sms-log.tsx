@@ -29,7 +29,13 @@ import {
   nextSmsLogLimit,
   smsLogCountNote,
 } from "@/lib/hq-group-report";
-import { explainError, kindDisplay, reminderTiming, statusDisplay } from "@/lib/sms-display";
+import {
+  FAILED_ROW,
+  explainError,
+  kindDisplay,
+  reminderTiming,
+  statusDisplay,
+} from "@/lib/sms-display";
 import { cn } from "@/lib/utils";
 
 import { Empty } from "./group-admins";
@@ -152,11 +158,6 @@ export function GroupSmsLog({
     </Card>
   );
 }
-
-// A failed row wears the BLUSH wash — the "went wrong" sticker at low strength —
-// across both of its rows, exactly as the house's own log does, so the two screens
-// mark a failure the same way.
-const FAILED_ROW = "bg-blush/25 hover:bg-blush/40";
 
 /**
  * One text, as two rows: the scannable summary, and the detail underneath — the

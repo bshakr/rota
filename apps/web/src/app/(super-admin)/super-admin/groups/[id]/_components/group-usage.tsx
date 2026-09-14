@@ -61,7 +61,7 @@ export function GroupUsage({ weeks }: { weeks: WeeklyWeek[] }) {
       <CardHeader>
         <CardTitle>Twelve weeks of use</CardTitle>
         <CardDescription>
-          Weeks start on Monday UTC — the same boundary the overview and the traffic page use, so
+          Weeks start on Monday UTC, the same boundary the overview and the traffic page use, so
           one text lands in the same column on all three.
         </CardDescription>
       </CardHeader>
@@ -121,13 +121,22 @@ export function GroupUsage({ weeks }: { weeks: WeeklyWeek[] }) {
                 Show every week as numbers
               </summary>
 
+              {/* Three columns and a phone: the table is made to FIT at 390px
+                  rather than given the log's sideways scroller, because a
+                  clipped "Covers" header on a card whose whole point is the
+                  numbers reads as a bug. Two things buy the room — tighter
+                  gutters below sm, and a week cell allowed to wrap there, so
+                  only the one row carrying "so far" takes a second line. Both
+                  are undone from sm up, where the full padding fits easily. The
+                  scroll box stays as the floor for a narrower screen than any
+                  we target. */}
               <div className="mt-3 overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Week</TableHead>
+                      <TableHead className="px-2 sm:px-4">Week</TableHead>
                       {USAGE_SERIES.map((series) => (
-                        <TableHead key={series.key} className="text-right">
+                        <TableHead key={series.key} className="px-2 text-right sm:px-4">
                           {series.label}
                         </TableHead>
                       ))}
@@ -136,14 +145,18 @@ export function GroupUsage({ weeks }: { weeks: WeeklyWeek[] }) {
                   <TableBody>
                     {weeks.map((week) => (
                       <TableRow key={week.week_start}>
-                        <TableCell className="whitespace-nowrap">
+                        <TableCell className="px-2 whitespace-normal sm:px-4 sm:whitespace-nowrap">
                           {weekOfLabel(week.week_start)}
                           {week.week_start === latest?.week_start ? (
                             <span className="text-muted-foreground"> {USAGE_LATEST_NOTE}</span>
                           ) : null}
                         </TableCell>
                         {USAGE_SERIES.map((series) => (
-                          <TableCell key={series.key} className="text-right" data-numeric>
+                          <TableCell
+                            key={series.key}
+                            className="px-2 text-right sm:px-4"
+                            data-numeric
+                          >
                             {formatCount(week[series.key])}
                           </TableCell>
                         ))}

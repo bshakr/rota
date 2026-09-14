@@ -173,8 +173,12 @@ export function GroupScreen({
           groupId={group.id}
           messages={smsMessages}
           filters={smsFilters}
-          members={report.members}
-          rotas={detail.rotas}
+          // Only the two primitives `SmsFilters` needs cross into the Client
+          // Component. Handing it `report.members` would serialise every phone
+          // number and last-seen stamp into the page's RSC payload to fill a
+          // <select> with names.
+          members={report.members.map(({ id, name }) => ({ id, name }))}
+          rotas={detail.rotas.map(({ id, name }) => ({ id, name }))}
         />
       </div>
 

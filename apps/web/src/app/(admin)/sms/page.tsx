@@ -29,6 +29,7 @@ import { listMembers, listRotas, listSmsMessages } from "@/lib/api/admin";
 import type { SmsMessage } from "@/lib/api/types";
 import { formatShiftDate, formatTimestamp } from "@/lib/date";
 import {
+  FAILED_ROW,
   explainError,
   isKnownSmsKind,
   isKnownSmsStatus,
@@ -194,11 +195,9 @@ function viewFor(m: SmsMessage) {
 
 // A message renders as two rows: the scannable summary, and a detail row that
 // always shows the exact body that was sent (magic link included) plus the send
-// metadata. A failed message wears the BLUSH wash, the "went wrong" sticker at
-// low strength, across both of its rows, and its detail row leads with an Alert
-// explaining the failure in plain words rather than a bare code. No left rail:
-// Soft Clay has no accent-bordered surfaces, so the tint carries it alone.
-const FAILED_ROW = "bg-blush/25 hover:bg-blush/40";
+// metadata. A failed message wears the BLUSH wash (`FAILED_ROW`, in
+// lib/sms-display.ts) across both of its rows, and its detail row leads with an
+// Alert explaining the failure in plain words rather than a bare code.
 
 function MessageRows({ message: m }: { message: SmsMessage }) {
   const { status: s, failed, timing, error } = viewFor(m);

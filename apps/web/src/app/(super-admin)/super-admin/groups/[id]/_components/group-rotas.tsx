@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { GroupRota } from "@/lib/api/super-admin-groups";
+import { GROUP_SECTION } from "@/lib/hq-group-report";
 import {
   ROTAS_SILENT_NOTE,
   reminderOffsetsInWords,
@@ -39,7 +40,7 @@ export function GroupRotas({
   suspended: boolean;
 }) {
   return (
-    <Card>
+    <Card id={GROUP_SECTION.rotas} className="scroll-mt-24">
       <CardHeader>
         <CardTitle>Rotas</CardTitle>
         <CardDescription>

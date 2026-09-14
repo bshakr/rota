@@ -352,11 +352,16 @@ export const OVERVIEW_SPEND_RANGE: SpendRange = "90d";
  * The window one house's card on the group dashboard reads.
  *
  * The plan asks that card for "this month and the last three", and ninety days
- * is the shortest range the picker offers that always reaches back over four
- * calendar months whatever day it is asked on. It is its own constant rather
- * than a reuse of the overview's: the two surfaces happen to want the same
- * window today and are answering different questions, so one moving must not
- * silently move the other.
+ * is the shortest range the picker offers that reaches back that far. Ninety
+ * days is not four calendar months, though, and the card must not be described
+ * as if it were: counted back from 31 January it reaches 2 November, so the
+ * payload carries November, December and January, three buckets. Counted back
+ * from the 1st of a month it reaches four. What this window actually shows is
+ * this month and up to three before it.
+ *
+ * It is its own constant rather than a reuse of the overview's: the two
+ * surfaces happen to want the same window today and are answering different
+ * questions, so one moving must not silently move the other.
  */
 export const GROUP_SPEND_RANGE: SpendRange = "90d";
 

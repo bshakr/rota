@@ -94,8 +94,10 @@ export const OPERATOR_SETTINGS_HREF = `#${GROUP_SECTION.header}`;
  *
  * Keyed by `DashboardWarning["id"]`, which is stable and is what its own doc
  * comment calls it ("stable key for React and for tests").
- * hq-group-report.test.ts pins the five ids against src/lib/dashboard.ts, so a
- * sixth warning cannot ship with a house route still on it.
+ * hq-group-report.test.ts pins these five ids against the collector in
+ * src/lib/dashboard.ts, and checks that each href is an anchor one of this
+ * page's components actually renders. A sixth warning is pinned by neither: it
+ * has no entry here and takes the `#house-header` fallback below.
  */
 export const OPERATOR_WARNING_TARGETS: Readonly<
   Record<string, { href: string; action: string }>
@@ -331,7 +333,7 @@ export const USAGE_SERIES: ReadonlyArray<{
   {
     key: "texts",
     label: "Texts sent",
-    note: "Reminders, cover notices and personal links that Twilio was actually asked to send — a row still queued is not a text that went out.",
+    note: "Reminders, cover notices and personal links that Twilio was actually asked to send. A row still queued is not a text that went out.",
   },
   {
     key: "covers",
@@ -438,9 +440,12 @@ export function parseSmsLogFilters(
     kind: isKnownSmsKind(kind) ? kind : null,
     memberId: id(one(params.member_id)),
     rotaId: id(one(params.rota_id)),
+    // Floored before it is capped: the value goes straight into the request's
+    // `limit`, and "?limit=25.5" would otherwise be forwarded to Rails as a
+    // fraction of a row.
     limit:
       Number.isFinite(requested) && requested > 0
-        ? Math.min(requested, SMS_LOG_MAX_LIMIT)
+        ? Math.min(Math.floor(requested), SMS_LOG_MAX_LIMIT)
         : SMS_LOG_PAGE,
   };
 }
@@ -507,11 +512,11 @@ export function smsLogCountNote(shown: number, limit: number): string {
 }
 
 /** A body Rails has nothing to show for: the row was never sent. */
-export const NO_SMS_BODY = "Not written yet — this row was never sent.";
+export const NO_SMS_BODY = "Not written yet, because this row was never sent.";
 
 /** Said once, above the log: the operator is reading redacted bodies, on purpose. */
 export const SMS_REDACTION_NOTE =
-  "Personal links are struck out of every body — they are permanent logins to this house.";
+  "Personal links are struck out of every body, because they are permanent logins to this house.";
 
 /**
  * Said only on a narrow screen, above a table that is wider than it.

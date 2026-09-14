@@ -213,8 +213,10 @@ describe("groupSmsMessagesSchema", () => {
 
     expect(rows).toHaveLength(5);
     expect(rows[0].body).toContain("[link]");
-    // Nothing that looks like a magic link survives the serializer, and the
-    // fixture is written to prove the page never has to strip one itself.
+    // A fixture guard, not a proof: this only says the fixture carries no
+    // magic link, so the page is never written against one. The real redaction
+    // guarantee is apps/api/spec/requests/super_admin/redaction_spec.rb, where
+    // the serializer is exercised over real rows.
     expect(JSON.stringify(rows)).not.toMatch(/\/s\/\w/);
   });
 
