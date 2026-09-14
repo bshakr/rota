@@ -104,7 +104,7 @@ export default function PrivacyPage() {
             "The country, as reported by the network in front of the site. Never the address the visit came from.",
             "The city, when the network in front of the site reports one. Never the street, the postcode or a map position.",
             "Whether it was a phone, a tablet or a computer.",
-            "Which browser and operating system, by name only, never the version.",
+            "Which browser and operating system, by name only, such as Safari on iOS. Never the version, which is the part that would narrow a visit down to a person.",
           ]}
         />
         <P>
