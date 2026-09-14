@@ -50,6 +50,24 @@ class Group < ApplicationRecord
   # an operator paused it.
   scope :live, -> { where(suspended_at: nil) }
 
+  # What a house is called between being JIT-provisioned from a WorkOS token and an admin naming it
+  # at /setup. The token carries no house name, `name` is NOT NULL, and something has to go in the
+  # column, so this goes in it.
+  #
+  # It lives here, beside the predicate that reads it, rather than only inside
+  # GroupAdmin.group_defaults which writes it: two spellings of the same placeholder would agree
+  # today and drift the first time one of them was edited, and the surface that reads it
+  # (NewSignupAlertJob, which says "not named yet" rather than texting an operator a WorkOS
+  # organization id) would quietly start reporting every house as named.
+  def self.placeholder_name(workos_organization_id)
+    "Group #{workos_organization_id}"
+  end
+
+  # Whether this house is still wearing the name above, which is to say nobody has named it.
+  def placeholder_name?
+    name == self.class.placeholder_name(workos_organization_id)
+  end
+
   # The group's wall clock. The reminder sweep computes each shift's send moment as `send_hour` in
   # *this* zone, which is what makes a 9am reminder still arrive at 9am after the clocks change.
   def time_zone

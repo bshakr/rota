@@ -64,7 +64,7 @@ class GroupAdmin < ApplicationRecord
   # The token names no group name and no timezone, and WorkOS could not know the timezone anyway.
   # The admin sets both in settings; these are what the group is called until they do.
   def self.group_defaults(claims)
-    { name: "Group #{claims.workos_organization_id}", timezone: "UTC" }
+    { name: Group.placeholder_name(claims.workos_organization_id), timezone: "UTC" }
   end
   private_class_method :group_defaults
 

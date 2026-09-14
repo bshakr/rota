@@ -101,6 +101,53 @@ RSpec.describe User do
     end
   end
 
+  # The operator's "somebody just signed up" text (NewSignupAlertJob). It hangs off the row rather
+  # than off the sign-in controller because the row is what is created exactly once: two callers
+  # provision a user, several requests race to be the first, and only one INSERT survives.
+  describe "the operator's signup alert" do
+    def claims(sub: "user_01ALICE", org_id: "org_01FLAT", role: "admin")
+      WorkosAccessToken::Claims.new(
+        workos_user_id: sub, workos_organization_id: org_id, role: role, email: nil, name: nil, jti: nil
+      )
+    end
+
+    # Resolved at boot from SIGNUP_ALERT_PHONE (see SmsBoot.signup_alert_phone_for), so the spec
+    # swaps the resolved value rather than an env var.
+    def alert_phone(number)
+      allow(Rails.configuration.x.sms).to receive(:signup_alert_phone).and_return(number)
+    end
+
+    # A minute, not immediately: the sign-in callback fills in the email and name just after this
+    # row appears, and the house arrives on the admin's next request, so a text sent now would say
+    # "someone, no email shared. House: none yet" for very nearly every signup.
+    it "texts the operator about a brand new admin, a minute after the row appears" do
+      alert_phone("+447911123456")
+      user = nil
+
+      expect { user = create(:user) }
+        .to have_enqueued_job(NewSignupAlertJob)
+          .with { |user_id| expect(user_id).to eq(user.id) }
+          .once
+          .at(a_value_within(5.seconds).of(1.minute.from_now))
+    end
+
+    # The rest of a signup is authenticated requests against a row that already exists, and none of
+    # them is news. `after_create_commit` is what makes that true even under the provisioning race:
+    # the losing INSERT rolls its savepoint back and never commits, so its callback never fires.
+    it "says nothing the second time the same admin is provisioned" do
+      alert_phone("+447911123456")
+      described_class.provision!(claims)
+
+      expect { described_class.provision!(claims) }.not_to have_enqueued_job(NewSignupAlertJob)
+    end
+
+    it "enqueues nothing at all when no operator number is configured" do
+      expect(Rails.configuration.x.sms.signup_alert_phone).to be_nil
+
+      expect { described_class.provision!(claims) }.not_to have_enqueued_job(NewSignupAlertJob)
+    end
+  end
+
   # The fix for https://linear.app/bloombase/issue/BLO-1696: the operator console showed
   # "No name yet / Not provided" for the only real admin in production, because a token carries
   # neither claim and nothing else ever wrote the columns. Two callers now do — the sign-in callback
