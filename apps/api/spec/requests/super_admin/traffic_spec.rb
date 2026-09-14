@@ -48,14 +48,16 @@ RSpec.describe "Super admin traffic" do
     expect(response.parsed_body["message"]).to include("6m")
   end
 
-  it "publishes the untracked landing step rather than pretending nobody visited" do
+  it "publishes the landing step as a real count, with the note that says where it comes from" do
+    create(:analytics_event, name: "landing_view", occurred_at: 1.day.ago)
+
     get "/api/super_admin/traffic", headers: operator_headers
 
     landing = response.parsed_body["funnel"].first
     expect(landing["key"]).to eq("landing_views")
-    expect(landing["tracked"]).to be(false)
-    expect(landing["count"]).to be_nil
-    expect(landing["note"]).to eq("not tracked yet")
+    expect(landing["tracked"]).to be(true)
+    expect(landing["count"]).to eq(1)
+    expect(landing["note"]).to eq(SuperAdmin::Traffic::LANDING_VIEW_NOTE)
   end
 
   it "reads across every house, which is the whole point of the surface" do

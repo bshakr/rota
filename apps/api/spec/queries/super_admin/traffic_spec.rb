@@ -78,19 +78,67 @@ RSpec.describe SuperAdmin::Traffic do
   end
 
   describe "the funnel" do
-    it "says the landing step is not tracked rather than reporting it as zero" do
+    it "counts the landing views inside the window" do
+      2.times { create(:analytics_event, name: "landing_view", occurred_at: now - 2.days) }
+
       step = funnel_step("landing_views")
 
       expect(step[:step]).to eq(1)
-      expect(step[:tracked]).to be(false)
-      expect(step[:count]).to be_nil
-      expect(step[:note]).to eq("not tracked yet")
+      expect(step[:tracked]).to be(true)
+      expect(step[:count]).to eq(2)
+    end
+
+    it "leaves out a landing view from before the window and one from after it" do
+      create(:analytics_event, name: "landing_view", occurred_at: now - 31.days)
+      create(:analytics_event, name: "landing_view", occurred_at: now + 1.hour)
+      create(:analytics_event, name: "landing_view", occurred_at: now - 2.days)
+
+      expect(funnel_step("landing_views")[:count]).to eq(1)
+    end
+
+    # Inclusive at both ends, like every other step: the Window comment says so and a row stamped
+    # exactly on a boundary is counted once, in this window.
+    it "counts a landing view stamped on either edge of the window" do
+      create(:analytics_event, name: "landing_view", occurred_at: now - 30.days)
+      create(:analytics_event, name: "landing_view", occurred_at: now)
+
+      expect(funnel_step("landing_views")[:count]).to eq(2)
+    end
+
+    it "counts landing views and no other event name" do
+      create(:analytics_event, name: "landing_view", occurred_at: now - 1.day)
+      create(:analytics_event, name: "cta_click", occurred_at: now - 1.day)
+      create(:analytics_event, name: "signin_started", occurred_at: now - 1.day)
+
+      expect(funnel_step("landing_views")[:count]).to eq(1)
+    end
+
+    # Zero, not nil. The step was counted and the answer was none, which is a different fact from
+    # the "not tracked yet" this step used to publish before PR #44 gave it a source.
+    it "reports nobody visiting as zero rather than as an uncounted step" do
+      step = funnel_step("landing_views")
+
+      expect(step[:tracked]).to be(true)
+      expect(step[:count]).to eq(0)
       expect(step[:rate_from_previous]).to be_nil
     end
 
-    it "has no rate for the sign-in step, because the step above it has no number" do
+    it "says in the payload what step 1 is counted from, because it is a browser count" do
+      expect(funnel_step("landing_views")[:note]).to eq(described_class::LANDING_VIEW_NOTE)
+      expect(funnel_step("signed_in")[:note]).to be_nil
+    end
+
+    it "rates the sign-in step against the landing views above it" do
+      4.times { create(:analytics_event, name: "landing_view", occurred_at: now - 2.days) }
       create(:sign_in, created_at: now - 1.day)
 
+      expect(funnel_step("signed_in")[:rate_from_previous]).to eq(25.0)
+    end
+
+    it "has no rate for the sign-in step when nothing landed in the window" do
+      create(:sign_in, created_at: now - 1.day)
+
+      expect(funnel_step("landing_views")[:count]).to eq(0)
       expect(funnel_step("signed_in")[:rate_from_previous]).to be_nil
     end
 
@@ -579,7 +627,7 @@ RSpec.describe SuperAdmin::Traffic do
     # page for a minute if the key were not versioned. Asserted rather than trusted, because the
     # suffix reads as clutter to anyone who does not know what it is for.
     it "versions the key, so a deploy that changes the payload cannot serve the old shape" do
-      expect(described_class.cache_key("30d")).to eq("super_admin/traffic/v1/30d")
+      expect(described_class.cache_key("30d")).to eq("super_admin/traffic/v2/30d")
     end
 
     it "names nobody in the key: every operator sees the same numbers" do

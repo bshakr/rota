@@ -42,7 +42,7 @@ module SuperAdmin
     # confusing way to break a dashboard. Bump it whenever the payload changes — its shape OR its
     # values (a step that starts counting something different is the case worth naming, because the
     # old entry stays perfectly parseable and is simply wrong).
-    CACHE_KEY = "super_admin/traffic/v1".freeze
+    CACHE_KEY = "super_admin/traffic/v2".freeze
     CACHE_TTL = 60.seconds
 
     # The plan's eight steps, in order, as [ key, unit ].
@@ -65,11 +65,20 @@ module SuperAdmin
       [ "first_cover", "houses" ]
     ].freeze
 
-    # Step 1 needs the `page_views` table that is Phase 6
-    # (https://linear.app/bloombase/issue/BLO-1668's last phase), and anonymous landing traffic
-    # cannot be backfilled. So the step is published with a null count and this note rather than a
-    # zero: "nobody visited" and "nobody counted" are opposite facts and must not render alike.
-    UNTRACKED_NOTE = "not tracked yet".freeze
+    # Step 1 is counted, and this says what it is counted FROM so nobody reads it as a server log.
+    #
+    # The plan's Phase 6 wanted a `page_views` table written from the server. What shipped instead
+    # (https://github.com/bshakr/rota/pull/44) is the `landing_view` row the page's own script posts
+    # on mount, which means the step misses everything that never ran the script: crawlers, feed
+    # readers, previews, and anybody with JavaScript off. So it UNDERCOUNTS, which is the opposite of
+    # the error a server-side counter would have made — that one would have counted every bot that
+    # ever touched the homepage. An operator comparing this bar against a host's request log needs
+    # to know which way it leans before they read anything into the gap.
+    LANDING_VIEW_NOTE = "browser visits only: crawlers and clients without JavaScript are missed, so this undercounts".freeze
+
+    # The steps that publish a caveat alongside their count. Keyed by step so a second one can be
+    # added without the funnel builder growing a conditional per step.
+    STEP_NOTES = { "landing_views" => LANDING_VIEW_NOTE }.freeze
 
     # Enough to see the shape of a delivery problem without turning the page into a Twilio manual.
     FAILURE_CODES_SHOWN = 5
@@ -90,8 +99,15 @@ module SuperAdmin
     # means by `beginning_of_week`, and stable across a clocks change because nothing in it is
     # local time. The spec proves that across both of Europe/London's 2026 transitions.
 
-    # Steps 5 to 8, in one query: the number of houses whose FIRST such event falls inside the
-    # window.
+    # Step 1 and steps 5 to 8, in one query: the landing views inside the window, and the number of
+    # houses whose FIRST such event falls inside the window.
+    #
+    # Step 1 rides along here rather than in its own round trip because it is one grouped count and
+    # the round-trip budget is what spec/queries/super_admin/traffic_spec.rb holds this file to. It
+    # is not a cohort and does not pretend to be: a visit is not a house, there is nothing earlier to
+    # be the first of, and `landing_view` is one of the four anonymous names, so every row of it has
+    # a NULL group by construction (AnalyticsEvent#group_matches_name) and there is nothing to group
+    # by. `occurred_at`, not `created_at` — the browser's moment, which is what the window means.
     #
     # Cohort, not "any". The plan asks for "a funnel of counts within the range, each with its rate
     # from the previous step", and a rate only means anything if each step counts houses arriving at
@@ -112,7 +128,13 @@ module SuperAdmin
     # users with a sign-in in the window, which is the "who turned up" figure the plan's own wording
     # asks for and the denominator the steps below it are rated against.
     FUNNEL_SQL = <<~SQL.freeze
-      SELECT 'added_member' AS step, COUNT(*) AS count FROM (
+      SELECT 'landing_views' AS step, COUNT(*) AS count
+      FROM analytics_events
+      WHERE analytics_events.name = 'landing_view'
+        AND analytics_events.occurred_at >= :starts_at
+        AND analytics_events.occurred_at <= :ends_at
+      UNION ALL
+      SELECT 'added_member', COUNT(*) FROM (
         SELECT members.group_id
         FROM members
         GROUP BY members.group_id
@@ -367,7 +389,7 @@ module SuperAdmin
           tracked: !count.nil?,
           count: count,
           rate_from_previous: rate(count, previous),
-          note: count.nil? ? UNTRACKED_NOTE : nil
+          note: STEP_NOTES[key]
         }
         previous = count
         step
@@ -379,8 +401,6 @@ module SuperAdmin
         .to_h { |row| [ row["step"], row["count"].to_i ] }
 
       {
-        # Null, not zero. See UNTRACKED_NOTE.
-        "landing_views" => nil,
         "signed_in" => SignIn.where(created_at: window.range).distinct.count(:user_id),
         "made_house" => Group.where(created_at: window.range).count,
         "confirmed_timezone" => Group.where(timezone_confirmed_at: window.range).count
