@@ -1,0 +1,362 @@
+/* Rota Monster: Soft Clay for the WorkOS AuthKit hosted pages.
+ *
+ * Paste the whole file into WorkOS Dashboard > Branding > Custom CSS.
+ * It styles every AuthKit page (sign in, sign up, magic code, MFA, ...);
+ * it does not reach the emails or the Admin Portal.
+ *
+ * Values are copied from apps/web/src/app/globals.css (Soft Clay tokens).
+ * Raw hex is unavoidable: this CSS is served by WorkOS, not by us, so it
+ * cannot read the app's variables. When globals.css changes, change this
+ * file, then re-paste. docs/authkit/README.md has the rest of the recipe
+ * (logo, colours, radius, font) that the dashboard sets outside CSS.
+ *
+ * Class names come from the rendered page (data-hak-page, ak-*). Radix
+ * Themes draws the card and text field with pseudo-elements and inset
+ * box-shadows, which is why those are overridden below and not `border`.
+ */
+
+/* ---- Fonts ------------------------------------------------------------
+ * Outfit (body) is picked in the dashboard's Font family setting. Fredoka
+ * is not offered there, so it is loaded here for the wordmark, headings
+ * and buttons. Instances only: 600 semi-expanded (the app's wdth 108) and
+ * 700 semi-expanded for the wordmark. */
+@font-face {
+  font-family: "Fredoka Clay";
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/fredoka/v17/X7nP4b87HvSqjb_WIi2yDCRwoQ_k736S_B-i2yQag0-mac3OLyX8EemKttxNbhku.woff2) format("woff2");
+}
+@font-face {
+  font-family: "Fredoka Clay";
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/fredoka/v17/X7nP4b87HvSqjb_WIi2yDCRwoQ_k736S_B-i2yQag0-mac3OFiX8EemKttxNbhku.woff2) format("woff2");
+}
+
+/* ---- Tokens ------------------------------------------------------------ */
+.ak-Background {
+  --rm-page: #f5f1ff;
+  --rm-card: #ffffff;
+  --rm-quiet: #ede8ff;
+  --rm-ink: #34244d;
+  --rm-muted: #6f6089;
+  --rm-hairline: rgb(52 36 77 / 0.12);
+  --rm-input: rgb(52 36 77 / 0.35);
+  --rm-grape: #6334cb;
+  --rm-grape-deep: #5325af;
+  --rm-link: #6334cb;
+  --rm-ring: #5325af;
+  --rm-lilac: #e0d7ff;
+  --rm-lilac-hover: #efeaff;
+  --rm-blob-a: #e9e3ff;
+  --rm-blob-b: #ffd2af;
+  --rm-blob-c: #b3eecd;
+  --rm-clay-xs: inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 -3px 0 rgb(52 36 77 / 0.08);
+  --rm-clay-card:
+    inset 0 2px 0 rgb(255 255 255 / 0.95), inset 0 -5px 0 rgb(52 36 77 / 0.07),
+    0 22px 34px -22px rgb(52 36 77 / 0.38), 0 2px 6px -3px rgb(52 36 77 / 0.08);
+  --rm-clay-grape:
+    inset 0 2px 0 rgb(255 255 255 / 0.35), inset 0 -4px 0 rgb(0 0 0 / 0.2),
+    0 16px 26px -12px rgb(99 52 203 / 0.7);
+  --rm-heading: "Fredoka Clay", "Fredoka", ui-rounded, "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --rm-body: "Outfit", system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Clay at night: same personality after dark. */
+.dark-theme .ak-Background,
+.dark .ak-Background {
+  --rm-page: oklch(0.235 0.055 300);
+  --rm-card: oklch(0.29 0.055 300);
+  --rm-quiet: oklch(0.34 0.05 300);
+  --rm-ink: oklch(0.96 0.015 300);
+  --rm-muted: oklch(0.8 0.03 300);
+  --rm-hairline: oklch(0.38 0.05 300);
+  --rm-input: oklch(0.62 0.05 300);
+  --rm-link: oklch(0.8 0.12 290);
+  --rm-ring: oklch(0.8 0.12 290);
+  --rm-lilac: oklch(0.36 0.07 295);
+  --rm-lilac-hover: oklch(0.32 0.06 295);
+  /* Stickers do not invert: peach stays peach after dark, as on the landing
+   * hero. The lavender blob becomes the night quiet fill. */
+  --rm-blob-a: oklch(0.34 0.05 300);
+  --rm-blob-b: #ffd2af;
+  --rm-blob-c: #b3eecd;
+  --rm-clay-xs: inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 -3px 0 rgb(0 0 0 / 0.35);
+  --rm-clay-card:
+    inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 -5px 0 rgb(0 0 0 / 0.35),
+    0 22px 34px -22px rgb(0 0 0 / 0.75), 0 2px 6px -3px rgb(0 0 0 / 0.4);
+  --rm-clay-grape:
+    inset 0 2px 0 rgb(255 255 255 / 0.28), inset 0 -4px 0 rgb(0 0 0 / 0.3),
+    0 16px 26px -12px rgb(99 52 203 / 0.8);
+}
+
+/* ---- Page ------------------------------------------------------------- */
+.ak-Background {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: var(--rm-page);
+  color: var(--rm-ink);
+  font-family: var(--rm-body);
+}
+
+/* Two clay blobs behind the card, like the landing hero. Absolutely
+ * positioned so they are not grid items. Still under reduced motion. */
+.ak-Background::before,
+.ak-Background::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  box-shadow: var(--rm-clay-card);
+}
+.ak-Background::before {
+  width: 22rem;
+  height: 20rem;
+  left: calc(50% - 30rem);
+  top: calc(50% - 23rem);
+  background: var(--rm-blob-a);
+  border-radius: 58% 42% 45% 55% / 55% 48% 52% 45%;
+  animation: rm-bob 7s ease-in-out infinite;
+}
+.ak-Background::after {
+  width: 15rem;
+  height: 13rem;
+  left: calc(50% + 7rem);
+  top: calc(50% + 7rem);
+  background: var(--rm-blob-b);
+  border-radius: 45% 55% 58% 42% / 48% 45% 55% 52%;
+  animation: rm-bob 9s ease-in-out infinite reverse;
+}
+@keyframes rm-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ak-Background::before,
+  .ak-Background::after { animation: none; }
+}
+@media (max-width: 640px) {
+  /* Phone: the lavender blob sits low-left behind the card's bottom corner and
+   * the peach one high-right, so neither runs under the wordmark. */
+  .ak-Background::before { width: 16rem; height: 14rem; left: -7rem; top: auto; bottom: 3rem; }
+  .ak-Background::after { width: 11rem; height: 9.5rem; left: auto; right: -6rem; top: -2rem; }
+}
+
+.ak-Content {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- Header ----------------------------------------------------------- */
+.ak-Header {
+  gap: 0.5rem;
+}
+.ak-Header img {
+  height: 2.5rem;
+  max-height: none;
+  width: auto;
+  margin-bottom: 0.5rem;
+}
+.ak-Heading {
+  font-family: var(--rm-heading);
+  font-weight: 600;
+  font-size: 2rem;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--rm-ink);
+}
+/* The strapline, in voice. Pseudo text cannot be localised; the app is
+ * English only. */
+[data-hak-page="sign-in"] .ak-Header::after,
+[data-hak-page="sign-up"] .ak-Header::after {
+  content: "Whose turn? Sorted.";
+  font-family: var(--rm-body);
+  font-size: 1rem;
+  color: var(--rm-muted);
+}
+
+/* ---- Card ------------------------------------------------------------- */
+.ak-Card {
+  --card-border-radius: 24px;
+  --base-card-border-radius: 24px;
+  --card-border-width: 0px;
+  --base-card-border-width: 0px;
+  border-radius: 24px;
+  background: var(--rm-card);
+  box-shadow: var(--rm-clay-card);
+  padding: 1.75rem;
+}
+/* Radix paints the fill with ::before (under the content) and the border with
+ * ::after (over it). Only ::before may carry a colour; painting ::after would
+ * cover the form. */
+.ak-Card::before {
+  border-radius: 24px;
+  background: var(--rm-card);
+  box-shadow: none;
+}
+.ak-Card::after {
+  border-radius: 24px;
+  background: transparent;
+  box-shadow: none;
+}
+@media (max-width: 480px) {
+  .ak-Card { padding: 1.5rem 1.25rem; }
+}
+
+/* ---- Form ------------------------------------------------------------- */
+.ak-Label {
+  font-family: var(--rm-body);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--rm-ink);
+}
+
+.ak-TextField {
+  --text-field-border-radius: 9999px;
+  --text-field-focus-color: var(--rm-ring);
+  --text-field-padding: 1rem;
+  height: 2.75rem;
+  border-radius: 9999px;
+  background-color: var(--rm-card);
+  background-clip: padding-box;
+  box-shadow: inset 0 0 0 1px var(--rm-input);
+  color: var(--rm-ink);
+  font-family: var(--rm-body);
+}
+/* Focus: the border deepens to the ring colour and a lilac halo sits outside
+ * it. Calmer than Radix's 2px outline, which the autofocused email field
+ * would otherwise show the moment the page opens. */
+.ak-TextField:where(:focus-within) {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--rm-ring), 0 0 0 4px var(--rm-lilac);
+}
+.ak-TextField .rt-TextFieldInput {
+  border-radius: 9999px;
+  font-family: var(--rm-body);
+  font-size: 1rem;
+  color: var(--rm-ink);
+}
+.ak-TextField .rt-TextFieldInput::placeholder {
+  color: var(--rm-muted);
+  opacity: 1;
+}
+
+/* Continue with email: the grape pill with its own clay. */
+.ak-Card .ak-PrimaryButton,
+.ak-Content .ak-PrimaryButton {
+  height: 2.75rem;
+  border-radius: 9999px;
+  padding-inline: 1.5rem;
+  font-family: var(--rm-heading);
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: 0.005em;
+  color: #ffffff;
+  background-color: var(--rm-grape);
+  box-shadow: var(--rm-clay-grape);
+  transition: transform 160ms cubic-bezier(0.2, 0.9, 0.3, 1.2), background-color 160ms ease;
+}
+.ak-Card .ak-PrimaryButton:where(:hover),
+.ak-Content .ak-PrimaryButton:where(:hover) {
+  background-color: var(--rm-grape-deep);
+  transform: translateY(-1px);
+}
+.ak-Card .ak-PrimaryButton:where(:active),
+.ak-Content .ak-PrimaryButton:where(:active) {
+  background-color: var(--rm-grape-deep);
+  transform: scale(0.97);
+}
+.ak-Card .ak-PrimaryButton:where(:focus-visible),
+.ak-Content .ak-PrimaryButton:where(:focus-visible) {
+  outline: 2px solid var(--rm-ring);
+  outline-offset: 3px;
+}
+
+/* "OR" between the email form and the providers. */
+.ak-TextSeparator {
+  font-family: var(--rm-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--rm-muted);
+}
+.ak-TextSeparator::before,
+.ak-TextSeparator::after {
+  background-color: var(--rm-hairline);
+  border-color: var(--rm-hairline);
+}
+
+/* Google / Microsoft / GitHub / Apple: outline pills with soft clay. */
+.ak-AuthButton {
+  height: 2.75rem;
+  border-radius: 9999px;
+  background-color: var(--rm-card);
+  box-shadow: inset 0 0 0 1px var(--rm-input), var(--rm-clay-xs);
+  color: var(--rm-ink);
+  font-family: var(--rm-body);
+  transition: transform 160ms cubic-bezier(0.2, 0.9, 0.3, 1.2), background-color 160ms ease;
+}
+.ak-AuthButton:where(:hover) {
+  background-color: var(--rm-lilac-hover);
+  box-shadow: inset 0 0 0 1px var(--rm-input), var(--rm-clay-xs);
+  transform: translateY(-1px);
+}
+.ak-AuthButton:where(:active) {
+  transform: scale(0.97);
+}
+.ak-AuthButton:where(:focus-visible) {
+  outline: 2px solid var(--rm-ring);
+  outline-offset: 3px;
+}
+.ak-AuthButtonLabel {
+  font-family: var(--rm-body);
+  font-weight: 500;
+  color: var(--rm-ink);
+}
+
+/* The "Last used" badge becomes a lilac chip with plum text. */
+.ak-LastUsedBadge,
+.dark-theme .ak-LastUsedBadge,
+.dark .ak-LastUsedBadge {
+  background-color: var(--rm-lilac);
+  color: var(--rm-ink);
+  border: 0;
+  border-radius: 9999px;
+  box-shadow: var(--rm-clay-xs);
+  font-family: var(--rm-body);
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+/* ---- Footer and links ------------------------------------------------- */
+[data-hak-footer] .rt-Text,
+.ak-Content p {
+  font-family: var(--rm-body);
+  color: var(--rm-muted);
+}
+.ak-Content .BrandedLink {
+  color: var(--rm-link);
+  font-weight: 600;
+  text-decoration-line: underline;
+  text-decoration-color: color-mix(in srgb, var(--rm-link) 40%, transparent);
+  text-underline-offset: 3px;
+}
+.ak-Content .BrandedLink:where(:hover) {
+  text-decoration-color: var(--rm-link);
+}
+.ak-Content .BrandedLink:focus-visible {
+  outline-color: var(--rm-ring);
+}
+
+/* Secondary text anywhere else (help text, "Didn't get a code?", etc.). */
+.ak-Content .rt-Text[data-accent-color="gray"] {
+  color: var(--rm-muted);
+}
+
+/* Errors: blush tint with plum text, never a red border. */
+[data-ak-error-polish] .ak-TextField:has(.rt-TextFieldInput[data-invalid]) {
+  box-shadow: inset 0 0 0 2px #ffcee0;
+}
