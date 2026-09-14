@@ -102,6 +102,21 @@ RSpec.describe Group do
     end
   end
 
+  # What a house is called between being provisioned from a WorkOS token and an admin naming it.
+  # NewSignupAlertJob reads this so an operator's signup text says "not named yet" rather than a
+  # WorkOS organization id.
+  describe "#placeholder_name?" do
+    it "is true for the name GroupAdmin.provision! gives a brand new house" do
+      group = create(:group, workos_organization_id: "org_01FLAT", name: described_class.placeholder_name("org_01FLAT"))
+
+      expect(group.placeholder_name?).to be(true)
+    end
+
+    it "is false once somebody has named the house" do
+      expect(create(:group, name: "The Beeches").placeholder_name?).to be(false)
+    end
+  end
+
   # BLO-1675. The flag itself; what reading it does to the rest of the app is
   # spec/requests/suspended_house_spec.rb and the three recurring job specs.
   describe "suspension" do

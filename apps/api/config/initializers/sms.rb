@@ -26,6 +26,30 @@ module SmsBoot
     adapter
   end
 
+  # The operator's alert number (SIGNUP_ALERT_PHONE), normalised to E.164, or nil when nobody is to
+  # be told. See NewSignupAlertJob.
+  #
+  # Optional in every environment, production included, and that is deliberate: "no operator wants a
+  # text when somebody signs up" is a supported answer, so an unset variable means no job is ever
+  # enqueued rather than a job that fails. But a variable that IS set and does not parse is the
+  # worst of both. The alert never arrives and nothing says why, discovered weeks later from an
+  # empty inbox. So a value that is present must be dialable, and it must be dialable at boot,
+  # which is the same argument the credentials above make.
+  #
+  # Normalised the way Member#normalise_phone normalises a housemate's number, and for the same
+  # reason: an operator types "07911 123456", and libphonenumber judges that national form invalid
+  # while judging the identical number valid as "+447911123456". Parse with the default country
+  # first, then judge the E.164 form, because the two steps are not interchangeable.
+  def signup_alert_phone_for(value)
+    return nil if value.blank?
+
+    e164 = Phonelib.parse(value, Phonelib.default_country).e164
+    return e164 if e164.present? && Phonelib.parse(e164).valid?
+
+    raise "SIGNUP_ALERT_PHONE is not a phone number we could dial. Set it in international form, " \
+      "e.g. +447911123456, or leave it unset to send no signup alerts at all."
+  end
+
   # In production a missing credential is not a default to paper over — it is the difference between
   # a text arriving and a text going nowhere. Say so at boot. Everywhere else, fall back to the
   # caller's development default so the app still boots with no account.
@@ -54,6 +78,11 @@ Rails.application.configure do
   # URL Twilio signs its webhook against — see Webhooks::TwilioStatusController.
   config.x.sms.api_url =
     (SmsBoot.require_in_production("API_URL", ENV["API_URL"], env: env) || "http://localhost:3000").chomp("/")
+
+  # Who to text when a brand new admin signs up (see NewSignupAlertJob). Nil unless
+  # SIGNUP_ALERT_PHONE is set, and nil means the whole feature is off: User's after_create_commit
+  # checks this before it enqueues anything, so an operator who wants no such text pays for no job.
+  config.x.sms.signup_alert_phone = SmsBoot.signup_alert_phone_for(ENV["SIGNUP_ALERT_PHONE"])
 
   config.x.twilio.account_sid =
     SmsBoot.require_in_production("TWILIO_ACCOUNT_SID", ENV["TWILIO_ACCOUNT_SID"], env: env) ||

@@ -47,11 +47,45 @@ RSpec.describe SmsBoot do
     end
   end
 
+  # SIGNUP_ALERT_PHONE, the operator's number for NewSignupAlertJob. Optional everywhere, and a
+  # value that is set must be dialable at boot rather than at the first signup. An alert that never
+  # arrives says nothing about why.
+  describe ".signup_alert_phone_for" do
+    it "means nobody when it is unset, which is a supported state and not a broken one" do
+      expect(described_class.signup_alert_phone_for(nil)).to be_nil
+      expect(described_class.signup_alert_phone_for("   ")).to be_nil
+    end
+
+    # An operator types the number the way they would dial it at home. libphonenumber calls that
+    # national form invalid and the identical number in E.164 valid, so it is normalised first and
+    # judged afterwards, the same order Member#normalise_phone uses.
+    it "normalises a number typed in national form to E.164" do
+      expect(described_class.signup_alert_phone_for("07911 123456")).to eq("+447911123456")
+    end
+
+    it "leaves a number already in international form alone" do
+      expect(described_class.signup_alert_phone_for("+44 7911 123456")).to eq("+447911123456")
+    end
+
+    it "refuses to boot on something it could not dial" do
+      expect { described_class.signup_alert_phone_for("not a phone number") }
+        .to raise_error(/SIGNUP_ALERT_PHONE is not a phone number/)
+      expect { described_class.signup_alert_phone_for("07911") }
+        .to raise_error(/SIGNUP_ALERT_PHONE is not a phone number/)
+    end
+  end
+
   # What actually booted this test run: proof the wiring resolves, not just the rules.
   describe "the resolved test configuration" do
     it "runs the real Twilio adapter and reads APP_URL into the magic-link base" do
       expect(Rails.configuration.x.sms.adapter).to eq("twilio")
       expect(Rails.configuration.x.sms.app_url).to be_present
+    end
+
+    # The default the rest of the suite depends on: with no operator number, creating a user texts
+    # nobody and enqueues nothing at all.
+    it "has no signup alert number, because the suite does not set one" do
+      expect(Rails.configuration.x.sms.signup_alert_phone).to be_nil
     end
   end
 end

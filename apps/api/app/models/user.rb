@@ -16,8 +16,15 @@ class User < ApplicationRecord
   has_many :groups, through: :group_admins
   has_many :sign_ins, dependent: :destroy
 
+  # How long the operator's signup alert waits before it is sent. See alert_operator_of_signup.
+  SIGNUP_ALERT_DELAY = 1.minute
+
   validates :workos_user_id, presence: true, uniqueness: true
   validates :email, presence: true
+
+  # The one moment in this app's life that is worth telling a human about: somebody we have never
+  # seen before just signed up. See NewSignupAlertJob.
+  after_create_commit :alert_operator_of_signup
 
   # The rows WorkOS could still tell us something about: provisioned from a token that carried
   # neither an email nor a name, and never filled in since. `users:refresh_from_workos` walks exactly
@@ -115,6 +122,28 @@ class User < ApplicationRecord
   end
 
   private
+
+  # Text the operator that a brand new admin exists. Once, and only when there is somebody
+  # configured to text (see SmsBoot.signup_alert_phone_for). With SIGNUP_ALERT_PHONE unset, nothing
+  # is enqueued at all rather than a job enqueued to find nobody to tell.
+  #
+  # ONCE is what `after_create_commit` guarantees here, including under the provisioning race that
+  # every JIT row is subject to. Two requests arriving together on a first sighting both try to
+  # INSERT; the loser raises RecordNotUnique inside the `requires_new` savepoint that
+  # JitProvisioning opens for exactly this, so its INSERT rolls back and never commits, and a
+  # create-commit callback on a row that was never created cannot fire. One real row, one text.
+  #
+  # The minute's wait is what makes the text worth reading. The row is created from token claims
+  # that carry neither an email nor a name; the sign-in callback fills those in a moment later
+  # (Api::SignInsController#absorb_workos_identity), and the house does not exist until the admin's
+  # next request creates it (GroupAdmin.provision!). Sent immediately, this alert would say
+  # "someone, no email shared. House: none yet" for very nearly every signup. A minute later it can
+  # carry all three, and an operator alert nobody reads is not worth 4p.
+  def alert_operator_of_signup
+    return if Rails.configuration.x.sms.signup_alert_phone.blank?
+
+    NewSignupAlertJob.set(wait: SIGNUP_ALERT_DELAY).perform_later(id)
+  end
 
   # Whether this address may be written into this row: there is something to write, the slot is
   # still the placeholder, and no other row already holds it.

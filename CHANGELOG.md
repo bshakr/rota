@@ -4,6 +4,14 @@
 
 ### Added
 
+- A text to the operator when a brand new admin signs up: one SMS, a minute after the user row first
+  appears, naming who signed up, their email, the house they made and how many admins that makes.
+  The minute's wait is what makes it worth reading, because the sign-in callback fills in the email
+  and name just after the row is created and the house arrives on the next request. It goes to
+  `SIGNUP_ALERT_PHONE`, a new and optional env var: unset means nothing is enqueued at all, and a
+  value that is set is normalised to E.164 at boot and refuses to boot if it does not parse. The
+  alert writes no `sms_messages` row, so the spend page does not count its roughly 4p. (#67)
+
 - `GET /api/shifts`: every upcoming turn of the house's running rotas in one request, ordered by
   due date then rota name, the same order the member feed uses, and each turn carries the
   `rota_name` it belongs to so a caller never has to look the name up in a second answer. The
