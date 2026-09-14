@@ -58,7 +58,7 @@ class WorkosIdentity
   def normalize(value)
     return nil unless value.is_a?(String)
 
-    value.delete(" ").strip.presence&.first(MAX_LENGTH)
+    value.delete("\u0000").strip.presence&.first(MAX_LENGTH)
   end
 
   # An address is the one field of the three that two rows can collide on (see

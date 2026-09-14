@@ -68,12 +68,13 @@ RSpec.describe WorkosIdentity do
     end
 
     # Postgres refuses a NUL byte outright, and a request body can carry one. Nothing here raises on
-    # it: `strip` takes it off either end, and an address still holding one in the middle is not an
-    # address, so it yields nil rather than the cleaned value.
-    it "does not raise on an embedded NUL and refuses the address holding one" do
+    # it: every NUL is dropped before anything else looks at the value, wherever it sits, so the
+    # cleaned address or name is what gets stored. Spaces inside a value are left alone.
+    it "does not raise on an embedded NUL and stores the value without it" do
       expect { described_class.new(email: "ali\u0000ce@example.com", first_name: "Ro\u0000sa") }.not_to raise_error
-      expect(described_class.new(email: "ali\u0000ce@example.com").email).to be_nil
+      expect(described_class.new(email: "ali\u0000ce@example.com").email).to eq("alice@example.com")
       expect(described_class.new(email: "alice@example.com\u0000").email).to eq("alice@example.com")
+      expect(described_class.new(first_name: "Ro\u0000sa", last_name: "Mary Jane").name).to eq("Rosa Mary Jane")
     end
   end
 
