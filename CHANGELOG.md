@@ -15,7 +15,7 @@
 - The super admin traffic funnel's first step is a real number. Landing views are counted from the
   `landing_view` events the homepage already posts, so the bar, its rate to "signed in" and the note
   saying what a browser count misses all render like every other step. The `page_views` table the
-  plan reserved for this is not being built, and neither is Plausible. (#PR_NUMBER)
+  plan reserved for this is not being built, and neither is Plausible. (#69)
 - **Where visits come from**, a panel under that funnel: the sites that linked here, the countries,
   and phone against tablet against computer. Each is a coarse, identifier-free property recorded per
   visit — the referring site's HOST only, never the page on it and never the query; the country from
@@ -24,7 +24,7 @@
   IP address stored, no user agent stored, and nothing in a row to tell two visits apart with. The
   browser is not allowed to set the country or the device class: both are derived server-side and
   overwrite anything the body claimed. `analytics:sources` prints the same three as tables, each
-  with a `(none)` row for the visits the property was missing from. (#PR_NUMBER)
+  with a `(none)` row for the visits the property was missing from. (#69)
 
 ### Changed
 
@@ -47,11 +47,11 @@
   return them either way round. (#68)
 - Anonymous analytics events are kept for **180 days**, not 90. The traffic page's longest window is
   90 days, so pruning at 90 was deleting rows out of the far edge of a chart that was still drawing
-  them. (#PR_NUMBER)
+  them. (#69)
 - The privacy page said the site runs no analytics and no tracking. Both sentences predated the
   in-house event counting and were wrong. It now says plainly what is counted, what is never
   recorded, that the counting needs no cookie of its own, that the campaign cookie is functional and
-  short-lived, and that anonymous counts are deleted after 180 days. (#PR_NUMBER)
+  short-lived, and that anonymous counts are deleted after 180 days. (#69)
 - Dropped the root `VERSION` file. Nothing read it, and it conflicted on every parallel pull
   request. (#55)
 - The mailer's default sender moved from `hello@rota.monster`, a domain that does not exist, to
