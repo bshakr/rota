@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.0.2.5] - 2026-09-13
+
+### Added
+
+- The member page now ends with one quiet line, "Got a friend who needs a rota?
+  Share rota.monster with them.", where the domain links to the homepage with
+  `?ref=member`. A housemate is added by somebody else and only ever sees their own
+  rota, so that page had no route back to the site and no name to pass on.
+
 ## [0.0.2.3] - 2026-09-13
 
 ### Changed
