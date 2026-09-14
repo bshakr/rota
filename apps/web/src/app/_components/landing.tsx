@@ -215,7 +215,7 @@ export function Landing() {
                   </SignInLink>
                 </Button>
                 <span className="text-sm text-muted-foreground">
-                  Free. Sign in with email, two minutes, promise.
+                  Free. Sign in with email or Google, two minutes, promise.
                 </span>
               </div>
             </div>
