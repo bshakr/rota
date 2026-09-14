@@ -2,6 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 
+import type { SmsLogFilters } from "@/lib/hq-group-report";
 import {
   DEFAULT_GROUP_SORT,
   GROUP_STATUSES,
@@ -25,10 +26,13 @@ import type { IntervalUnit } from "./types";
 // the page can put on screen, never a plausible dashboard.
 //
 // Unknown keys are stripped, not rejected (zod's default). Rails ADDING a key is
-// not a reason to blank this screen — `recent_sms_messages` and most of `report`
-// arrive today and are deliberately not modelled here, because the screens that
-// render them are https://linear.app/bloombase/issue/BLO-1680. It is a key that
-// goes MISSING, or changes type, that this catches.
+// not a reason to blank this screen. `recent_sms_messages` arrives on the group
+// payload today and is deliberately NOT modelled: it is the newest twenty rows
+// with no filters on them, and the group page draws its log from
+// GET /api/super_admin/groups/:id/sms_messages instead, so that the filter bar,
+// the "load older" link and the rows the operator is reading are one thing rather
+// than two that diverge the moment a filter is touched. It is a key that goes
+// MISSING, or changes type, that this catches.
 //
 // The WORDS that go with these shapes — the pills, the schedule in words, the
 // notes counter, the filter query string — live in `src/lib/hq-groups.ts`. Shape
@@ -171,50 +175,235 @@ const rotaSchema = z.object({
   reminder_offsets: z.array(z.number().int().nonnegative()),
 });
 
-export type GroupAdmin = z.infer<typeof adminSchema>;
-export type GroupMember = z.infer<typeof memberSchema>;
 export type GroupRota = z.infer<typeof rotaSchema>;
+
+// --- The delivery log, redacted ---------------------------------------------
+
+/** Just enough of a person to name them on a log row. */
+const memberRef = z.object({ id: z.number().int().positive(), name: z.string() });
+
+/**
+ * One line of a house's delivery log as `SuperAdmin::SmsMessageSerializer` renders
+ * it — the house's own row with the magic link struck out of the body.
+ *
+ * `body` IS NULLABLE, and that is the one field where this shape differs from the
+ * house's own `SmsMessage`. A row that has not been sent yet has no body at all,
+ * and Rails answers null rather than "" on purpose: an empty string would read as
+ * "we sent a blank text". The renderer says "Not written yet" for it.
+ *
+ * Used twice: for `report.warnings_input.failed_sms` (the failures the house's own
+ * dashboard counts) and for the paginated log at
+ * GET /api/super_admin/groups/:id/sms_messages. One schema, because it is one
+ * serializer — if it were two, the warning count and the log could disagree about
+ * a row while both parsed cleanly.
+ */
+const redactedSmsSchema = z.object({
+  id: z.number().int().positive(),
+  kind: z.string(),
+  /**
+   * Left as a bare string, exactly as `SmsStatus` is: a new carrier state must
+   * never make a valid log row fail to parse and blank the whole screen.
+   */
+  status: z.string(),
+  error_code: z.string().nullable(),
+  days_before: z.number().int().nonnegative().nullable(),
+  body: z.string().nullable(),
+  twilio_sid: z.string().nullable(),
+  sent_at: timestamp.nullable(),
+  created_at: timestamp,
+  /** The number in full, for the same reason the housemates card carries it. */
+  member: memberRef.extend({ phone_e164: z.string() }),
+  shift: z
+    .object({
+      id: z.number().int().positive(),
+      rota_id: z.number().int().positive(),
+      rota_name: z.string(),
+      due_on: day,
+    })
+    .nullable(),
+});
+
+export type RedactedSms = z.infer<typeof redactedSmsSchema>;
+
+export const groupSmsMessagesSchema = z.object({ sms_messages: z.array(redactedSmsSchema) });
 
 // --- The report (BLO-1679) --------------------------------------------------
 
 /**
- * `report` is `SuperAdmin::GroupReport`, and most of it belongs to
- * https://linear.app/bloombase/issue/BLO-1680: the warnings, the fortnight of
- * upcoming turns, the twelve-week series and the spend tile are all in that
- * ticket and are deliberately not modelled here.
+ * `report.warnings_input` — the four payloads the house's own dashboard fetches,
+ * composed by `SuperAdmin::WarningsInput` through the HOUSE's own serializers.
  *
- * What this page takes from it is the two columns the plain serializers cannot
- * know: when an admin was last seen, and how often that PERSON has signed in
- * (every organization and none — hence Rails' `user_` prefix, which is kept).
+ * This is the one part of the operator payload that is deliberately NOT shaped
+ * like the rest of this file: `group`, `rotas` and `members` here are
+ * `::GroupSerializer`, `::RotaSerializer` and `::MemberSerializer` (minus the
+ * magic-link token), not their `SuperAdmin::` cousins. That is the whole point.
+ * `collectDashboardWarnings` in src/lib/dashboard.ts is the code the house admin's
+ * dashboard runs, and the operator must see exactly the alerts they see — which is
+ * only true if it is handed the same facts in the same shape. A second, tidier
+ * shape here would be how the operator ends up missing a warning the admin has
+ * been staring at for a week.
  *
- * OPTIONAL on purpose, and the one place in this file that is tolerant. These are
- * decoration on a row whose identity comes from `admins` above; a page that
- * blanked itself because a last-seen column went missing would be trading a
- * working console for a stricter contract. The counts that ARE the page are
- * required, and drift in them is loud.
+ * So these fields are pinned to `src/lib/api/types.ts` rather than invented, and
+ * `group-warnings.tsx` hands the parsed object straight to the collector.
+ */
+const warningsInputSchema = z.object({
+  // ::GroupSerializer. The calendar summary is here and nowhere else on this
+  // payload — `SuperAdmin::GroupSerializer` has no column for it — because "House
+  // calendar isn't syncing" is one of the five warnings.
+  group: z.object({
+    id: z.number().int().positive(),
+    name: z.string(),
+    slug: z.string(),
+    timezone: z.string(),
+    timezone_confirmed: z.boolean(),
+    timezone_confirmed_at: timestamp.nullable(),
+    calendar: z
+      .object({
+        calendar_name: z.string().nullable(),
+        /** Masked, always. The raw iCal URL is a credential and never leaves Rails. */
+        masked_url: z.string(),
+        events_count: count,
+        unclassified_count: count,
+        last_synced_at: timestamp.nullable(),
+        last_error: z.string().nullable(),
+        failing: z.boolean(),
+      })
+      .nullable(),
+  }),
+  // ::RotaSerializer, roster inline. `draft` is what the draft-rotas warning reads.
+  rotas: z.array(
+    z.object({
+      id: z.number().int().positive(),
+      name: z.string(),
+      message_template: z.string(),
+      starts_on: day,
+      interval_count: z.number().int().positive(),
+      interval_unit: z.enum(INTERVAL_UNITS),
+      send_hour: z.number().int().min(0).max(23),
+      reminder_offsets: z.array(z.number().int().nonnegative()),
+      active: z.boolean(),
+      draft: z.boolean(),
+      positions: z.array(
+        z.object({
+          member_id: z.number().int().positive(),
+          name: z.string(),
+          position: z.number().int().nonnegative(),
+        }),
+      ),
+    }),
+  ),
+  // ::MemberSerializer WITHOUT `access_token`. `SuperAdmin::WarningsInput` fetches
+  // that key before dropping it, so a rename on the house side is a KeyError on the
+  // first request rather than a magic link quietly served on an operator path.
+  members: z.array(
+    z.object({
+      id: z.number().int().positive(),
+      name: z.string(),
+      phone_e164: z.string(),
+      active: z.boolean(),
+      /** "Active and not opted out", folded by Rails — the "won't get texts" warning reads it. */
+      contactable: z.boolean(),
+      sms_opted_out_at: timestamp.nullable(),
+    }),
+  ),
+  failed_sms: z.array(redactedSmsSchema),
+});
+
+export type WarningsInput = z.infer<typeof warningsInputSchema>;
+
+/**
+ * One turn in the next fortnight, shaped like the house's own `ShiftSerializer`:
+ * who is on the hook by the rota, who actually took it, and the resolved answer.
+ *
+ * `rota_active` and `rota_draft` ride on the SHIFT rather than being looked up in
+ * the rotas table further down the page. A turn on a paused rota is a real row
+ * with a real person's name on it that nobody will be told about, and an operator
+ * answering "why did nobody hear about Thursday" has to see that on the row.
+ */
+const upcomingShiftSchema = z.object({
+  id: z.number().int().positive(),
+  rota_id: z.number().int().positive(),
+  rota_name: z.string(),
+  rota_active: z.boolean(),
+  rota_draft: z.boolean(),
+  /** A civil date in the HOUSE's calendar. No time, no zone — see lib/group-dates.ts. */
+  due_on: day,
+  covered: z.boolean(),
+  assigned_member: memberRef.nullable(),
+  covering_member: memberRef.nullable(),
+  /** Covering if there is one, else assigned. Rails resolves it; the page never re-derives it. */
+  responsible_member: memberRef.nullable(),
+});
+
+export type UpcomingShift = z.infer<typeof upcomingShiftSchema>;
+
+/**
+ * One week of the twelve-week series. `week_start` is a MONDAY in UTC — the
+ * operator's week, shared with the overview and the traffic page, never this
+ * house's own — so the same text lands in the same column on all three screens.
+ */
+const weeklyWeekSchema = z.object({
+  week_start: day,
+  texts: count,
+  covers: count,
+});
+
+export type WeeklyWeek = z.infer<typeof weeklyWeekSchema>;
+
+/**
+ * `SuperAdmin::GroupReport`: what this house is DOING, beside who is in it.
+ *
+ * REQUIRED, where it used to be optional. It was tolerated as missing while the
+ * page rendered only the two decorative columns it carried; now it IS the page —
+ * the warnings, the fortnight, the series and both people tables all come out of
+ * it — and a payload without it is a screen with nothing on it. Loud is right.
  */
 const reportSchema = z.object({
+  warnings_input: warningsInputSchema,
+  upcoming_shifts: z.array(upcomingShiftSchema),
+  /** Twelve of them, oldest first, zero-filled by Rails so a quiet month is a flat line. */
+  weekly: z.array(weeklyWeekSchema),
   admins: z.array(
     adminSchema.extend({
       last_seen_at: timestamp.nullable(),
+      /**
+       * `user_` and not `admin_`: these are facts about the PERSON, every
+       * organization and none, so an admin of two houses shows the same figure on
+       * both pages. The card says so out loud rather than leaving it to a comment.
+       */
       user_sign_in_count: count,
       user_sign_in_count_30d: count,
     }),
   ),
   members: z.array(memberSchema.extend({ last_seen_at: timestamp.nullable() })),
+  /**
+   * Rails' placeholder, still null, and deliberately NOT what the page's spend
+   * card reads.
+   *
+   * https://linear.app/bloombase/issue/BLO-1684 landed the card and fed it from
+   * `getSpend(GROUP_SPEND_RANGE)` narrowed to this house, because there is no
+   * per-group spend endpoint: `SuperAdmin::Spend` answers for every house at once
+   * and one house's figures are read out of the same payload the spend page
+   * draws, which is what stops the two ever disagreeing about what a house cost.
+   *
+   * Present-and-null is REQUIRED (the key going missing is drift worth catching),
+   * but a non-null value is accepted UNREAD rather than rejected: if Rails ever
+   * starts filling this in, that is a reason to swap the card's source over in one
+   * line, not to blank a console that is not looking at it yet.
+   */
+  spend: z.looseObject({}).nullable(),
 });
 
-export type ReportAdmin = z.infer<typeof reportSchema>["admins"][number];
-export type ReportMember = z.infer<typeof reportSchema>["members"][number];
+export type GroupReport = z.infer<typeof reportSchema>;
+export type ReportAdmin = GroupReport["admins"][number];
+export type ReportMember = GroupReport["members"][number];
 
 export const groupsListSchema = z.object({ groups: z.array(groupRowSchema) });
 
 export const groupDetailSchema = z.object({
   group: groupRowSchema,
-  admins: z.array(adminSchema),
-  members: z.array(memberSchema),
   rotas: z.array(rotaSchema),
-  report: reportSchema.optional(),
+  report: reportSchema,
 });
 
 export const groupWriteSchema = z.object({ group: groupRowSchema });
@@ -299,6 +488,40 @@ export async function getGroups(query: GroupsQuery = {}): Promise<GroupRow[]> {
 export async function getGroup(id: number): Promise<GroupDetail> {
   const raw = await superAdminRequest<unknown>(`/api/super_admin/groups/${id}`);
   return parse(groupDetailSchema, "group", raw);
+}
+
+/**
+ * GET /api/super_admin/groups/:id/sms_messages — one house's delivery log, with
+ * the magic link struck out of every body.
+ *
+ * The FILTERS ARE THE HOUSE'S OWN. Rails shares them between this controller and
+ * the house's (`SmsMessageFiltering`), and this sends the same five parameters the
+ * house's own /sms page sends, so an operator chasing "Alice didn't get her text"
+ * is looking at exactly the rows the admin who reported it can see.
+ *
+ * Its own request rather than the `recent_sms_messages` key that already rides on
+ * the group payload: that one is the newest twenty with no filters on it, and a
+ * log whose first page came from somewhere else than its second is a log that
+ * changes shape the moment anything is narrowed.
+ */
+export async function getGroupSmsMessages(
+  groupId: number,
+  query: SmsLogFilters,
+): Promise<RedactedSms[]> {
+  const search = new URLSearchParams();
+  if (query.status) search.set("status", query.status);
+  if (query.kind) search.set("kind", query.kind);
+  if (query.memberId) search.set("member_id", String(query.memberId));
+  if (query.rotaId) search.set("rota_id", String(query.rotaId));
+  // Always sent, unlike the address bar's copy: Rails defaults to 100 and this
+  // page's own default happens to be the same number today, which is exactly the
+  // coincidence that would go unnoticed if either moved.
+  search.set("limit", String(query.limit));
+
+  const raw = await superAdminRequest<unknown>(
+    `/api/super_admin/groups/${groupId}/sms_messages?${search.toString()}`,
+  );
+  return parse(groupSmsMessagesSchema, "delivery log", raw).sms_messages;
 }
 
 /** What PATCH accepts. Sending `timezone` at all confirms it (Rails stamps `timezone_confirmed_at`). */

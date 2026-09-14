@@ -1,7 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import type { GroupMember, ReportMember } from "@/lib/api/super-admin-groups";
+import type { ReportMember } from "@/lib/api/super-admin-groups";
 import { formatTimestamp, relativeTime } from "@/lib/date";
+import { MEMBER_LAST_SEEN_LABEL } from "@/lib/hq-group-report";
 import { MEMBER_STATUS_PILL, memberRotasNote } from "@/lib/hq-groups";
 import { plural } from "@/lib/hq-overview";
 
@@ -20,18 +21,19 @@ import { Empty } from "./group-admins";
  * class from the house's own, with no branch that could turn one into the other.
  * There is no copy-link button here for the same reason.
  *
+ * **"Last opened their link" is always here.** The rows are `report.members` —
+ * the same `SuperAdmin::MemberSerializer` people plus the one column it cannot
+ * carry — since the page dropped the duplicated top-level `members` read in
+ * favour of this one. It is the only evidence this product has that a magic link
+ * ever arrived, and beside a number that keeps failing it is most of the answer to
+ * why a house thinks the texts are not working.
+ *
  * Removed housemates are shown rather than filtered out. Leaving a house is a
  * deactivation and never a destroy — the person is still the record of who was
  * responsible for past shifts — and "where did Ciara go" is a question this page
  * should be able to answer.
  */
-export function GroupMembers({
-  members,
-  now,
-}: {
-  members: (GroupMember | ReportMember)[];
-  now: Date;
-}) {
+export function GroupMembers({ members, now }: { members: ReportMember[]; now: Date }) {
   const active = members.filter((member) => member.status === "active").length;
 
   return (
@@ -60,15 +62,9 @@ export function GroupMembers({
   );
 }
 
-/** `report`'s extra column, when the payload carried it. */
-function lastSeenOf(member: GroupMember | ReportMember): string | null | undefined {
-  return "last_seen_at" in member ? member.last_seen_at : undefined;
-}
-
-function MemberRow({ member, now }: { member: GroupMember | ReportMember; now: Date }) {
+function MemberRow({ member, now }: { member: ReportMember; now: Date }) {
   const pill = MEMBER_STATUS_PILL[member.status];
-  const lastSeenAt = lastSeenOf(member);
-  const lastSeen = lastSeenAt ? new Date(lastSeenAt) : null;
+  const lastSeen = member.last_seen_at ? new Date(member.last_seen_at) : null;
 
   return (
     <li className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0">
@@ -77,24 +73,20 @@ function MemberRow({ member, now }: { member: GroupMember | ReportMember; now: D
         <p className="text-muted-foreground font-mono text-xs break-all">{member.phone_e164}</p>
         <p className="text-muted-foreground text-xs break-words">
           {memberRotasNote(member.rotas)}
-          {lastSeenAt !== undefined ? (
+          {" · "}
+          {lastSeen ? (
             <>
-              {" · "}
-              {lastSeen ? (
-                <>
-                  opened their link{" "}
-                  <time dateTime={lastSeenAt ?? undefined} title={formatTimestamp(lastSeen)}>
-                    {relativeTime(lastSeen, now)}
-                  </time>
-                </>
-              ) : (
-                // The only evidence the product has that a magic link ever
-                // arrived. "Never opened" beside a failing number is most of the
-                // answer to why a house thinks the texts are not working.
-                "never opened their link"
-              )}
+              {MEMBER_LAST_SEEN_LABEL}{" "}
+              <time dateTime={member.last_seen_at ?? undefined} title={formatTimestamp(lastSeen)}>
+                {relativeTime(lastSeen, now)}
+              </time>
             </>
-          ) : null}
+          ) : (
+            // The only evidence the product has that a magic link ever arrived.
+            // "Never opened" beside a failing number is most of the answer to why
+            // a house thinks the texts are not working.
+            "never opened their link"
+          )}
         </p>
       </div>
       <Badge variant={pill.tone}>{pill.label}</Badge>

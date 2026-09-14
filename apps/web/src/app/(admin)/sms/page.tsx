@@ -5,6 +5,7 @@ import { Inbox, TriangleAlert } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { SmsFilters } from "@/components/sms-filters";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,12 +26,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { listMembers, listRotas, listSmsMessages } from "@/lib/api/admin";
+import type { SmsMessage } from "@/lib/api/types";
 import { formatShiftDate, formatTimestamp } from "@/lib/date";
-import type { SmsKind, SmsMessage, SmsStatus } from "@/lib/api/types";
+import {
+  explainError,
+  isKnownSmsKind,
+  isKnownSmsStatus,
+  kindDisplay,
+  reminderTiming,
+  statusDisplay,
+} from "@/lib/sms-display";
 import { cn } from "@/lib/utils";
-
-import { SmsFilters } from "./_components/sms-filters";
-import { explainError, kindDisplay, reminderTiming, statusDisplay } from "./_lib/display";
 
 export const metadata: Metadata = { title: "SMS log" };
 
@@ -39,15 +45,6 @@ export const metadata: Metadata = { title: "SMS log" };
 // to load.
 const PAGE = 100;
 const MAX_LIMIT = 500;
-
-const KNOWN_STATUSES = new Set<SmsStatus>([
-  "pending",
-  "sending",
-  "sent",
-  "delivered",
-  "failed",
-]);
-const KNOWN_KINDS = new Set<SmsKind>(["reminder", "cover_notice", "member_login"]);
 
 type RawParams = Record<string, string | string[] | undefined>;
 
@@ -76,10 +73,10 @@ export default async function SmsLogPage({
 
   const statusParam = first(sp.status);
   const kindParam = first(sp.kind);
-  const status =
-    statusParam && KNOWN_STATUSES.has(statusParam) ? statusParam : undefined;
-  const kind =
-    kindParam && KNOWN_KINDS.has(kindParam as SmsKind) ? (kindParam as SmsKind) : undefined;
+  // The one list of values the log may be narrowed by, shared with the filter bar
+  // (lib/sms-display.ts) so the menu can never offer a value this page throws away.
+  const status = isKnownSmsStatus(statusParam) ? statusParam : undefined;
+  const kind = isKnownSmsKind(kindParam) ? kindParam : undefined;
   const memberId = toId(first(sp.member_id));
   const rotaId = toId(first(sp.rota_id));
 

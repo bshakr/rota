@@ -14,6 +14,17 @@ const ICON = { warning: TriangleAlert, destructive: OctagonAlert } as const;
  * of the status idiom — with the fix one click away in its description. Rendering
  * only; every decision about what to warn and how loudly lives in
  * `collectDashboardWarnings`.
+ *
+ * It sits in `components/` rather than beside the house's own dashboard because
+ * TWO screens draw these alerts: the house's dashboard, and the operator's view
+ * of one house on the group page
+ * (https://linear.app/bloombase/issue/BLO-1680). The plan's requirement there is
+ * that the operator sees EXACTLY the alerts the admin sees, which is a claim only
+ * one component over one collector can make. The group page re-aims each
+ * warning's link at its own sections before handing them over (`operatorWarning`
+ * in lib/hq-group-report.ts): the words, the order and the severities are
+ * untouched, and only the destination differs — because `/rotas` on an operator's
+ * screen is their own house, not the one they are reading about.
  */
 export function DashboardWarnings({ warnings }: { warnings: DashboardWarning[] }) {
   if (warnings.length === 0) return null;
