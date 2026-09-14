@@ -91,8 +91,9 @@ export default function PrivacyPage() {
       <Section heading="Counting visits">
         <P>
           Rota Monster keeps a count of how many visits the site gets and how many get
-          through each step of setting a house up. The counts are kept cookie-free and only
-          as totals, so they can say how many visits there were and never who made one.
+          through each step of setting a house up. The counting sets no cookie of its own
+          (the one cookie a visit can pick up is described under Cookies below) and keeps
+          only totals, so it can say how many visits there were and never who made one.
           About each visit, Rota Monster records the following and nothing else:
         </P>
         <Bullets

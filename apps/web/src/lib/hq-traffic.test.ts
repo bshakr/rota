@@ -274,6 +274,6 @@ describe("where the visits came from", () => {
   });
 
   it("says nobody visited rather than dividing by an empty window", () => {
-    expect(visitsCoverageNote(0, 0)).toBe("No visit was counted in this window");
+    expect(visitsCoverageNote(0, 0)).toBe("No visit was counted in this window.");
   });
 });

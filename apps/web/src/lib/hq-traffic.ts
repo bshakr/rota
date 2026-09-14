@@ -221,7 +221,7 @@ export const DEVICE_LABELS: Record<DeviceClass, string> = {
  * can act on.
  */
 export function visitsCoverageNote(referred: number, views: number): string {
-  if (views === 0) return "No visit was counted in this window";
+  if (views === 0) return "No visit was counted in this window.";
 
   const share = formatRate((referred / views) * 100);
   const counted = `${formatCount(referred)} of ${formatCount(views)}`;
