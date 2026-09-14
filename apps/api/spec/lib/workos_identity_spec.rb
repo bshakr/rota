@@ -38,11 +38,42 @@ RSpec.describe WorkosIdentity do
 
   # `users.email` and `users.name` are unbounded varchars and one source for this is a request body.
   describe "a value far longer than a name" do
-    it "is cut to the column's sane maximum rather than stored whole" do
-      identity = described_class.new(email: "#{'a' * 500}@example.com", first_name: "b" * 500)
+    it "cuts a name to the column's sane maximum rather than storing it whole" do
+      expect(described_class.new(first_name: "b" * 500).name.length).to eq(described_class::MAX_LENGTH)
+    end
 
-      expect(identity.email.length).to eq(described_class::MAX_LENGTH)
-      expect(identity.name.length).to eq(described_class::MAX_LENGTH)
+    # An address meets the same cap and then has to pass the shape check, which the first 255
+    # characters of a 500-character address do not. Better nothing at all than an address that is
+    # nobody's, sitting in the row of someone we might one day try to reach.
+    it "refuses an address too long to hold rather than storing the start of one" do
+      expect(described_class.new(email: "#{'a' * 500}@example.com").email).to be_nil
+    end
+  end
+
+  # Two rows can collide on an address and on nothing else (see User#absorb_workos_identity!), so an
+  # address is held in one case and only when it is shaped like one. A name gets neither treatment:
+  # it is a person's own spelling of themselves, and it is compared against nothing.
+  describe "what it cleans out of a value" do
+    it "downcases the address" do
+      expect(described_class.new(email: "Alice@Example.COM").email).to eq("alice@example.com")
+    end
+
+    it "leaves a name in the case WorkOS gave it" do
+      expect(described_class.new(first_name: "McDonald", last_name: "d'Eath").name).to eq("McDonald d'Eath")
+    end
+
+    it "is nil when what arrived is not shaped like an address at all" do
+      expect(described_class.new(email: "not an email").email).to be_nil
+      expect(described_class.new(email: "alice@").email).to be_nil
+    end
+
+    # Postgres refuses a NUL byte outright, and a request body can carry one. Nothing here raises on
+    # it: `strip` takes it off either end, and an address still holding one in the middle is not an
+    # address, so it yields nil rather than the cleaned value.
+    it "does not raise on an embedded NUL and refuses the address holding one" do
+      expect { described_class.new(email: "ali\u0000ce@example.com", first_name: "Ro\u0000sa") }.not_to raise_error
+      expect(described_class.new(email: "ali\u0000ce@example.com").email).to be_nil
+      expect(described_class.new(email: "alice@example.com\u0000").email).to eq("alice@example.com")
     end
   end
 

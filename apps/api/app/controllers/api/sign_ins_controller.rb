@@ -26,20 +26,6 @@ module Api
     def create
       user = User.provision!(@claims)
 
-      # An AuthKit access token carries no email and no name unless the WorkOS JWT template has been
-      # configured to add them, so a user provisioned from claims alone is a placeholder address and
-      # a null name — which is exactly what the operator console had to show for the only real admin
-      # in production (https://linear.app/bloombase/issue/BLO-1696).
-      #
-      # The web app is not missing them: `onSuccess` in apps/web/src/app/callback/route.ts is handed
-      # the authenticated WorkOS user object, email and all, and forwards the three fields here in
-      # the body of this same request. So the identity reaches the row without Rails calling WorkOS
-      # on any path, and without the JWT template having to change.
-      #
-      # The body is the caller's word, not WorkOS's signature, which is why this only ever fills a
-      # gap — see User#absorb_workos_identity!, where that rule lives and is tested.
-      user.absorb_workos_identity!(WorkosIdentity.from_params(params))
-
       # Signing in IS being seen, and for the person this endpoint exists for — the one who signs
       # in and abandons /setup — it is the ONLY time we ever see them. Without this line their
       # `last_seen_at` reads "never" on every super admin surface that shows the column, which is
@@ -48,6 +34,8 @@ module Api
       user.touch_last_seen
 
       SignIn.create!(user: user, workos_organization_id: @claims.workos_organization_id, jti: @claims.jti)
+
+      absorb_workos_identity(user)
 
       head :no_content
     rescue ActiveRecord::RecordNotUnique
@@ -64,6 +52,32 @@ module Api
     end
 
     private
+
+    # An AuthKit access token carries no email and no name unless the WorkOS JWT template has been
+    # configured to add them, so a user provisioned from claims alone is a placeholder address and a
+    # null name — which is exactly what the operator console had to show for the only real admin in
+    # production (https://linear.app/bloombase/issue/BLO-1696).
+    #
+    # The web app is not missing them: `onSuccess` in apps/web/src/app/callback/route.ts is handed
+    # the authenticated WorkOS user object, email and all, and forwards the three fields here in the
+    # body of this same request. So the identity reaches the row without Rails calling WorkOS on any
+    # path, and without the JWT template having to change.
+    #
+    # The body is the caller's word, not WorkOS's signature, which is why this only ever fills a gap
+    # — see User#absorb_workos_identity!, where that rule lives and is tested.
+    #
+    # It runs LAST, after the `sign_ins` row exists, and it cannot fail the request. This endpoint's
+    # whole job is recording the sign-in that nothing else can reconstruct; a display name is a
+    # nicety on an operator console. Anything the body can make `update!` throw — an encoding
+    # Postgres refuses, a validation, a constraint — would otherwise cost us the one fact worth
+    # having, and cost it on the callback path where Next.js would retry it forever. Only the class
+    # of the failure is logged: an exception message can quote the value that caused it, and the
+    # value here is somebody's address.
+    def absorb_workos_identity(user)
+      user.absorb_workos_identity!(WorkosIdentity.from_params(params))
+    rescue StandardError => e
+      logger.warn("Could not absorb the WorkOS identity for #{user.workos_user_id}: #{e.class}")
+    end
 
     # The house path's authentication, minus the one thing this endpoint cannot ask for. The token
     # is verified exactly as it is everywhere else — same signature, same issuer, same audience,

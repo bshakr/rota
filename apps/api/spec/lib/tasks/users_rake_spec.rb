@@ -60,6 +60,19 @@ RSpec.describe "users:refresh_from_workos" do
     expect(user.reload).to have_attributes(email: "alice@example.com", name: "Alice Nkemdirim")
   end
 
+  # It is run over `railway ssh` against production, so whatever it prints lands in an operator's
+  # scrollback and in whatever their terminal keeps. It names the row, never the person in it.
+  it "reports the row it filled without printing what it filled it with" do
+    user = placeholder_user("user_01ALICE", name: nil)
+    stub_workos_user("user_01ALICE", email: "alice@example.com", first_name: "Alice", last_name: "Nkemdirim")
+
+    output = run_task
+
+    expect(output).to include("user #{user.id} (user_01ALICE): filled.")
+    expect(output).not_to include("alice@example.com")
+    expect(output).not_to include("Alice Nkemdirim")
+  end
+
   # The steady state after one run. An operator who runs it twice — or who runs it again next month
   # for the next admin — must not be writing over what the first run settled.
   it "writes nothing on a second run" do

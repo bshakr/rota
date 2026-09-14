@@ -213,6 +213,34 @@ RSpec.describe "POST /api/sign_ins" do
       expect(User.find_by!(workos_user_id: "user_01ALICE").email).to eq("impostor@example.com")
     end
 
+    # `users.email` carries no unique index, so the check in User#absorb_workos_identity! is the only
+    # thing between a forwarded body and two admins holding one address on the operator console.
+    it "cannot claim an address another admin already holds" do
+      bob = create(:user, workos_user_id: "user_01BOB", email: "bob@example.com", name: "Bob")
+
+      post "/api/sign_ins",
+        params: { email: "bob@example.com", first_name: "Mallory" },
+        headers: workos_headers(sub: "user_01ALICE", email: nil), as: :json
+
+      expect(response).to have_http_status(:no_content)
+      expect(bob.reload).to have_attributes(email: "bob@example.com", name: "Bob")
+      expect(User.find_by!(workos_user_id: "user_01ALICE"))
+        .to have_attributes(email: "user_01ALICE@users.workos.invalid", name: "Mallory")
+    end
+
+    # The gap-fill is a nicety on an operator console; the `sign_ins` row is the one fact about this
+    # request that nothing else in the product can reconstruct. So the fill runs after the row is
+    # written and cannot take it down with it, however the body makes it fail.
+    it "still records the sign-in when the gap-fill fails outright" do
+      allow(WorkosIdentity).to receive(:from_params).and_raise(ArgumentError, "string contains null byte")
+
+      expect {
+        post "/api/sign_ins", headers: workos_headers(sub: "user_01ALICE")
+      }.to change(SignIn, :count).by(1)
+
+      expect(response).to have_http_status(:no_content)
+    end
+
     it "ignores a field that is not a string rather than storing it" do
       post "/api/sign_ins",
         params: { email: { "$ne" => nil }, first_name: [ 1, 2 ] },

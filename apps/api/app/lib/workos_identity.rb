@@ -14,7 +14,8 @@ class WorkosIdentity
   # place to find out.
   MAX_LENGTH = 255
 
-  # The address WorkOS holds, or nil. Never blank, never whitespace.
+  # The address WorkOS holds, downcased, or nil. Never blank, never whitespace, and never something
+  # that is not shaped like an address at all.
   attr_reader :email
 
   # "First Last", or whichever half exists, or nil when neither does. Never blank.
@@ -24,7 +25,7 @@ class WorkosIdentity
   # signup form left the field empty, and a name assembled from two of those must be nothing rather
   # than a space.
   def initialize(email: nil, first_name: nil, last_name: nil)
-    @email = normalize(email)
+    @email = normalize_email(email)
     @name = [ normalize(first_name), normalize(last_name) ].compact.join(" ").presence&.first(MAX_LENGTH)
   end
 
@@ -50,9 +51,29 @@ class WorkosIdentity
 
   private
 
+  # Spaces are removed outright rather than only trimmed: a signup form's " Rosa " and an address
+  # pasted with a space in it are both one value with something stuck to it, and `strip` alone leaves
+  # the middle. `strip` still runs, because it is what removes the rest of the whitespace family —
+  # tabs, newlines and the NUL byte that Postgres refuses to store at all.
   def normalize(value)
     return nil unless value.is_a?(String)
 
-    value.strip.presence&.first(MAX_LENGTH)
+    value.delete(" ").strip.presence&.first(MAX_LENGTH)
+  end
+
+  # An address is the one field of the three that two rows can collide on (see
+  # User#absorb_workos_identity!), and the same mailbox reaches us in whatever case a signup form was
+  # typed in, so it is held in one case — unlike a name, which is a person's own spelling of
+  # themselves and is stored as they gave it.
+  #
+  # The shape check is deliberately coarse: this is not the authority on whether an address exists,
+  # only a refusal to write something into an address column that could not be one. Note it runs
+  # AFTER the length cap, so an over-long address is refused rather than stored as the 255 characters
+  # it starts with, which would be an address nobody has.
+  def normalize_email(value)
+    email = normalize(value)&.downcase
+    return nil unless email&.match?(URI::MailTo::EMAIL_REGEXP)
+
+    email
   end
 end

@@ -169,6 +169,30 @@ RSpec.describe User do
       expect(user.absorb_workos_identity!(identity(email: "other@example.com", first_name: "Alice"))).to be(true)
       expect(user.reload).to have_attributes(email: "alice@example.com", name: "Alice")
     end
+
+    # `users.email` carries no unique index, and this is what stands in for one. An empty slot is
+    # fillable by the request body, so without this a caller could post an address another admin
+    # already holds and stand beside them under it on the operator console — which is the confusion
+    # the whole gap-filling rule exists to prevent.
+    it "refuses an address that already belongs to another user" do
+      create(:user, email: "alice@example.com")
+      other = create(:user, email: described_class.placeholder_email("user_01MALLORY"), name: "Mallory")
+
+      expect(other.absorb_workos_identity!(identity(email: "alice@example.com"))).to be(false)
+      expect(other.reload)
+        .to have_attributes(email: described_class.placeholder_email("user_01MALLORY"), name: "Mallory")
+    end
+
+    # Refused, not raised: the sign-in carrying it still has to be recorded and the backfill still
+    # has to reach the next row. The name was never anybody else's, so it is still filled.
+    it "fills the name even when it had to refuse the address beside it" do
+      create(:user, email: "alice@example.com")
+      other = create(:user, email: described_class.placeholder_email("user_01MALLORY"), name: nil)
+
+      expect(other.absorb_workos_identity!(identity(email: "alice@example.com", first_name: "Mallory"))).to be(true)
+      expect(other.reload)
+        .to have_attributes(email: described_class.placeholder_email("user_01MALLORY"), name: "Mallory")
+    end
   end
 
   # What `users:refresh_from_workos` walks. Everything else is already as good as WorkOS could make

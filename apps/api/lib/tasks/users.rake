@@ -32,6 +32,12 @@ namespace :users do
     unknown = 0
     failed = 0
 
+    # One line per row, and every one of them names the row rather than the person in it. This runs
+    # over `railway ssh` against production: whatever it prints is on an operator's screen, in their
+    # scrollback and in whatever their terminal logs, and an address printed there is an address
+    # copied out of the row it was meant to stay in. The id and the WorkOS id are enough to go and
+    # look, for anyone who is allowed to.
+    #
     # `find_each` batches by ascending id and never revisits a row, so filling a row mid-walk —
     # which takes it out of the scope — cannot make the walk skip the next one.
     scope.find_each do |user|
@@ -39,19 +45,19 @@ namespace :users do
 
       if identity.nil?
         unknown += 1
-        puts "  #{user.workos_user_id}: WorkOS has no such user; left exactly as it is."
+        puts "  user #{user.id} (#{user.workos_user_id}): skipped, WorkOS has no such user."
       elsif user.absorb_workos_identity!(identity)
         filled += 1
-        puts "  #{user.workos_user_id}: #{user.email}#{" (#{user.name})" if user.name.present?}"
+        puts "  user #{user.id} (#{user.workos_user_id}): filled."
       else
         unchanged += 1
-        puts "  #{user.workos_user_id}: WorkOS has nothing to add."
+        puts "  user #{user.id} (#{user.workos_user_id}): skipped, WorkOS had nothing to add."
       end
     rescue WorkosDirectory::Unavailable => e
       # One user WorkOS could not answer for must not cost the operator the other nine. The run
       # reports the failure count at the end, and re-running picks the row up again.
       failed += 1
-      warn "  #{user.workos_user_id}: #{e.message}"
+      warn "  user #{user.id} (#{user.workos_user_id}): skipped, #{e.message}"
     end
 
     puts "Filled #{filled}, already complete #{unchanged}, unknown to WorkOS #{unknown}, failed #{failed}."

@@ -83,15 +83,23 @@ class User < ApplicationRecord
   #
   # GAP-FILLING ONLY, and that is the whole design. On the sign-in path this identity arrives in the
   # request BODY, not in the signed token: the token proves who is asking, the body is only their
-  # word for what they are called. Because it can write nothing but the caller's own row, and only
-  # into a slot that is empty, the worst a lie can do is name a person nothing had named — which is
-  # what this exists for. A stored address WorkOS verified is never overwritten by it, and a blank
-  # never replaces a fact in either direction.
+  # word for what they are called. Three rules bound what that word can do, and together they are
+  # why a request body may be fed to it at all:
+  #
+  #   * it can name only the caller's OWN row — the one the token's `sub` found, never a row named
+  #     by anything in the body;
+  #   * it can write only into a slot that is empty, so an address WorkOS verified is never
+  #     overwritten and a blank never replaces a fact in either direction;
+  #   * it cannot claim an address another row already holds. `users.email` carries no unique index,
+  #     so nothing else stops a caller whose own address slot is empty from filling it with somebody
+  #     else's address and standing beside them under it on the operator console.
+  #
+  # What is left is the only thing this exists for: naming a person nothing had named.
   #
   # Returns whether anything was written, which is what the task counts.
   def absorb_workos_identity!(identity)
     changes = {}
-    changes[:email] = identity.email if identity.email.present? && email_placeholder?
+    changes[:email] = identity.email if fillable_email?(identity.email)
     changes[:name] = identity.name if identity.name.present? && name.blank?
     return false if changes.empty?
 
@@ -104,5 +112,22 @@ class User < ApplicationRecord
   # that looks deliverable and is not.
   def email_placeholder?
     email.to_s.end_with?("@#{PLACEHOLDER_EMAIL_DOMAIN}")
+  end
+
+  private
+
+  # Whether this address may be written into this row: there is something to write, the slot is
+  # still the placeholder, and no other row already holds it.
+  #
+  # The last one is refused rather than raised. Both callers have to carry on afterwards — a sign-in
+  # that must still be recorded, a backfill that must still reach the next row — and neither has
+  # anything to tell the caller anyway. It is logged without the address, because a line naming one
+  # person's address under another person's id is the very mix-up this prevents.
+  def fillable_email?(candidate)
+    return false unless candidate.present? && email_placeholder?
+    return true unless User.where(email: candidate).where.not(id: id).exists?
+
+    Rails.logger.info("Refused WorkOS email for #{workos_user_id}: email already belongs to another user")
+    false
   end
 end
