@@ -149,6 +149,18 @@ RSpec.describe AnalyticsEvent do
       expect(properties_for(utm_source: "reddit", country: "nonsense", device: "desktop"))
         .to eq("utm_source" => "reddit", "device" => "desktop")
     end
+
+    # `clean_value` lets an Integer and a boolean through untouched, because `member_id` needs that,
+    # and JSON has numbers, so a body saying `"country": 44` really does arrive here. A regex check
+    # on a number raises, `.record` rescues everything, and the WHOLE EVENT would vanish rather than
+    # the one bad property. That is the opposite of this class's rule and would take the landing view
+    # with it.
+    it "drops a number where a country or a host belongs, and still writes the event" do
+      expect(described_class.record(described_class::LANDING_VIEW,
+        path: "/", country: 44, referrer_host: 1234, device: true)).to be(true)
+
+      expect(described_class.last.properties).to eq("path" => "/")
+    end
   end
 
   describe ".prune_anonymous" do

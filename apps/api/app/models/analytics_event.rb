@@ -182,11 +182,21 @@ class AnalyticsEvent < ApplicationRecord
     # reads, so the shape is checked on both sides of the hop.
     def permitted?(key, value)
       case key
-      when "referrer_host" then value.match?(HOSTNAME)
-      when "country" then value.match?(COUNTRY_CODE) && NON_COUNTRIES.exclude?(value)
+      when "referrer_host" then string_matching?(value, HOSTNAME)
+      when "country" then string_matching?(value, COUNTRY_CODE) && NON_COUNTRIES.exclude?(value)
       when "device" then DEVICE_CLASSES.include?(value)
       else true
       end
+    end
+
+    # The type check is load-bearing, not belt and braces. `clean_value` above lets an Integer and a
+    # boolean through untouched — `member_id` needs that — and the Next route permits a JSON number
+    # anywhere a string is allowed, so `country: 44` really does reach this method. Calling `match?`
+    # on it would raise NoMethodError, `.record`'s blanket rescue would catch it, and the whole event
+    # would be dropped with a line in the log: exactly the outcome the rest of this class exists to
+    # avoid. A junk country costs the event its country, never the event.
+    def string_matching?(value, pattern)
+      value.is_a?(String) && value.match?(pattern)
     end
   end
 

@@ -41,12 +41,13 @@ export function ConversionFunnel({ funnel }: { funnel: readonly TrafficFunnelRow
       label: `${step.step}. ${TRAFFIC_STEP_LABELS[step.key]}`,
       value: step.count,
       unit: step.unit,
-      // The rate first, because that is what a funnel is read for. Step 1 has no
-      // step above it and therefore no rate, which is exactly where the API's
-      // own caveat about what it counted goes — quoted rather than paraphrased,
-      // so the page and the payload cannot end up claiming different things
-      // about the same bar.
-      note: rate ?? step.note ?? undefined,
+      // Both, when there are both. Rails attaches a note to say what a step
+      // COUNTED, which is a different thing from how it converted, so a step
+      // that grows a note later must not lose it to the presence of a rate. The
+      // note is quoted rather than paraphrased, so the page and the payload
+      // cannot end up claiming different things about the same bar. Today only
+      // step 1 carries one, and it happens to be the step with no rate.
+      note: [rate, step.note].filter(Boolean).join(" · ") || undefined,
     };
   });
 
