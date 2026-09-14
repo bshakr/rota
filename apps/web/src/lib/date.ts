@@ -159,6 +159,27 @@ export const formatTimestamp = (date: Date) => {
 };
 
 /**
+ * "7 Sept" — a plain calendar date the API sent as "2026-09-07", with no time
+ * in it and no instant behind it.
+ *
+ * It takes the STRING and never a Date, which is the whole point.
+ * `new Date("2026-09-07")` is midnight UTC, and rendering that instant in a zone
+ * behind UTC prints the 6th. The traffic dashboard's buckets are Mondays by
+ * definition, and a Monday that renders as a Sunday makes every week label wrong
+ * by a day. A date with no instant is calendar arithmetic, so it is done as
+ * calendar arithmetic.
+ *
+ * Throws on anything that is not YYYY-MM-DD rather than rendering "NaN undefined".
+ */
+export const formatCalendarDate = (iso: string) => {
+  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const month = match ? Number(match[2]) : 0;
+  if (!match || month < 1 || month > 12) throw new RangeError(`Not a calendar date: ${iso}`);
+
+  return `${Number(match[3])} ${MONTH_SHORT[month - 1]}`;
+};
+
+/**
  * "today" / "tomorrow" / "in 3 days" / "3 days ago" — the reassurance the member
  * page leads with, because "Sat 5 Jul" alone does not answer "is that soon?".
  *
