@@ -181,7 +181,7 @@ describe("super admin API client", () => {
       const traffic = await getTraffic("30d");
 
       expect(traffic.funnel).toHaveLength(8);
-      expect(traffic.funnel[0].tracked).toBe(false);
+      expect(traffic.funnel[0].count).toBe(1420);
       expect(traffic.weeks.at(-1)?.delivery_rate).toBe(96.7);
     });
 

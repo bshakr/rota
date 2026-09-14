@@ -8,6 +8,7 @@ import { ConversionFunnel } from "./conversion-funnel";
 import { DeliveryRate } from "./delivery-rate";
 import { FailuresCard } from "./failures-card";
 import { RangePicker } from "./range-picker";
+import { VisitsPanel } from "./visits-panel";
 import { WeeklySignals } from "./weekly-signals";
 import { WeeklyTexts } from "./weekly-texts";
 
@@ -64,6 +65,13 @@ export function TrafficScreen({ traffic, now }: { traffic: SuperAdminTraffic; no
           sample={traffic.median_hours_sample}
           signedInWithoutHouse={traffic.signed_in_without_house}
         />
+      </div>
+
+      {/* Directly under the funnel, and full width, because it is step 1 taken
+          apart: the bar says how many arrived, this says where from. Anywhere
+          else on the page and it would read as a fourth usage chart. */}
+      <div className="mt-6 grid items-start gap-6">
+        <VisitsPanel visits={traffic.visits} views={traffic.funnel[0].count ?? 0} />
       </div>
 
       <h2 className="font-heading mt-10 mb-4 text-lg font-semibold">Usage</h2>

@@ -31,7 +31,7 @@ export const metadata: Metadata = {
  */
 export default function PrivacyPage() {
   return (
-    <LegalPage title="Privacy" updated="13 September 2026">
+    <LegalPage title="Privacy" updated="14 September 2026">
       <P>
         Rota Monster is a chore rota that sends a housemate a text when it is their turn.
         It is run by one person in the UK, called the operator throughout this page. What
@@ -83,8 +83,34 @@ export default function PrivacyPage() {
         />
         <P>
           Event descriptions, guest lists and locations are never read out of the calendar,
-          so they are never stored. There is no advertising, no profiling and no analytics
-          of any kind. Nothing here is sold, and nothing is shared for marketing.
+          so they are never stored. There is no advertising and no profiling. Nothing here
+          is sold, and nothing is shared for marketing.
+        </P>
+      </Section>
+
+      <Section heading="Counting visits">
+        <P>
+          Rota Monster keeps a count of how many visits the site gets and how many get
+          through each step of setting a house up. The counting sets no cookie of its own
+          (the one cookie a visit can pick up is described under Cookies below) and keeps
+          only totals, so it can say how many visits there were and never who made one.
+          About each visit, Rota Monster records the following and nothing else:
+        </P>
+        <Bullets
+          items={[
+            "Which page was opened.",
+            "Which site linked to it, if any. The site’s address only, never the page on it and never anything after the question mark.",
+            "The campaign labels on the link that brought them, when the link carried any.",
+            "The country, as reported by the network in front of the site. Never the city, and never the address the visit came from.",
+            "Whether it was a phone, a tablet or a computer.",
+          ]}
+        />
+        <P>
+          What is never recorded: an IP address, the long identifying string a browser sends
+          about itself, a cookie, or a visitor or session number of any kind. There is
+          nothing in a count to join two of them together with, so Rota Monster cannot tell
+          one visit from another, cannot tell a returning visitor from a new one, and cannot
+          build a picture of anybody. These counts are deleted after 180 days.
         </P>
       </Section>
 
@@ -124,9 +150,9 @@ export default function PrivacyPage() {
 
       <Section heading="How long it is kept">
         <P>
-          Rota Monster keeps what a house gives it for as long as the house is using it.
-          Nothing is deleted on a timer, and this page will say so plainly until something
-          is.
+          Rota Monster keeps what a house gives it for as long as the house is using it. The
+          visit counts above are the only thing deleted on a timer, and they go after 180
+          days. Nothing else is, and this page will say so plainly until something is.
         </P>
         <Bullets
           items={[
@@ -153,10 +179,20 @@ export default function PrivacyPage() {
 
       <Section heading="Cookies">
         <P>
-          Rota Monster sets no advertising cookies and runs no tracking. Admin sign-in sets
-          an encrypted session cookie and a short-lived one used only while signing in. A
-          housemate opening their link from a text gets no cookie at all. Whether you chose
-          light or dark is kept in your own browser and never sent anywhere.
+          Rota Monster sets no advertising cookies, and nothing here follows anybody between
+          sites. The visit counting described above sets no cookie of its own: it stores
+          nothing about who is visiting, so it has nothing to remember them by. Admin
+          sign-in sets an encrypted session cookie and a short-lived one used only while
+          signing in. A housemate opening their link from a text gets no cookie at all.
+          Whether you chose light or dark is kept in your own browser and never sent
+          anywhere.
+        </P>
+        <P>
+          One more cookie is set, and only for somebody who arrives with a campaign link.
+          It holds the campaign labels from that link for up to thirty days so that, if
+          they go on to set a house up, the house can record what brought them. It carries
+          no identifier, it is never used to recognise anybody, and it is deleted the moment
+          the house is made.
         </P>
       </Section>
 

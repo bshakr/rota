@@ -20,6 +20,19 @@
   AuthKit branding editor, the dashboard recipe (wordmark, colours, Outfit, dark mode) and a
   Playwright script that previews the CSS against the live hosted page. No app code changes; the
   page is styled in the WorkOS dashboard. (#60)
+- The super admin traffic funnel's first step is a real number. Landing views are counted from the
+  `landing_view` events the homepage already posts, so the bar, its rate to "signed in" and the note
+  saying what a browser count misses all render like every other step. The `page_views` table the
+  plan reserved for this is not being built, and neither is Plausible. (#69)
+- **Where visits come from**, a panel under that funnel: the sites that linked here, the countries,
+  and phone against tablet against computer. Each is a coarse, identifier-free property recorded per
+  visit — the referring site's HOST only, never the page on it and never the query; the country from
+  Cloudflare's `cf-ipcountry` header, which is not sent while the domain is DNS-only there and is
+  simply omitted; and one of three device classes from a client hint. No cookie, no visitor id, no
+  IP address stored, no user agent stored, and nothing in a row to tell two visits apart with. The
+  browser is not allowed to set the country or the device class: both are derived server-side and
+  overwrite anything the body claimed. `analytics:sources` prints the same three as tables, each
+  with a `(none)` row for the visits the property was missing from. (#69)
 
 ### Changed
 
@@ -40,6 +53,13 @@
   difference, and only one: two housemates who share a name now come back in a fixed order on the
   member schedule, where before the ordering could not tell them apart and Postgres was free to
   return them either way round. (#68)
+- Anonymous analytics events are kept for **180 days**, not 90. The traffic page's longest window is
+  90 days, so pruning at 90 was deleting rows out of the far edge of a chart that was still drawing
+  them. (#69)
+- The privacy page said the site runs no analytics and no tracking. Both sentences predated the
+  in-house event counting and were wrong. It now says plainly what is counted, what is never
+  recorded, that the counting needs no cookie of its own, that the campaign cookie is functional and
+  short-lived, and that anonymous counts are deleted after 180 days. (#69)
 - Dropped the root `VERSION` file. Nothing read it, and it conflicted on every parallel pull
   request. (#55)
 - The mailer's default sender moved from `hello@rota.monster`, a domain that does not exist, to

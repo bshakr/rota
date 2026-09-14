@@ -4,10 +4,12 @@ import { emptyTrafficPayload, trafficPayload as payload } from "@/test/traffic-p
 
 import { FUNNEL_STEPS } from "./super-admin-overview";
 import {
+  DEVICE_CLASSES,
   TEXT_KINDS,
   TRAFFIC_FUNNEL_STEPS,
   TRAFFIC_RANGES,
   TrafficShapeError,
+  VISIT_DIMENSIONS,
   WEEK_SERIES,
   isTrafficShapeError,
   parseTraffic,
@@ -25,8 +27,13 @@ import {
 //                  texts_settled, delivery_rate, covers, active_houses, active_users,
 //                  members_last_seen, new_houses
 //
+//     VISIT_DIMENSIONS = { referrers:, countries:, devices: }
+//
 //   apps/api/app/models/sms_message.rb
 //     KINDS = { reminder:, cover_notice:, member_login: }
+//
+//   apps/api/app/models/analytics_event.rb
+//     DEVICE_CLASSES = %w[mobile tablet desktop]
 //
 // Hardcoded rather than read off disk on purpose, exactly as
 // super-admin-overview.test.ts does it. The point is not to re-derive the lists
@@ -46,6 +53,8 @@ const RUBY_STEPS = [
   "first_cover",
 ];
 const RUBY_KINDS = ["reminder", "cover_notice", "member_login"];
+const RUBY_VISIT_DIMENSIONS = ["referrers", "countries", "devices"];
+const RUBY_DEVICE_CLASSES = ["mobile", "tablet", "desktop"];
 const RUBY_WEEK_KEYS = [
   "week_starting",
   "texts_sent",
@@ -167,16 +176,22 @@ describe("parseTraffic", () => {
     expect(() => parseTraffic({ ...body, funnel })).toThrow(/ladder has "landing_views"/);
   });
 
-  // `tracked` decides whether the page draws a bar or the words "not tracked
-  // yet". A payload where it disagrees with `count` draws a confident zero over
-  // a step nobody is counting.
-  it("refuses a step that claims to be tracked with nothing behind it", () => {
+  // `tracked` decides whether the page draws a bar or prints why there is none,
+  // and `count` is what it draws. A payload where the two disagree renders a
+  // confident bar over a step nobody is counting, or hides a step that has a
+  // real figure. Asserted in both directions.
+  it("refuses a step whose tracked flag disagrees with its count", () => {
     const body = payload();
-    const funnel = body.funnel.map((step) =>
-      step.key === "landing_views" ? { ...step, tracked: true } : step,
-    );
 
-    expect(() => parseTraffic({ ...body, funnel })).toThrow(/tracked/);
+    const uncounted = body.funnel.map((step) =>
+      step.key === "landing_views" ? { ...step, tracked: false } : step,
+    );
+    expect(() => parseTraffic({ ...body, funnel: uncounted })).toThrow(/tracked/);
+
+    const claimed = body.funnel.map((step) =>
+      step.key === "signed_in" ? { ...step, count: null } : step,
+    );
+    expect(() => parseTraffic({ ...body, funnel: claimed })).toThrow(/tracked/);
   });
 
   // Every chart draws the weeks left to right in array order, so a shuffled
@@ -203,5 +218,75 @@ describe("parseTraffic", () => {
     const traffic = parseTraffic(payload());
 
     expect(traffic.funnel[3].rate_from_previous).toBe(107.3);
+  });
+
+  describe("where the visits came from", () => {
+    it("names the three columns Rails names", () => {
+      expect([...VISIT_DIMENSIONS]).toEqual(RUBY_VISIT_DIMENSIONS);
+      expect([...DEVICE_CLASSES]).toEqual(RUBY_DEVICE_CLASSES);
+    });
+
+    it("narrows each column to its own row shape", () => {
+      const traffic = parseTraffic(payload());
+
+      expect(traffic.visits.referrers[0]).toEqual({ host: "news.ycombinator.com", count: 341 });
+      expect(traffic.visits.devices[0]).toEqual({ device: "mobile", count: 806 });
+    });
+
+    // The figure the panel's sentence is built from. Rails counts it ungrouped
+    // over every visit that carried a referrer, and the list stops at ten hosts,
+    // so it is NOT the sum of the rows and the two diverge as soon as there is a
+    // tail. The fixture keeps them apart on purpose.
+    it("carries a referred count that is not the sum of the rows", () => {
+      const traffic = parseTraffic(payload());
+      const shown = traffic.visits.referrers.reduce((sum, row) => sum + row.count, 0);
+
+      expect(traffic.visits.referred_count).toBe(903);
+      expect(traffic.visits.referred_count).toBeGreaterThan(shown);
+    });
+
+    it("refuses a payload whose visits carry no referred count", () => {
+      const body = payload();
+      const visits: Record<string, unknown> = { ...body.visits };
+      delete visits.referred_count;
+
+      expect(() => parseTraffic({ ...body, visits })).toThrow(/referred_count/);
+    });
+
+    // Empty is the state of production today: the domain is DNS-only on
+    // Cloudflare, so no visit carries a country. A schema that demanded a row
+    // would turn that into a blank dashboard.
+    it("accepts a column with nothing in it", () => {
+      expect(parseTraffic(payload()).visits.countries).toEqual([]);
+      expect(parseTraffic(emptyTrafficPayload()).visits.devices).toEqual([]);
+    });
+
+    // `device` is a closed set in Rails, so a fourth word is a deploy skew rather
+    // than a new kind of visitor, and the page has no label to draw it with.
+    it("refuses a device class nobody defined", () => {
+      const body = payload();
+      const visits = { ...body.visits, devices: [{ device: "fridge", count: 1 }] };
+
+      expect(() => parseTraffic({ ...body, visits })).toThrow(TrafficShapeError);
+    });
+
+    it("refuses more rows than Rails will ever send", () => {
+      const body = payload();
+      const referrers = Array.from({ length: 11 }, (_, index) => ({
+        host: `host${index}.example.com`,
+        count: 1,
+      }));
+
+      expect(() => parseTraffic({ ...body, visits: { ...body.visits, referrers } })).toThrow(
+        TrafficShapeError,
+      );
+    });
+
+    it("refuses a payload with no visits at all, which is a deploy skew", () => {
+      const body: Record<string, unknown> = payload();
+      delete body.visits;
+
+      expect(() => parseTraffic(body)).toThrow(/visits/);
+    });
   });
 });

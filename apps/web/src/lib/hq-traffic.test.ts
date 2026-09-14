@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import { TEXT_KINDS, TRAFFIC_FUNNEL_STEPS } from "./api/super-admin-traffic";
 import { FUNNEL_STEP_LABELS } from "./hq-overview";
 import {
+  DEVICE_LABELS,
   RANGE_LABELS,
   TEXT_KIND_SERIES,
   TRAFFIC_STEP_LABELS,
+  VISIT_COLUMNS,
   WEEKLY_SIGNALS,
   failuresNote,
   formatMedianHours,
@@ -15,6 +17,7 @@ import {
   medianHoursNote,
   parseRange,
   rangeHref,
+  visitsCoverageNote,
   weekLabel,
   weekOfLabel,
 } from "./hq-traffic";
@@ -226,5 +229,51 @@ describe("failures", () => {
 
   it("says nothing failed rather than printing an empty table's arithmetic", () => {
     expect(failuresNote(0, 0, 0)).toBe("No text failed in this window");
+  });
+});
+
+describe("where the visits came from", () => {
+  it("names the three device classes in the product's words", () => {
+    expect(DEVICE_LABELS).toEqual({ mobile: "Phone", tablet: "Tablet", desktop: "Computer" });
+  });
+
+  // THE POINT OF THE CONSTANT. An empty country column is not "nobody visited
+  // from anywhere": the `cf-ipcountry` header only arrives once the domain is
+  // proxied through Cloudflare, and it is DNS-only there today, so the column is
+  // empty however busy the site is. Three identical "no data" lines would turn a
+  // configuration fact into an apparent absence of traffic and contradict the
+  // funnel's first bar directly above it.
+  it("says something different in each empty column", () => {
+    const empties = Object.values(VISIT_COLUMNS).map((column) => column.empty);
+
+    expect(new Set(empties).size).toBe(3);
+    expect(VISIT_COLUMNS.countries.empty).toMatch(/Cloudflare/);
+    expect(VISIT_COLUMNS.countries.empty).not.toMatch(/no visit/i);
+    expect(VISIT_COLUMNS.referrers.empty).toMatch(/no referrer/i);
+  });
+
+  // One decimal, like every other rate on this page: a figure never renders
+  // coarser than it was computed. Both counts go through formatCount, so the
+  // sentence and the tables above it separate thousands the same way.
+  it("says how many visits arrived from another site", () => {
+    expect(visitsCoverageNote(903, 1420)).toBe(
+      "903 of 1,420 visits arrived from another site (63.6%). The rest carried no referrer, which can mean a typed address, a link from a text, or a browser that withheld it.",
+    );
+    expect(visitsCoverageNote(1, 1)).toBe(
+      "1 of 1 visit arrived from another site (100.0%). The rest carried no referrer, which can mean a typed address, a link from a text, or a browser that withheld it.",
+    );
+  });
+
+  // The sentence used to say the rest arrived DIRECTLY, and that was a claim the
+  // data cannot support: a referrer is also missing when the referring page's
+  // policy withholds it, and when the visit came from one of our own pages and
+  // the browser dropped it before the event was sent.
+  it("never claims the visits without a referrer were direct", () => {
+    expect(visitsCoverageNote(903, 1420)).not.toMatch(/arrived directly/);
+    expect(visitsCoverageNote(903, 1420)).toMatch(/withheld it/);
+  });
+
+  it("says nobody visited rather than dividing by an empty window", () => {
+    expect(visitsCoverageNote(0, 0)).toBe("No visit was counted in this window.");
   });
 });

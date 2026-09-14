@@ -73,10 +73,12 @@ export function trafficPayload() {
         step: 1,
         key: "landing_views",
         unit: "views",
-        tracked: false,
-        count: null,
+        tracked: true,
+        count: 1420,
+        // Nothing above it to be a share of. Its note takes the bar's footnote
+        // slot instead, which is why the fixture carries a real one.
         rate_from_previous: null,
-        note: "not tracked yet",
+        note: "browser visits only: crawlers and clients without JavaScript are missed, so this undercounts",
       },
       {
         step: 2,
@@ -84,8 +86,8 @@ export function trafficPayload() {
         unit: "users",
         tracked: true,
         count: 184,
-        // No rate: the step above is not counted, so there is no denominator.
-        rate_from_previous: null,
+        // 184 of 1420, to one decimal.
+        rate_from_previous: 13.0,
         note: null,
       },
       {
@@ -237,6 +239,40 @@ export function trafficPayload() {
       }),
     ],
 
+    /**
+     * Where those 1420 visits came from. The rows fall well short of 1420,
+     * because a visit only appears in a column when it carried that property:
+     * the panel's own coverage line is what explains the gap, and a fixture
+     * whose columns summed to the funnel's step 1 would never exercise it.
+     *
+     * `countries` is EMPTY on purpose. It is the state of production today —
+     * the domain is DNS-only on Cloudflare, so the `cf-ipcountry` header is
+     * never sent — and the one empty state on this page that must not read as
+     * "nobody visited". A fixture that filled it in would photograph a column
+     * that does not exist yet.
+     */
+    visits: {
+      referrers: [
+        { host: "news.ycombinator.com", count: 341 },
+        { host: "www.google.com", count: 228 },
+        { host: "www.reddit.com", count: 146 },
+        { host: "t.co", count: 61 },
+        { host: "mumsnet.com", count: 36 },
+      ],
+      countries: [],
+      devices: [
+        { device: "mobile", count: 806 },
+        { device: "desktop", count: 559 },
+        { device: "tablet", count: 55 },
+      ],
+      // DELIBERATELY MORE than the 812 the five rows above add up to. Rails counts
+      // this ungrouped over every visit that carried a referrer, and the list is
+      // capped at ten hosts, so the two figures diverge in reality the moment
+      // there is a tail. A fixture where they matched would let the page go back
+      // to summing the rows without a single test noticing.
+      referred_count: 903,
+    },
+
     // 45 coded failures plus 5 with no code = the 50 failed texts in the weeks
     // above. The shares are of 50, so the five rows add up to 90%, not 100.
     failures: {
@@ -268,12 +304,13 @@ export function emptyTrafficPayload() {
     ...payload,
     funnel: payload.funnel.map((step) => ({
       ...step,
-      count: step.tracked ? 0 : null,
+      count: 0,
       rate_from_previous: null,
     })),
     median_hours_to_first_text: null,
     median_hours_sample: 0,
     signed_in_without_house: 0,
+    visits: { referrers: [], countries: [], devices: [], referred_count: 0 },
     weeks: payload.weeks.map((w) => ({
       ...w,
       texts_sent: 0,

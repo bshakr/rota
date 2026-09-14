@@ -1,8 +1,11 @@
 # One thing that happened, and nothing about who it happened to.
 #
 # This is the whole analytics store. There is no third party, no SDK, no script in the page, and no
-# visitor identity: no device id, no session id, no analytics cookie. What is kept is a name from a
-# fixed allowlist, a house when the event belongs to one, and a small bag of allowlisted properties.
+# visitor identity: no device id, no session id, no analytics cookie, no IP address, no user agent.
+# What is kept is a name from a fixed allowlist, a house when the event belongs to one, and a small
+# bag of allowlisted properties. One of those properties is a device CLASS — three words, one of
+# which every visit is — which is the opposite of a device id: an id tells two visitors apart and a
+# class puts a third of the internet in one bucket.
 # The funnel is therefore counted in aggregate and can never be replayed as one person's journey,
 # which is a deliberate limit rather than a missing feature — and it is why the site needs no consent
 # banner.
@@ -46,9 +49,21 @@ class AnalyticsEvent < ApplicationRecord
              FIRST_ROTA_SAVED, FIRST_MEMBER_ADDED, FIRST_TEXT_DELIVERED, FIRST_MEMBER_LINK_OPENED ].freeze
 
   # Every property any event may carry, and there will never be one that is not on this list. A
-  # campaign label, a CTA position, a path, and the member id that makes "two housemates opened"
-  # countable. No names, no phone numbers, no tokens, no calendar URLs, no free text.
-  PROPERTY_KEYS = %w[position path ref utm_source utm_medium utm_campaign utm_content member_id].freeze
+  # campaign label, a CTA position, a path, the member id that makes "two housemates opened"
+  # countable, and three coarse facts about a visit: the HOST that linked to us, the visitor's
+  # COUNTRY as two letters, and whether they came on a phone, a tablet or a computer. No names, no
+  # phone numbers, no tokens, no calendar URLs, no free text.
+  #
+  # Those last three are the ones worth being explicit about, because they are the ones that sound
+  # like tracking and are not. Each is COARSE and IDENTIFIER-FREE: a host is a site rather than a
+  # person, a country is one of about two hundred buckets, and a device class is one of three words.
+  # None of them arrives with anything to join on — this table holds no visitor id, no session id, no
+  # cookie and no IP address — so two rows written by one person still cannot be told apart from two
+  # rows written by two, however many of the three each carries. The referring URL's path and query
+  # are dropped in the browser before the event is sent, because those are where a search term or an
+  # email address would be; a host cannot hold either.
+  PROPERTY_KEYS = %w[position path ref utm_source utm_medium utm_campaign utm_content member_id
+                     referrer_host country device].freeze
 
   # Long enough for any real campaign name, short enough that the column can never become storage.
   MAX_VALUE_LENGTH = 200
@@ -56,8 +71,36 @@ class AnalyticsEvent < ApplicationRecord
   # The homepage has exactly three calls to action.
   CTA_POSITIONS = %w[hero closing header].freeze
 
+  # Phone, tablet or computer, and nothing finer. A screen size or an OS build would each narrow a
+  # visitor down far better than they would answer the one question worth asking of this column.
+  # Mirrors DEVICE_CLASSES in apps/web/src/lib/analytics.ts, which is where the three are decided
+  # from the request headers; analytics.test.ts asserts the two lists have not drifted apart.
+  DEVICE_CLASSES = %w[mobile tablet desktop].freeze
+
+  # A hostname, and nothing that is merely shaped like one: labels of letters, digits and hyphens,
+  # each starting and ending in an alphanumeric, joined by dots, with the optional port that
+  # JavaScript's `URL.host` leaves on. Anchored with \A and \z rather than ^ and $, which in Ruby
+  # match either side of a NEWLINE and would let a hostname on the first line carry anything at all
+  # on the second.
+  HOSTNAME = /\A[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*(?::\d{1,5})?\z/
+
+  # ISO 3166-1 alpha-2, as Cloudflare's `cf-ipcountry` sends it.
+  COUNTRY_CODE = /\A[A-Z]{2}\z/
+
+  # Cloudflare's own words for "could not tell" and "came out of Tor". Neither is a country, and a
+  # bar labelled with one on the traffic page would be a bar about nothing. The web route drops them
+  # too; this is the second pass, on the side that knows what a ROW may contain.
+  NON_COUNTRIES = %w[XX T1].freeze
+
   # How long an anonymous event is kept. A house's own events are kept for as long as the house is.
-  ANONYMOUS_RETENTION = 90.days
+  #
+  # A hundred and eighty days, because the super admin traffic page offers a 90-day window and
+  # pruning at 90 clipped the far edge of it: the oldest bucket of the longest range was already
+  # losing rows to the pruner while the page was still drawing it. Twice the longest window leaves
+  # room for that range to be read in full, and for this year's figure to be held against last
+  # quarter's, without the table ever becoming a place anybody could look somebody up — there is
+  # nothing in a row to look up with.
+  ANONYMOUS_RETENTION = 180.days
 
   belongs_to :group, optional: true
 
@@ -90,14 +133,16 @@ class AnalyticsEvent < ApplicationRecord
     end
 
     # Allowlist in, allowlist out. Anything not named here is discarded rather than rejected: losing
-    # one property is better than losing the event that carried it.
+    # one property is better than losing the event that carried it. The same answer applies one level
+    # down, to a value on the list whose SHAPE is wrong: a junk country costs the event its country,
+    # never the event.
     def sanitise_properties(raw)
       hash = raw.respond_to?(:to_unsafe_h) ? raw.to_unsafe_h : raw
       return {} unless hash.respond_to?(:[])
 
       PROPERTY_KEYS.each_with_object({}) do |key, out|
-        value = clean_value(hash[key].nil? ? hash[key.to_sym] : hash[key])
-        out[key] = value unless value.nil?
+        value = normalise(key, clean_value(hash[key].nil? ? hash[key.to_sym] : hash[key]))
+        out[key] = value if !value.nil? && permitted?(key, value)
       end
     end
 
@@ -114,6 +159,44 @@ class AnalyticsEvent < ApplicationRecord
       when String then value.strip[0, MAX_VALUE_LENGTH].presence
       when Integer, true, false then value
       end
+    end
+
+    # One storage form per key, decided here rather than trusted from the sender. Two rows saying
+    # "Reddit.com" and "reddit.com" are one referrer and must not draw two bars, and the same goes
+    # for "gb" and "GB".
+    def normalise(key, value)
+      return value unless value.is_a?(String)
+
+      case key
+      when "referrer_host" then value.downcase
+      when "country" then value.upcase
+      else value
+      end
+    end
+
+    # The per-key check, for the keys whose values have a shape rather than only a length.
+    #
+    # `position` is deliberately not here. Its allowlist lives on the Next route, where a CTA press is
+    # made, and a second copy of a closed set of three is two lists to keep in step for no gain. The
+    # three below are different: they arrive from the open internet and land on a chart an operator
+    # reads, so the shape is checked on both sides of the hop.
+    def permitted?(key, value)
+      case key
+      when "referrer_host" then string_matching?(value, HOSTNAME)
+      when "country" then string_matching?(value, COUNTRY_CODE) && NON_COUNTRIES.exclude?(value)
+      when "device" then DEVICE_CLASSES.include?(value)
+      else true
+      end
+    end
+
+    # The type check is load-bearing, not belt and braces. `clean_value` above lets an Integer and a
+    # boolean through untouched — `member_id` needs that — and the Next route permits a JSON number
+    # anywhere a string is allowed, so `country: 44` really does reach this method. Calling `match?`
+    # on it would raise NoMethodError, `.record`'s blanket rescue would catch it, and the whole event
+    # would be dropped with a line in the log: exactly the outcome the rest of this class exists to
+    # avoid. A junk country costs the event its country, never the event.
+    def string_matching?(value, pattern)
+      value.is_a?(String) && value.match?(pattern)
     end
   end
 

@@ -78,19 +78,67 @@ RSpec.describe SuperAdmin::Traffic do
   end
 
   describe "the funnel" do
-    it "says the landing step is not tracked rather than reporting it as zero" do
+    it "counts the landing views inside the window" do
+      2.times { create(:analytics_event, name: "landing_view", occurred_at: now - 2.days) }
+
       step = funnel_step("landing_views")
 
       expect(step[:step]).to eq(1)
-      expect(step[:tracked]).to be(false)
-      expect(step[:count]).to be_nil
-      expect(step[:note]).to eq("not tracked yet")
+      expect(step[:tracked]).to be(true)
+      expect(step[:count]).to eq(2)
+    end
+
+    it "leaves out a landing view from before the window and one from after it" do
+      create(:analytics_event, name: "landing_view", occurred_at: now - 31.days)
+      create(:analytics_event, name: "landing_view", occurred_at: now + 1.hour)
+      create(:analytics_event, name: "landing_view", occurred_at: now - 2.days)
+
+      expect(funnel_step("landing_views")[:count]).to eq(1)
+    end
+
+    # Inclusive at both ends, like every other step: the Window comment says so and a row stamped
+    # exactly on a boundary is counted once, in this window.
+    it "counts a landing view stamped on either edge of the window" do
+      create(:analytics_event, name: "landing_view", occurred_at: now - 30.days)
+      create(:analytics_event, name: "landing_view", occurred_at: now)
+
+      expect(funnel_step("landing_views")[:count]).to eq(2)
+    end
+
+    it "counts landing views and no other event name" do
+      create(:analytics_event, name: "landing_view", occurred_at: now - 1.day)
+      create(:analytics_event, name: "cta_click", occurred_at: now - 1.day)
+      create(:analytics_event, name: "signin_started", occurred_at: now - 1.day)
+
+      expect(funnel_step("landing_views")[:count]).to eq(1)
+    end
+
+    # Zero, not nil. The step was counted and the answer was none, which is a different fact from
+    # the "not tracked yet" this step used to publish before PR #44 gave it a source.
+    it "reports nobody visiting as zero rather than as an uncounted step" do
+      step = funnel_step("landing_views")
+
+      expect(step[:tracked]).to be(true)
+      expect(step[:count]).to eq(0)
       expect(step[:rate_from_previous]).to be_nil
     end
 
-    it "has no rate for the sign-in step, because the step above it has no number" do
+    it "says in the payload what step 1 is counted from, because it is a browser count" do
+      expect(funnel_step("landing_views")[:note]).to eq(described_class::LANDING_VIEW_NOTE)
+      expect(funnel_step("signed_in")[:note]).to be_nil
+    end
+
+    it "rates the sign-in step against the landing views above it" do
+      4.times { create(:analytics_event, name: "landing_view", occurred_at: now - 2.days) }
       create(:sign_in, created_at: now - 1.day)
 
+      expect(funnel_step("signed_in")[:rate_from_previous]).to eq(25.0)
+    end
+
+    it "has no rate for the sign-in step when nothing landed in the window" do
+      create(:sign_in, created_at: now - 1.day)
+
+      expect(funnel_step("landing_views")[:count]).to eq(0)
       expect(funnel_step("signed_in")[:rate_from_previous]).to be_nil
     end
 
@@ -512,6 +560,89 @@ RSpec.describe SuperAdmin::Traffic do
     end
   end
 
+  # Under the funnel: where step 1's visits actually came from. Three columns, each the top values of
+  # one coarse property on the landing views in the window.
+  describe "where the visits came from" do
+    def view(at: now - 1.day, **properties)
+      create(:analytics_event, name: "landing_view", occurred_at: at,
+                               properties: AnalyticsEvent.sanitise_properties(properties))
+    end
+
+    it "lists the referrer hosts, countries and device classes, commonest first" do
+      2.times { view(referrer_host: "reddit.com", country: "GB", device: "mobile") }
+      view(referrer_host: "news.ycombinator.com", country: "US", device: "desktop")
+
+      visits = result[:visits]
+
+      expect(visits[:referrers]).to eq([
+        { host: "reddit.com", count: 2 },
+        { host: "news.ycombinator.com", count: 1 }
+      ])
+      expect(visits[:countries]).to eq([ { code: "GB", count: 2 }, { code: "US", count: 1 } ])
+      expect(visits[:devices]).to eq([ { device: "mobile", count: 2 }, { device: "desktop", count: 1 } ])
+    end
+
+    # The missing rows are not bucketed here. Step 1 above is the total they are all shares of, so
+    # the gap between the funnel's count and a column's sum IS the "we could not see" figure.
+    it "leaves out a view the property is missing from rather than giving it a row" do
+      view(device: "mobile")
+      view(referrer_host: "reddit.com", device: "mobile")
+
+      expect(funnel_step("landing_views")[:count]).to eq(2)
+      expect(result[:visits][:referrers]).to eq([ { host: "reddit.com", count: 1 } ])
+      expect(result[:visits][:countries]).to be_empty
+    end
+
+    it "counts the landing views and no other event name" do
+      view(referrer_host: "reddit.com")
+      create(:analytics_event, name: "cta_click", occurred_at: now - 1.day,
+                               properties: { "referrer_host" => "reddit.com" })
+
+      expect(result[:visits][:referrers]).to eq([ { host: "reddit.com", count: 1 } ])
+    end
+
+    it "leaves out a view from outside the window" do
+      view(at: now - 31.days, referrer_host: "reddit.com")
+      view(at: now - 2.days, referrer_host: "news.ycombinator.com")
+
+      expect(result[:visits][:referrers]).to eq([ { host: "news.ycombinator.com", count: 1 } ])
+    end
+
+    it "shows the ten commonest referrers and no more" do
+      12.times { |index| view(referrer_host: "host#{index}.example.com") }
+
+      expect(result[:visits][:referrers].length).to eq(described_class::VISIT_ROWS_SHOWN)
+    end
+
+    it "publishes three empty lists when nobody visited" do
+      expect(result[:visits]).to eq(referrers: [], countries: [], devices: [], referred_count: 0)
+    end
+
+    # The figure the page's own sentence is built from, and the reason it is not the sum of the ten
+    # rows above: the eleventh host and everything under it is outside the LIMIT, so a total read off
+    # the visible column would silently start under-reporting the moment an eleventh appears.
+    it "counts every visit that carried a referrer, not just the ten it shows" do
+      12.times { |index| view(referrer_host: "host#{index}.example.com") }
+      3.times { view(device: "mobile") }
+
+      visits = result[:visits]
+
+      expect(visits[:referrers].length).to eq(described_class::VISIT_ROWS_SHOWN)
+      expect(visits[:referrers].sum { |row| row[:count] }).to eq(10)
+      expect(visits[:referred_count]).to eq(12)
+      expect(funnel_step("landing_views")[:count]).to eq(15)
+    end
+
+    it "counts a referrer only inside the window, and only on a landing view" do
+      view(at: now - 31.days, referrer_host: "reddit.com")
+      create(:analytics_event, name: "cta_click", occurred_at: now - 1.day,
+                               properties: { "referrer_host" => "reddit.com" })
+      view(referrer_host: "reddit.com")
+
+      expect(result[:visits][:referred_count]).to eq(1)
+    end
+  end
+
   describe "the number of questions it asks the database" do
     def queries_during
       statements = []
@@ -579,7 +710,7 @@ RSpec.describe SuperAdmin::Traffic do
     # page for a minute if the key were not versioned. Asserted rather than trusted, because the
     # suffix reads as clutter to anyone who does not know what it is for.
     it "versions the key, so a deploy that changes the payload cannot serve the old shape" do
-      expect(described_class.cache_key("30d")).to eq("super_admin/traffic/v1/30d")
+      expect(described_class.cache_key("30d")).to eq("super_admin/traffic/v2/30d")
     end
 
     it "names nobody in the key: every operator sees the same numbers" do

@@ -3,10 +3,13 @@ import type { BarTone } from "@/components/charts/bars";
 import {
   DEFAULT_TRAFFIC_RANGE,
   TRAFFIC_RANGES,
+  type DeviceClass,
   type TextKind,
   type TrafficFunnelStep,
   type TrafficRange,
+  type VisitDimension,
 } from "./api/super-admin-traffic";
+import { formatCount } from "./charts";
 import { formatCalendarDate } from "./date";
 import { FUNNEL_STEP_LABELS, formatRate, plural } from "./hq-overview";
 
@@ -149,6 +152,81 @@ export function medianHoursNote(hours: number | null, sample: number): string {
 export function leakNote(count: number): string {
   if (count === 0) return "Everybody who signed in made a house";
   return "Got through the door and no further";
+}
+
+// --- Where the visits came from ---------------------------------------------
+
+/**
+ * The three columns under the funnel, and what each says when it is empty.
+ *
+ * The empty states are the point of this constant. An empty column has three
+ * quite different causes here and they must not read alike:
+ *
+ *   referrers  nobody was linked here, or everybody arrived directly. A direct
+ *              visit carries no referrer at all, so an empty column is normal
+ *              for a site whose traffic is word of mouth.
+ *   countries  NOT a fact about traffic. The `cf-ipcountry` header only arrives
+ *              once the domain is proxied through Cloudflare, and it is DNS-only
+ *              there today, so this column is empty however many people visit.
+ *              Saying "no countries" would read as "nobody visited", which is
+ *              false and is exactly the misreading the funnel's step 1 above it
+ *              would then confirm.
+ *   devices    nobody visited, near enough: every request carries a user agent
+ *              or a client hint, so a visit almost always lands in one of three
+ *              buckets.
+ */
+export const VISIT_COLUMNS: Record<VisitDimension, { heading: string; empty: string }> = {
+  referrers: {
+    heading: "Which site linked here",
+    empty: "Nothing linked here in this window. A visit typed in or tapped from a text carries no referrer.",
+  },
+  countries: {
+    heading: "Country",
+    empty: "Country arrives once the site is behind the Cloudflare proxy. The header is not sent while the domain is DNS-only there.",
+  },
+  devices: {
+    heading: "Device",
+    empty: "No visit in this window.",
+  },
+};
+
+/**
+ * The three device classes in the product's own words, which are the words the
+ * privacy page uses for the same three: a phone, a tablet or a computer.
+ */
+export const DEVICE_LABELS: Record<DeviceClass, string> = {
+  mobile: "Phone",
+  tablet: "Tablet",
+  desktop: "Computer",
+};
+
+/**
+ * The line under the three columns: how much of step 1 they could account for.
+ *
+ * Every column leaves out the visits its property was missing from, so the rows
+ * never add up to the funnel's first bar, and a reader who notices that is owed
+ * the reason rather than left to assume the page is broken. One decimal, like
+ * every other rate here.
+ *
+ * `referred` MUST be the payload's `visits.referred_count` and never the sum of
+ * the referrer rows. The list stops at ten hosts, so from the eleventh onwards a
+ * summed figure is smaller than the truth and looks exactly as plausible.
+ *
+ * And the sentence stops at what is known. It does NOT say the remaining visits
+ * were direct, because a missing referrer has at least three causes that cannot
+ * be told apart from a stored row: somebody typed the address or opened it from
+ * a text, the referring page sent no referrer at all under its own policy, or
+ * the visit came from one of our own pages and the browser dropped it before the
+ * event was sent. "Arrived from another site" is the only half of that anybody
+ * can act on.
+ */
+export function visitsCoverageNote(referred: number, views: number): string {
+  if (views === 0) return "No visit was counted in this window.";
+
+  const share = formatRate((referred / views) * 100);
+  const counted = `${formatCount(referred)} of ${formatCount(views)}`;
+
+  return `${counted} ${plural(views, "visit", "visits")} arrived from another site (${share}). The rest carried no referrer, which can mean a typed address, a link from a text, or a browser that withheld it.`;
 }
 
 // --- The weekly series ------------------------------------------------------

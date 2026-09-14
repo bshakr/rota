@@ -95,10 +95,80 @@ RSpec.describe AnalyticsEvent do
     end
   end
 
+  # The three coarse facts about a visit, added with the traffic page's "Where visits come from"
+  # panel. Each has a SHAPE as well as a length, and a value of the wrong shape costs the event that
+  # property rather than the event: a chart an operator reads must not be able to grow a bar labelled
+  # with whatever a stranger posted.
+  describe "the visit properties" do
+    def properties_for(**props)
+      described_class.record(described_class::LANDING_VIEW, **props)
+      described_class.last.properties
+    end
+
+    it "keeps a referrer host, a country and a device class" do
+      expect(properties_for(referrer_host: "news.ycombinator.com", country: "GB", device: "mobile"))
+        .to eq("referrer_host" => "news.ycombinator.com", "country" => "GB", "device" => "mobile")
+    end
+
+    it "accepts a host with a port, which is what URL.host hands back in development" do
+      expect(properties_for(referrer_host: "localhost:3001")).to eq("referrer_host" => "localhost:3001")
+    end
+
+    # One storage form per key. Two rows saying "Reddit.com" and "reddit.com" are one referrer and
+    # must not draw two bars.
+    it "stores one spelling of a host and of a country, whatever case it arrived in" do
+      expect(properties_for(referrer_host: "Reddit.COM", country: "gb"))
+        .to eq("referrer_host" => "reddit.com", "country" => "GB")
+    end
+
+    it "drops a referrer that is a whole URL, or a sentence, rather than a host" do
+      expect(properties_for(referrer_host: "https://reddit.com/r/uk?q=me@example.com")).to eq({})
+      expect(properties_for(referrer_host: "look at this")).to eq({})
+      expect(properties_for(referrer_host: "-leading-hyphen.com")).to eq({})
+    end
+
+    # \A and \z rather than ^ and $: in Ruby those match either side of a newline, so a pattern
+    # anchored with them would take a hostname on the first line and anything at all on the second.
+    it "drops a host that is only a hostname until the first newline" do
+      expect(properties_for(referrer_host: "reddit.com\nand a second line")).to eq({})
+    end
+
+    it "drops a country that is not two letters, and the markers that are not countries" do
+      expect(properties_for(country: "GBR")).to eq({})
+      expect(properties_for(country: "United Kingdom")).to eq({})
+      expect(properties_for(country: "XX")).to eq({})
+      expect(properties_for(country: "T1")).to eq({})
+    end
+
+    it "drops a device class nobody defined" do
+      expect(properties_for(device: "fridge")).to eq({})
+      expect(properties_for(device: "Mobile")).to eq({})
+    end
+
+    it "keeps the properties that were fine and drops only the one that was not" do
+      expect(properties_for(utm_source: "reddit", country: "nonsense", device: "desktop"))
+        .to eq("utm_source" => "reddit", "device" => "desktop")
+    end
+
+    # `clean_value` lets an Integer and a boolean through untouched, because `member_id` needs that,
+    # and JSON has numbers, so a body saying `"country": 44` really does arrive here. A regex check
+    # on a number raises, `.record` rescues everything, and the WHOLE EVENT would vanish rather than
+    # the one bad property. That is the opposite of this class's rule and would take the landing view
+    # with it.
+    it "drops a number where a country or a host belongs, and still writes the event" do
+      expect(described_class.record(described_class::LANDING_VIEW,
+        path: "/", country: 44, referrer_host: 1234, device: true)).to be(true)
+
+      expect(described_class.last.properties).to eq("path" => "/")
+    end
+  end
+
   describe ".prune_anonymous" do
     it "deletes anonymous events past the retention window and keeps a house's own" do
-      old_anonymous = described_class.create!(name: described_class::LANDING_VIEW, occurred_at: 100.days.ago)
-      recent_anonymous = described_class.create!(name: described_class::LANDING_VIEW, occurred_at: 10.days.ago)
+      old_anonymous = described_class.create!(name: described_class::LANDING_VIEW, occurred_at: 200.days.ago)
+      # Inside the window and older than the 90 days this used to keep: the traffic page's longest
+      # range reaches back here, which is the reason the retention was doubled.
+      recent_anonymous = described_class.create!(name: described_class::LANDING_VIEW, occurred_at: 100.days.ago)
       old_house = described_class.create!(name: described_class::HOUSE_NAMED, group: group, occurred_at: 400.days.ago)
 
       expect(described_class.prune_anonymous).to eq(1)

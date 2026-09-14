@@ -42,7 +42,7 @@ module SuperAdmin
     # confusing way to break a dashboard. Bump it whenever the payload changes — its shape OR its
     # values (a step that starts counting something different is the case worth naming, because the
     # old entry stays perfectly parseable and is simply wrong).
-    CACHE_KEY = "super_admin/traffic/v1".freeze
+    CACHE_KEY = "super_admin/traffic/v2".freeze
     CACHE_TTL = 60.seconds
 
     # The plan's eight steps, in order, as [ key, unit ].
@@ -65,14 +65,44 @@ module SuperAdmin
       [ "first_cover", "houses" ]
     ].freeze
 
-    # Step 1 needs the `page_views` table that is Phase 6
-    # (https://linear.app/bloombase/issue/BLO-1668's last phase), and anonymous landing traffic
-    # cannot be backfilled. So the step is published with a null count and this note rather than a
-    # zero: "nobody visited" and "nobody counted" are opposite facts and must not render alike.
-    UNTRACKED_NOTE = "not tracked yet".freeze
+    # Step 1 is counted, and this says what it is counted FROM so nobody reads it as a server log.
+    #
+    # The plan's Phase 6 wanted a `page_views` table written from the server. What shipped instead
+    # (https://github.com/bshakr/rota/pull/44) is the `landing_view` row the page's own script posts
+    # on mount, which means the step misses everything that never ran the script: crawlers, feed
+    # readers, previews, and anybody with JavaScript off. So it UNDERCOUNTS, which is the opposite of
+    # the error a server-side counter would have made — that one would have counted every bot that
+    # ever touched the homepage. An operator comparing this bar against a host's request log needs
+    # to know which way it leans before they read anything into the gap.
+    LANDING_VIEW_NOTE = "browser visits only: crawlers and clients without JavaScript are missed, so this undercounts".freeze
+
+    # The steps that publish a caveat alongside their count. Keyed by step so a second one can be
+    # added without the funnel builder growing a conditional per step.
+    STEP_NOTES = { "landing_views" => LANDING_VIEW_NOTE }.freeze
 
     # Enough to see the shape of a delivery problem without turning the page into a Twilio manual.
     FAILURE_CODES_SHOWN = 5
+
+    # The three coarse properties a landing view carries, as the payload spells them, mapped to the
+    # key each row publishes its value under. The page draws one column per entry.
+    VISIT_DIMENSIONS = {
+      "referrers" => { property: "referrer_host", key: :host },
+      "countries" => { property: "country", key: :code },
+      "devices" => { property: "device", key: :device }
+    }.freeze
+
+    # A long tail of one-view referrers is not a finding. Ten is a column somebody reads.
+    VISIT_ROWS_SHOWN = 10
+
+    # The fourth branch of VISITS_SQL, which is not a column on the page: an UNGROUPED count of the
+    # visits that carried a referrer at all.
+    #
+    # It exists because the ten rows above cannot be added up into one. The eleventh referrer and
+    # everything below it is outside the LIMIT, so a sentence built by summing the visible rows would
+    # under-report the moment an eleventh host appears and would quietly keep doing it. This figure
+    # is counted over every matching row, so "how many arrived from another site" is a fact about the
+    # window rather than a fact about the top of a list.
+    REFERRED_DIMENSION = "referred".freeze
 
     # Every kind, from the model's own constant, so a fourth kind of text cannot silently fall out
     # of the stacked bars.
@@ -90,8 +120,15 @@ module SuperAdmin
     # means by `beginning_of_week`, and stable across a clocks change because nothing in it is
     # local time. The spec proves that across both of Europe/London's 2026 transitions.
 
-    # Steps 5 to 8, in one query: the number of houses whose FIRST such event falls inside the
-    # window.
+    # Step 1 and steps 5 to 8, in one query: the landing views inside the window, and the number of
+    # houses whose FIRST such event falls inside the window.
+    #
+    # Step 1 rides along here rather than in its own round trip because it is one grouped count and
+    # the round-trip budget is what spec/queries/super_admin/traffic_spec.rb holds this file to. It
+    # is not a cohort and does not pretend to be: a visit is not a house, there is nothing earlier to
+    # be the first of, and `landing_view` is one of the four anonymous names, so every row of it has
+    # a NULL group by construction (AnalyticsEvent#group_matches_name) and there is nothing to group
+    # by. `occurred_at`, not `created_at` — the browser's moment, which is what the window means.
     #
     # Cohort, not "any". The plan asks for "a funnel of counts within the range, each with its rate
     # from the previous step", and a rate only means anything if each step counts houses arriving at
@@ -112,7 +149,13 @@ module SuperAdmin
     # users with a sign-in in the window, which is the "who turned up" figure the plan's own wording
     # asks for and the denominator the steps below it are rated against.
     FUNNEL_SQL = <<~SQL.freeze
-      SELECT 'added_member' AS step, COUNT(*) AS count FROM (
+      SELECT 'landing_views' AS step, COUNT(*) AS count
+      FROM analytics_events
+      WHERE analytics_events.name = 'landing_view'
+        AND analytics_events.occurred_at >= :starts_at
+        AND analytics_events.occurred_at <= :ends_at
+      UNION ALL
+      SELECT 'added_member', COUNT(*) FROM (
         SELECT members.group_id
         FROM members
         GROUP BY members.group_id
@@ -257,6 +300,76 @@ module SuperAdmin
       GROUP BY week_start
     SQL
 
+    # Where the visits in the window came from, three ways, in one round trip.
+    #
+    # Landing views only. A `cta_click` fires on a page whose referrer is our own, and counting those
+    # would put Rota Monster at the top of its own referrer table.
+    #
+    # A row with the property MISSING is left out of every branch rather than bucketed. The three
+    # columns each publish what they could see, and the funnel's own step 1 above them is the total
+    # they are shares of, so the gap between the two IS the missing count and does not need a row of
+    # its own. That matters most for `country`, which is absent from every row today: the domain is
+    # still DNS-only on Cloudflare, the `cf-ipcountry` header is not sent, and the page says so in
+    # that column's empty state rather than drawing an empty chart and leaving it unexplained.
+    #
+    # The LIMIT is a constant of this file rather than a bind, because it is not a parameter: no
+    # caller chooses it and no request reaches it. Every value that DOES come from outside is bound
+    # by name, like everywhere else here.
+    VISITS_SQL = <<~SQL.freeze
+      (
+        SELECT 'referrers' AS dimension,
+               analytics_events.properties ->> 'referrer_host' AS value,
+               COUNT(*) AS count
+        FROM analytics_events
+        WHERE analytics_events.name = 'landing_view'
+          AND analytics_events.occurred_at >= :starts_at
+          AND analytics_events.occurred_at <= :ends_at
+          AND analytics_events.properties ->> 'referrer_host' IS NOT NULL
+        GROUP BY 2
+        ORDER BY COUNT(*) DESC, 2 ASC
+        LIMIT #{VISIT_ROWS_SHOWN}
+      )
+      UNION ALL
+      (
+        SELECT 'countries',
+               analytics_events.properties ->> 'country',
+               COUNT(*)
+        FROM analytics_events
+        WHERE analytics_events.name = 'landing_view'
+          AND analytics_events.occurred_at >= :starts_at
+          AND analytics_events.occurred_at <= :ends_at
+          AND analytics_events.properties ->> 'country' IS NOT NULL
+        GROUP BY 2
+        ORDER BY COUNT(*) DESC, 2 ASC
+        LIMIT #{VISIT_ROWS_SHOWN}
+      )
+      UNION ALL
+      (
+        SELECT 'referred',
+               NULL::text,
+               COUNT(*)
+        FROM analytics_events
+        WHERE analytics_events.name = 'landing_view'
+          AND analytics_events.occurred_at >= :starts_at
+          AND analytics_events.occurred_at <= :ends_at
+          AND analytics_events.properties ->> 'referrer_host' IS NOT NULL
+      )
+      UNION ALL
+      (
+        SELECT 'devices',
+               analytics_events.properties ->> 'device',
+               COUNT(*)
+        FROM analytics_events
+        WHERE analytics_events.name = 'landing_view'
+          AND analytics_events.occurred_at >= :starts_at
+          AND analytics_events.occurred_at <= :ends_at
+          AND analytics_events.properties ->> 'device' IS NOT NULL
+        GROUP BY 2
+        ORDER BY COUNT(*) DESC, 2 ASC
+        LIMIT #{VISIT_ROWS_SHOWN}
+      )
+    SQL
+
     # The two weekly counts that are plain counts, in one round trip. `members_last_seen` is
     # housemates who opened their magic link — the only signal that the link ever arrived — and
     # `new_houses` is the top of the funnel drawn week by week.
@@ -346,6 +459,8 @@ module SuperAdmin
         median_hours_to_first_text: median(hours_to_first_text),
         median_hours_sample: hours_to_first_text.length,
         signed_in_without_house: signed_in_without_house,
+        # Under the funnel: where step 1's visits actually came from.
+        visits: visits,
         weeks: weeks,
         failures: failures
       }
@@ -367,7 +482,7 @@ module SuperAdmin
           tracked: !count.nil?,
           count: count,
           rate_from_previous: rate(count, previous),
-          note: count.nil? ? UNTRACKED_NOTE : nil
+          note: STEP_NOTES[key]
         }
         previous = count
         step
@@ -379,8 +494,6 @@ module SuperAdmin
         .to_h { |row| [ row["step"], row["count"].to_i ] }
 
       {
-        # Null, not zero. See UNTRACKED_NOTE.
-        "landing_views" => nil,
         "signed_in" => SignIn.where(created_at: window.range).distinct.count(:user_id),
         "made_house" => Group.where(created_at: window.range).count,
         "confirmed_timezone" => Group.where(timezone_confirmed_at: window.range).count
@@ -438,6 +551,38 @@ module SuperAdmin
       SignIn.where(created_at: window.range)
         .where.not(user_id: GroupAdmin.select(:user_id))
         .distinct.count(:user_id)
+    end
+
+    # --- where the visits came from -----------------------------------------------------------------
+
+    # Three lists, each commonest first, each at most VISIT_ROWS_SHOWN long, plus the one figure that
+    # cannot be read off them.
+    #
+    # Sorted again in Ruby rather than trusted from the UNION. Each branch orders and limits itself,
+    # which is what keeps the long tail out of the round trip, but Postgres does not promise the
+    # order of a UNION's result and a column whose rows quietly reshuffled between two reads of the
+    # same data would be a chart nobody could compare with itself. Thirty rows is nothing to sort.
+    #
+    # `referred_count` is the ungrouped total described at REFERRED_DIMENSION: the page needs it to
+    # say how many visits arrived from another site, and summing the ten visible rows would have
+    # answered a different question from the eleventh host onwards.
+    def visits
+      rows = each_row(VISITS_SQL, "SuperAdmin::Traffic visits").group_by { |row| row["dimension"] }
+
+      lists = VISIT_DIMENSIONS.to_h do |dimension, spec|
+        list = rows.fetch(dimension, [])
+          .map { |row| [ row["value"], row["count"].to_i ] }
+          .sort_by { |value, count| [ -count, value ] }
+          .map { |value, count| { spec.fetch(:key) => value, count: count } }
+
+        [ dimension.to_sym, list ]
+      end
+
+      # One row, always, because the branch is a bare COUNT(*) with no GROUP BY. Summed rather than
+      # indexed so that a branch returning nothing at all reads as zero instead of raising.
+      lists.merge(
+        referred_count: rows.fetch(REFERRED_DIMENSION, []).sum { |row| row["count"].to_i }
+      )
     end
 
     # --- the weekly series ------------------------------------------------------------------------

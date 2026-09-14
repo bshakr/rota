@@ -106,8 +106,11 @@ const funnelStepSchema = z.object({
   unit: z.enum(FUNNEL_UNITS),
   /**
    * False means the step is not measured AT ALL — not that it measured zero.
-   * Only step 1 is untracked today (landing views need the `page_views` table
-   * that is the epic's last phase, and anonymous traffic cannot be backfilled).
+   * Every step is measured today: step 1 started counting `landing_view` events
+   * when https://github.com/bshakr/rota/pull/44 landed them. The flag stays in
+   * the payload because it is the invariant the refinement below leans on, and
+   * because a step that stops being countable must be able to say so rather
+   * than publish a confident zero.
    */
   tracked: z.boolean(),
   count: count.nullable(),
@@ -123,7 +126,12 @@ const funnelStepSchema = z.object({
    * funnel looks odd.
    */
   rate_from_previous: z.number().nullable(),
-  /** Rails' own words for an untracked step ("not tracked yet"); null otherwise. */
+  /**
+   * Rails' own caveat about what this step counted, or null when it needs none.
+   * Step 1 always carries one: landing views are posted by the page's own
+   * script, so crawlers and clients without JavaScript are missed and the figure
+   * undercounts. The page prints it verbatim rather than paraphrasing it.
+   */
   note: z.string().nullable(),
 });
 
@@ -163,6 +171,44 @@ const weekSchema = z.object({
   new_houses: count,
 });
 
+/**
+ * The three coarse properties a landing view carries, as the payload spells
+ * them. MUST stay in step with `SuperAdmin::Traffic::VISIT_DIMENSIONS`.
+ */
+export const VISIT_DIMENSIONS = ["referrers", "countries", "devices"] as const;
+export type VisitDimension = (typeof VISIT_DIMENSIONS)[number];
+
+/** One of `AnalyticsEvent::DEVICE_CLASSES`, which is the closed set Rails stores. */
+export const DEVICE_CLASSES = ["mobile", "tablet", "desktop"] as const;
+export type DeviceClass = (typeof DEVICE_CLASSES)[number];
+
+/**
+ * Where the visits in the window came from, three ways, commonest first and at
+ * most ten rows each.
+ *
+ * A visit the property is MISSING from is not in any of these lists, and that is
+ * deliberate rather than a gap: the funnel's first step above them is the total
+ * they are all shares of, so the difference between it and a column's sum is the
+ * "we could not see" figure without a row that would otherwise top every chart.
+ *
+ * `countries` is empty in production today. The domain is DNS-only on
+ * Cloudflare, so the `cf-ipcountry` header is never sent and no visit carries a
+ * country. That is a configuration fact, not an absence of traffic, and the
+ * page's empty state for that column has to say which.
+ *
+ * `referred_count` is NOT the sum of `referrers`, and the page must never
+ * compute it as one. The list is capped at ten hosts; this is every visit in the
+ * window that carried a referrer at all, counted ungrouped by Rails. From the
+ * eleventh host onwards the two diverge, and a sentence built from the visible
+ * rows would quietly start under-reporting without ever looking wrong.
+ */
+const visitsSchema = z.object({
+  referrers: z.array(z.object({ host: z.string(), count })).max(10),
+  countries: z.array(z.object({ code: z.string(), count })).max(10),
+  devices: z.array(z.object({ device: z.enum(DEVICE_CLASSES), count })).max(10),
+  referred_count: count,
+});
+
 const failuresSchema = z.object({
   /** Every failed text in the range, including the ones that carry no code. */
   total: count,
@@ -190,10 +236,10 @@ export const trafficSchema = z.object({
   generated_at: timestamp,
 
   /**
-   * All eight steps, always, in ladder order — an untracked step is published
-   * with a null count rather than omitted, so the page never renumbers the
-   * funnel. A short array would mean a step quietly stopped being counted, and
-   * a bar that is not there cannot look wrong.
+   * All eight steps, always, in ladder order — a step that ever stops being
+   * counted is published with a null count rather than omitted, so the page
+   * never renumbers the funnel. A short array would mean a step quietly stopped
+   * being counted, and a bar that is not there cannot look wrong.
    */
   funnel: z
     .array(funnelStepSchema)
@@ -244,6 +290,9 @@ export const trafficSchema = z.object({
   /** Signed in during the window and has no house at all, as of now. The leak. */
   signed_in_without_house: count,
 
+  /** Where the funnel's first step came from: referrer, country, device class. */
+  visits: visitsSchema,
+
   /**
    * Every week the window touches, oldest first, zero-filled. A chart with a
    * hole in it reads as missing data rather than as a quiet week.
@@ -271,6 +320,7 @@ export type SuperAdminTraffic = z.infer<typeof trafficSchema>;
 export type TrafficFunnelRow = z.infer<typeof funnelStepSchema>;
 export type TrafficWeek = z.infer<typeof weekSchema>;
 export type TrafficFailures = z.infer<typeof failuresSchema>;
+export type TrafficVisits = z.infer<typeof visitsSchema>;
 
 /**
  * The API answered, but not with the payload this page knows how to read.

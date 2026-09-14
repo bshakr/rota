@@ -151,4 +151,66 @@ RSpec.describe AnalyticsReport do
       expect(described_class.sources(days: 7, now: now)).to be_empty
     end
   end
+
+  describe ".visit_sources" do
+    def view(at: now - 1.day, **properties)
+      AnalyticsEvent.create!(name: AnalyticsEvent::LANDING_VIEW, occurred_at: at,
+                             properties: AnalyticsEvent.sanitise_properties(properties))
+    end
+
+    it "counts each coarse property of a landing view, commonest first" do
+      2.times { view(referrer_host: "reddit.com", country: "GB", device: "mobile") }
+      view(referrer_host: "news.ycombinator.com", country: "GB", device: "desktop")
+
+      sources = described_class.visit_sources(days: 7, now: now)
+
+      expect(sources["referrer_host"][:top]).to eq([
+        { value: "reddit.com", count: 2 },
+        { value: "news.ycombinator.com", count: 1 }
+      ])
+      expect(sources["country"][:top]).to eq([ { value: "GB", count: 3 } ])
+      expect(sources["device"][:top]).to eq([
+        { value: "mobile", count: 2 },
+        { value: "desktop", count: 1 }
+      ])
+    end
+
+    # The row that says what the table cannot see. A direct arrival has no referrer, and until the
+    # site is behind the Cloudflare proxy NO visit has a country — a table that quietly dropped both
+    # would read as "almost no traffic" rather than "we cannot tell where this is from".
+    it "counts the views a property is missing from rather than dropping them" do
+      view(referrer_host: "reddit.com")
+      2.times { view(device: "mobile") }
+
+      sources = described_class.visit_sources(days: 7, now: now)
+
+      expect(sources["referrer_host"]).to include(none: 2, total: 3)
+      expect(sources["country"]).to include(top: [], none: 3, total: 3)
+    end
+
+    it "shows the ten commonest and no more" do
+      12.times { |index| view(referrer_host: "host#{index}.example.com") }
+
+      expect(described_class.visit_sources(days: 7, now: now)["referrer_host"][:top].length).to eq(10)
+    end
+
+    it "leaves out a view from outside the window, and every other event name" do
+      view(at: now - 8.days, referrer_host: "reddit.com")
+      AnalyticsEvent.create!(name: AnalyticsEvent::CTA_CLICK, occurred_at: now - 1.day,
+                             properties: { "referrer_host" => "reddit.com" })
+      view(referrer_host: "news.ycombinator.com")
+
+      sources = described_class.visit_sources(days: 7, now: now)
+
+      expect(sources["referrer_host"][:top]).to eq([ { value: "news.ycombinator.com", count: 1 } ])
+      expect(sources["referrer_host"][:total]).to eq(1)
+    end
+
+    it "answers with three empty tables when nobody visited" do
+      sources = described_class.visit_sources(days: 7, now: now)
+
+      expect(sources.keys).to eq(%w[referrer_host country device])
+      expect(sources.values).to all(eq(top: [], none: 0, total: 0))
+    end
+  end
 end

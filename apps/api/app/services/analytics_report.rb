@@ -6,7 +6,7 @@
 #   funnel      how many reached each step, and what fraction of the step before it
 #   activation  THE number: houses with a text delivered AND two housemates who opened, within seven
 #               days of being named
-#   sources     which campaigns the named houses came from
+#   sources     which campaigns the named houses came from, and where the visits came from
 #
 # The logic lives here rather than in the rake tasks so it can be tested against seeded events. The
 # tasks are printers.
@@ -20,6 +20,14 @@ module AnalyticsReport
 
   # Two housemates, not one: one is the person who set the house up.
   OPENS_REQUIRED = 2
+
+  # The three coarse facts a landing view carries about the visit, in the order they are worth
+  # reading: which site sent them, roughly where they were, and what they were holding.
+  VISIT_DIMENSIONS = %w[referrer_host country device].freeze
+
+  # Enough to see where traffic is actually coming from. A long tail of one-view referrers is not a
+  # finding, and the (none) row and the total below each table say what the ten leave out.
+  VISIT_ROWS_SHOWN = 10
 
   module_function
 
@@ -89,6 +97,42 @@ module AnalyticsReport
       .tally
       .map { |(ref, utm_source), count| { ref: ref, utm_source: utm_source, count: count } }
       .sort_by { |row| [ -row[:count], row[:ref].to_s, row[:utm_source].to_s ] }
+  end
+
+  # Where the landing views in the window came from, one small table per coarse property.
+  #
+  # Landing views only. A `cta_click` fires on a page whose referrer is our own, and counting those
+  # would put Rota Monster at the top of its own referrer table; the other two properties ride on
+  # every anonymous event, but a visit is the unit anybody asks this question in.
+  #
+  # The MISSING count is published beside each table rather than dropped, because for two of the
+  # three it is the most important row on it. No referrer is a direct visit, which is usually the
+  # biggest single source a small site has; no country is every visit made today, because the domain
+  # is still DNS-only on Cloudflare and the header only arrives once traffic is proxied. A table that
+  # silently left those out would read as "we have almost no traffic" rather than "we cannot see
+  # where this traffic is from".
+  #
+  # One read, folded three ways in Ruby. This is a handful of rows per day and a rake task nobody
+  # runs in a loop; three GROUP BYs would be three round trips to say the same thing.
+  def visit_sources(days:, now: Time.current)
+    properties = AnalyticsEvent.named(AnalyticsEvent::LANDING_VIEW)
+      .since(now - days.days)
+      .pluck(:properties)
+
+    VISIT_DIMENSIONS.index_with do |key|
+      counts = properties.map { |row| row[key] }.tally
+      missing = counts.delete(nil).to_i
+
+      {
+        # Commonest first, then alphabetically, so two values with the same count never swap places
+        # between two runs of the same task.
+        top: counts.sort_by { |value, count| [ -count, value ] }
+          .first(VISIT_ROWS_SHOWN)
+          .map { |value, count| { value: value, count: count } },
+        none: missing,
+        total: properties.length
+      }
+    end
   end
 
   def activated?(named_event)
