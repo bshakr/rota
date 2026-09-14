@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_14_100400) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_14_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -217,6 +217,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_100400) do
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_sms_messages_on_created_at"
     t.index ["created_at"], name: "index_sms_messages_on_login_time", where: "((kind)::text = 'member_login'::text)"
+    t.index ["member_id", "status", "created_at", "id"], name: "index_sms_messages_on_delivery_log", order: { created_at: :desc, id: :desc }
     t.index ["member_id"], name: "index_sms_messages_on_member_id"
     t.index ["shift_id", "days_before"], name: "index_sms_messages_on_reminder_idempotency", unique: true, where: "((kind)::text = 'reminder'::text)"
     t.index ["shift_id"], name: "index_sms_messages_on_shift_id"

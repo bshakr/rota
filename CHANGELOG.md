@@ -22,6 +22,16 @@
   the first round trip; the house's rotas, its people, every upcoming turn, the failed texts and
   the calendar preview are the second, all in flight together, and a dashboard-shaped skeleton
   holds the page while they land. (#66)
+- Three trims to the API's request path. The delivery log's "show me the failures" query has an
+  index that matches it (`member_id, status, created_at DESC, id DESC`), so a house with 20,000
+  texts reads 87 buffers instead of 4,611. Rate-limit counters moved off the Solid Cache Postgres
+  database into a per-process memory store, and the duplicate Rack::Attack instance the initializer
+  was adding on top of the gem's own is gone. A member request resolves its token once instead of
+  twice, and the member schedule attaches the rotas and housemates it has already loaded to the
+  shifts instead of asking Postgres for them again: eleven queries down to seven. One payload
+  difference, and only one: two housemates who share a name now come back in a fixed order on the
+  member schedule, where before the ordering could not tell them apart and Postgres was free to
+  return them either way round. (#68)
 - Dropped the root `VERSION` file. Nothing read it, and it conflicted on every parallel pull
   request. (#55)
 - The mailer's default sender moved from `hello@rota.monster`, a domain that does not exist, to

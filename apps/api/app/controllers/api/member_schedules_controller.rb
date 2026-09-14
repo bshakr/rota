@@ -13,14 +13,23 @@ module Api
       group = current_member.group
       today = group.today
       rotas = visible_rotas(group)
+      # EVERY member of the house, active or not, because the two lists this feeds want different
+      # sets. The people list is the active ones; a shift can still name a departed housemate (see
+      # `upcoming_shifts`). One query answers both, and `active` is a column already on the row, so
+      # narrowing it here is a `select` and not a second trip.
+      #
+      # `:id` after `:name` because nothing stops two housemates sharing a name, and an ORDER BY that
+      # cannot tell them apart lets Postgres return them in either order, so the people list could
+      # differ between two identical requests. The id settles it the same way every time.
+      members = group.members.order(:name, :id).to_a
 
       render json: {
         today: today.iso8601,
         timezone: group.timezone,
         member: member_ref(current_member),
-        members: group.members.active.order(:name).map { |member| schedule_member_ref(member) },
+        members: members.select(&:active?).map { |member| schedule_member_ref(member) },
         rotas: rotas.map { |rota| { id: rota.id, name: rota.name } },
-        shifts: upcoming_shifts(rotas, today).map { |shift| serialize_shift(shift, today: today) },
+        shifts: upcoming_shifts(rotas, members, today).map { |shift| serialize_shift(shift, today: today) },
         events: CalendarEventSerializer.many(house_events(group, today))
       }
     end
@@ -34,17 +43,45 @@ module Api
       group.rotas.active.includes(:rota_positions).order(:name).reject(&:draft?)
     end
 
-    # Every upcoming shift of those rotas. `preload` rather than `includes`: the join is already
-    # present for the rota-name ordering, and preload keeps the association loads as separate
-    # queries instead of letting Rails collapse them into an eager-load that fights the ORDER BY.
-    # Shift id breaks a tie between two shifts of the same rota on the same day, which the
-    # (rota_id, due_on) uniqueness makes impossible today but which keeps the order total anyway.
-    def upcoming_shifts(rotas, today)
-      Shift.joins(:rota)
+    # Every upcoming shift of those rotas. Shift id breaks a tie between two shifts of the same rota
+    # on the same day, which the (rota_id, due_on) uniqueness makes impossible today but which keeps
+    # the order total anyway. The join stays: it is what `rotas.name` in the ORDER BY reads, and the
+    # feed's order is part of the payload.
+    #
+    # There is no `preload(:rota, :assigned_member, :covering_member)` here any more (BLO-1698). The
+    # action has already loaded every rota and every member of this house a few lines up, so those
+    # three preloads were three round trips that could only come back holding rows already sitting in
+    # memory. Attaching the objects to the associations by hand is the same eager load, done from what
+    # is already in hand rather than from Postgres, and the serializer cannot tell the difference.
+    #
+    # `members` is the WHOLE house, not `active`, which is the whole reason it is passed in rather
+    # than derived here. A shift can legitimately name a deactivated member: MemberRemoval leaves
+    # today's shifts untouched (they are history, and the day-of reminder has gone out), and it leaves
+    # a future shift the leaver was ASSIGNED alone when somebody else is covering it. Indexing only
+    # the active members would miss exactly those rows and quietly fall back to a query per shift.
+    def upcoming_shifts(rotas, members, today)
+      shifts = Shift.joins(:rota)
         .where(rota_id: rotas.map(&:id))
         .upcoming(today)
-        .preload(:rota, :assigned_member, :covering_member)
         .order(:due_on, "rotas.name", :id)
+        .to_a
+
+      rotas_by_id = rotas.index_by(&:id)
+      members_by_id = members.index_by(&:id)
+
+      shifts.each do |shift|
+        attach(shift, :rota, rotas_by_id[shift.rota_id])
+        attach(shift, :assigned_member, members_by_id[shift.assigned_member_id])
+        attach(shift, :covering_member, members_by_id[shift.covering_member_id])
+      end
+    end
+
+    # Hand an association the record it would otherwise have gone and fetched. Nothing happens when
+    # there is no record to hand it. An uncovered shift has no covering member, and a row naming
+    # somebody this house does not have would be a bug rather than a payload to change silently, so
+    # the association stays unloaded and Active Record resolves it the ordinary way.
+    def attach(shift, name, record)
+      shift.association(name).target = record if record
     end
 
     # The house calendar's current and upcoming entries (BLO-1667, spec section 9).
