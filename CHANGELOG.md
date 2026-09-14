@@ -44,7 +44,7 @@
   All three are derived server-side like the country and the device class, so a value posted by hand
   is dropped on the way through. The city column is empty until the Cloudflare zone's "Add visitor
   location headers" transform is switched on, and says so. `analytics:sources` prints the three new
-  tables too. (#PR_NUMBER)
+  tables too. (#70)
 
 ### Changed
 
