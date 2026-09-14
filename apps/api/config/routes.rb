@@ -53,7 +53,10 @@ Rails.application.routes.draw do
       resources :shifts, only: :index
       post :preview_message, on: :member
     end
-    resources :shifts, only: :update
+    # `index` is the WHOLE house's upcoming turns in one request, which is what the dashboard reads
+    # (BLO-1697). The nested `resources :shifts, only: :index` above stays exactly as it was: the
+    # rota screen still asks per rota, and the two share one controller action.
+    resources :shifts, only: %i[index update]
     resources :sms_messages, only: :index
 
     # The member magic-link path (BLO-1048). A SECOND, deliberately narrow way in: no WorkOS identity,

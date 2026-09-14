@@ -4,6 +4,10 @@
 
 ### Added
 
+- `GET /api/shifts`: every upcoming turn of the house's running rotas in one request, ordered by
+  due date then rota name, the same order the member feed uses, and each turn carries the
+  `rota_name` it belongs to so a caller never has to look the name up in a second answer. The
+  per-rota `GET /api/rotas/:rota_id/shifts` is unchanged and the rota screen still reads it.
 - Soft Clay for the WorkOS sign-in page: `docs/authkit/` holds the custom CSS to paste into the
   AuthKit branding editor, the dashboard recipe (wordmark, colours, Outfit, dark mode) and a
   Playwright script that previews the CSS against the live hosted page. No app code changes; the
@@ -11,6 +15,13 @@
 
 ### Changed
 
+- The admin dashboard loads in two round trips and streams its shell. It used to fetch in four
+  rounds, one of them a request per running rota, so a busier house waited longer, and nothing at
+  all painted until the last answer arrived. The nav, the wordmark and the theme toggle now paint
+  on the first flush, before the check for a paused house has been answered at all. That check is
+  the first round trip; the house's rotas, its people, every upcoming turn, the failed texts and
+  the calendar preview are the second, all in flight together, and a dashboard-shaped skeleton
+  holds the page while they land. (#66)
 - Dropped the root `VERSION` file. Nothing read it, and it conflicted on every parallel pull
   request. (#55)
 - The mailer's default sender moved from `hello@rota.monster`, a domain that does not exist, to

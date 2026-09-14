@@ -8,19 +8,13 @@ import { Button } from "@/components/ui/button";
 import {
   getGroup,
   listCalendarEvents,
+  listGroupShifts,
   listMembers,
   listRotas,
-  listShifts,
   listSmsMessages,
 } from "@/lib/api/admin";
 import { isApiError } from "@/lib/api/errors";
-import type {
-  CalendarEventPreviewItem,
-  MemberRef,
-  Rota,
-  Shift,
-  SmsMessage,
-} from "@/lib/api/types";
+import type { CalendarEventsResponse, MemberRef } from "@/lib/api/types";
 import type { FeedEvent } from "@/lib/calendar-view";
 import { collectDashboardWarnings } from "@/lib/dashboard";
 import { buildDayRows, eventsByDay, nextWeekRangeLabel } from "@/lib/day-rows";
@@ -41,13 +35,46 @@ export const dynamic = "force-dynamic";
 // same screen (below), so the complaint and the fix are never a navigation apart.
 const SETTINGS_HREF = "#group-settings";
 
-type RotaWithShifts = { rota: Rota; shifts: Shift[] };
-
 export default async function DashboardPage() {
-  const [{ group }, { rotas }, { members }] = await Promise.all([
-    getGroup(),
+  // ONE WAVE (BLO-1697). Every call the dashboard needs starts here, together, rather than in
+  // four rounds of waiting: the house, its rotas, its people, every upcoming turn, and the failed
+  // texts. The turns used to be one request per running rota, which made the slowest screen in the
+  // app get slower as a house got busier. The group is asked for again rather than passed down:
+  // `getGroup()` is `cache()`d, so the (admin) layout's paused probe has already answered this and
+  // it costs no second round trip.
+  const groupPromise = getGroup();
+
+  // The one call that genuinely depends on an answer: there is no calendar to preview until the
+  // group says it has one. Chaining it off the group promise starts it the instant the group lands
+  // instead of after the rest of the wave, and an unconnected house pays nothing for the question.
+  const calendarPromise: Promise<CalendarEventsResponse> = groupPromise.then(({ group }) =>
+    group.calendar ? listCalendarEvents(30) : { events: [] },
+  );
+
+  // Three of the six may fail softly. They fall back to an empty list rather than blanking a
+  // screen the admin could still use, and every one of them rethrows anything that is not an
+  // ApiError, notably the sign-in redirect the client throws on a 401. That is also why this is
+  // not Promise.allSettled: settling would capture the redirect and strand the admin on a
+  // half-rendered page. The group, the rotas and the people still throw; without them there is no
+  // dashboard to draw.
+  //
+  // The trade the single request buys: a failed shifts call now drops EVERY rota's turns rather
+  // than one rota's. One round trip for the whole house is worth it, and the failure it replaces
+  // was never partial in practice (the calls shared a token, a host and a response time).
+  const [
+    { group },
+    { rotas },
+    { members },
+    { shifts },
+    { sms_messages: failedSms },
+    { events: calendarEvents },
+  ] = await Promise.all([
+    groupPromise,
     listRotas(),
     listMembers(),
+    listGroupShifts().catch(emptyOnApiError({ shifts: [] })),
+    listSmsMessages({ status: "failed", limit: 100 }).catch(emptyOnApiError({ sms_messages: [] })),
+    calendarPromise.catch(emptyOnApiError({ events: [] })),
   ]);
 
   // One instant for the whole render: `today` is the group's own calendar day, and
@@ -58,60 +85,20 @@ export default async function DashboardPage() {
   const now = new Date();
   const today = groupToday(now, group.timezone);
 
-  // Only running rotas have shifts; a draft has no roster to generate them from.
-  const runningRotas = rotas.filter((rota) => rota.active && !rota.draft);
-
-  // One rota's shifts failing to load shouldn't blank the whole dashboard, so each
-  // fetch swallows its own ApiError and drops out. It rethrows anything else —
-  // notably the sign-in redirect the client throws on a 401 — which is exactly why
-  // this isn't Promise.allSettled: that would capture the redirect and strand the
-  // admin on a half-rendered page.
-  const settled = await Promise.all(
-    runningRotas.map(async (rota): Promise<RotaWithShifts | null> => {
-      try {
-        const { shifts } = await listShifts(rota.id);
-        return { rota, shifts };
-      } catch (error) {
-        if (!isApiError(error)) throw error;
-        return null;
-      }
-    }),
-  );
-  const shiftsByRota = settled.filter((entry): entry is RotaWithShifts => entry !== null);
-
-  // Every upcoming turn, ordered once. `listShifts` is already bounded to today and
-  // later, and the two windows below are cut from this one list so the glance and the
-  // Next week section can never disagree about which day a shift belongs to.
-  const upcomingShifts: WeekShift[] = shiftsByRota
-    .flatMap(({ rota, shifts }) => shifts.map((shift) => ({ ...shift, rotaName: rota.name })))
+  // Every upcoming turn, ordered once. Each one arrives already carrying the NAME of the job it
+  // belongs to, so nothing here has to resolve it against the rotas list: a rota that changed
+  // state between two answers used to take its turns off this screen without saying so.
+  //
+  // The endpoint is already bounded to today and later and already sorted, and the sort is
+  // repeated here so the order is the client's own comparison in both windows; the two windows
+  // below are cut from this one list, so the glance and the Next week section can never disagree
+  // about which day a shift belongs to.
+  const upcomingShifts: WeekShift[] = shifts
+    .map((shift) => ({ ...shift, rotaName: shift.rota_name }))
     .sort((a, b) => compareCivil(a.due_on, b.due_on) || a.rotaName.localeCompare(b.rotaName));
 
   const weekShifts = upcomingShifts.filter((shift) => isThisWeek(shift.due_on, today));
   const nextWeekShifts = upcomingShifts.filter((shift) => isNextWeek(shift.due_on, today));
-
-  // A failed text is one of four warnings, not the spine of the page. If the log
-  // endpoint hiccups, drop that one warning rather than blank the dashboard —
-  // but never swallow the sign-in redirect the client throws on a 401.
-  let failedSms: SmsMessage[] = [];
-  try {
-    ({ sms_messages: failedSms } = await listSmsMessages({ status: "failed", limit: 100 }));
-  } catch (error) {
-    if (!isApiError(error)) throw error;
-  }
-
-  // The house calendar's "What we found" disclosure (BLO-1667). Only worth a
-  // request when a calendar is connected, and a preview that fails must not blank
-  // the dashboard: fall back to an empty list and let the settings card show the
-  // stored `last_error`. Anything that isn't an ApiError still propagates, notably
-  // the sign-in redirect thrown on a 401.
-  let calendarEvents: CalendarEventPreviewItem[] = [];
-  if (group.calendar) {
-    try {
-      ({ events: calendarEvents } = await listCalendarEvents(30));
-    } catch (error) {
-      if (!isApiError(error)) throw error;
-    }
-  }
 
   // Only the names cross to the client. A Member also carries its magic-link
   // access_token, which has no business in a page payload — which is why the glance is
@@ -222,4 +209,17 @@ function daysWithin(
   within: (dueOn: string, today: string) => boolean,
 ): Map<string, FeedEvent[]> {
   return new Map([...eventDays].filter(([due_on]) => within(due_on, today)));
+}
+
+/**
+ * The soft-failure rule, in one place: an ApiError means "this part of the page is unavailable",
+ * anything else is control flow or an outage and belongs to whoever threw it. A failed text log or
+ * a calendar preview that will not load is a missing warning, not a blank dashboard; a 401 is a
+ * redirect that must reach Next untouched.
+ */
+function emptyOnApiError<T>(fallback: T): (error: unknown) => T {
+  return (error: unknown) => {
+    if (!isApiError(error)) throw error;
+    return fallback;
+  };
 }

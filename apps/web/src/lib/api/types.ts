@@ -318,7 +318,7 @@ export interface RotaPreviewParams {
 }
 
 // ---------------------------------------------------------------------------
-// Shifts — /api/rotas/:rota_id/shifts (read) and /api/shifts/:id (admin override)
+// Shifts — /api/rotas/:rota_id/shifts and /api/shifts (reads), /api/shifts/:id (override)
 // ---------------------------------------------------------------------------
 
 /**
@@ -338,6 +338,22 @@ export interface Shift {
 
 export interface ShiftsResponse {
   shifts: Shift[];
+}
+
+/**
+ * One turn as the HOUSE-WIDE read answers it: a `Shift` plus the name of the rota it belongs to.
+ *
+ * The nested per-rota read does not carry the name and does not need to, since the caller asked
+ * about one rota. A caller reading the whole house does need it, and the name has to arrive WITH
+ * the shift: resolving it against a separately fetched rotas list silently dropped every turn of a
+ * rota whose state moved between the two calls (BLO-1697).
+ */
+export interface GroupShift extends Shift {
+  rota_name: string;
+}
+
+export interface GroupShiftsResponse {
+  shifts: GroupShift[];
 }
 
 export interface ShiftResponse {

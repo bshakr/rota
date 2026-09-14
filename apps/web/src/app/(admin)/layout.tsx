@@ -1,14 +1,14 @@
+import { Suspense } from "react";
 import * as Sentry from "@sentry/nextjs";
 
-import { HousePausedScreen } from "@/components/house-paused";
-import { getGroup, getMe } from "@/lib/api/admin";
-import { isApiError } from "@/lib/api/errors";
-import { isGroupSuspended } from "@/lib/api/paused";
 import { requireHousehold } from "@/lib/auth/household";
 import { isSuperAdmin } from "@/lib/auth/super-admin";
 
 import { AdminShell } from "@/components/admin-shell";
 import { SignOutButton } from "@/components/admin/sign-out-button";
+
+import { AdminRouteFallback } from "./_components/admin-route-fallback";
+import { PausedGate } from "./_components/paused-gate";
 
 /**
  * The proxy starts login for unauthenticated visitors. This guard also requires
@@ -16,22 +16,40 @@ import { SignOutButton } from "@/components/admin/sign-out-button";
  * render concurrently. Setup and the member route live outside this layout.
  *
  * The super admin allowlist is read HERE, on the server, and only the boolean
- * crosses into the client shell — the ids themselves never reach the browser.
- * It is a display decision and nothing more: the area guards itself, and Rails
- * guards the data.
+ * crosses into the client shell: the ids themselves never reach the browser.
+ * It is a display decision and nothing more, since the area guards itself and
+ * Rails guards the data.
  *
- * IT ALSO ASKS WHETHER THE HOUSE IS PAUSED, and that question has to be asked of
- * a GATED route. A suspended house (https://linear.app/bloombase/issue/BLO-1675)
- * refuses every `/api/*` call with 403 `group_suspended` — except `/api/me`,
- * which stays open precisely so a paused screen can still name the house. A
- * layout that called only `/api/me` would therefore get a cheerful 200 and render
- * the ordinary shell over a house that has been switched off. `getGroup()` is the
- * gated call, and it is `cache()`d in the client so the dashboard below does not
- * fetch the same group a second time.
+ * THE SHELL IS THE FALLBACK, NOT THE FRAME (BLO-1697). The layout awaits nothing
+ * of Rails itself. It renders a Suspense boundary whose fallback is the shell
+ * with a neutral placeholder in the main column, so the nav, the wordmark and
+ * the theme toggle are on screen on the first flush, before the group probe has
+ * been answered. Inside the boundary `PausedGate` asks the one question the area
+ * depends on and returns either the whole paused screen or the same shell around
+ * the page.
  *
- * Asked once, here, rather than in each page: otherwise the paused screen would
- * depend on which screen the admin happened to open, and every page that later
- * grew a Rails call would have to remember to handle it.
+ * It has to be shaped that way round, because the paused screen REPLACES the
+ * shell rather than sitting inside it: a suspended house has no route the nav
+ * could usefully lead to. Rendering the gate inside an already-open `AdminShell`
+ * would have given it a sidebar, two wordmarks, two sign-out buttons and a
+ * nested `<main>`. The fallback shell and the resolved shell are handed the very
+ * same `shellProps` object, so the swap is the same DOM with the middle filled
+ * in and nothing visibly jumps.
+ *
+ * `requireHousehold()` and the Sentry scope stay OUTSIDE the boundary,
+ * deliberately. The first is the auth guard: it redirects rather than renders,
+ * and a redirect decided before anything is flushed is a real 307 instead of a
+ * meta tag the browser has to act on. It costs no Rails call, since AuthKit
+ * reads the session cookie. The second has to be in place before the gate's
+ * `/api/group` call, which is the first thing on an admin route that can fail.
+ *
+ * WHAT THIS COSTS THE PAGE. The group probe and the page's own fetches are two
+ * serial round trips to Rails, not one: the page below only starts once the gate
+ * has resolved. For the dashboard that is the probe, and then rotas, members,
+ * shifts, failed texts and the calendar preview together, the calendar included
+ * because it chains off the same `cache()`d group promise the gate has already
+ * resolved. The second wait is covered by the route's own `loading.tsx`, which
+ * is why the fallback here can be neutral.
  */
 export default async function AdminLayout({
   children,
@@ -45,56 +63,26 @@ export default async function AdminLayout({
   // Sentry, which the privacy contract rules out, and an opaque id is enough to
   // ask "is this one admin or all of them". The member layout and the household
   // entry page set nothing at all, deliberately.
-  //
-  // BEFORE the paused question below, not after: the `/api/group` call is the
-  // first thing here that can fail, and an error raised while asking whether a
-  // house is suspended should be attributed like any other.
   Sentry.setUser({ id: user.id });
   Sentry.setTag("household", organizationId);
 
-  try {
-    await getGroup();
-  } catch (error) {
-    if (isGroupSuspended(error)) return <PausedHouse email={user.email} name={name} />;
-    // A redirect (an expired session heading for /auth/reauth), a notFound(), or
-    // a dead API host: all rethrown, because Next's control-flow errors must
-    // never be swallowed and a fetch that never reached Rails is not an answer.
-    if (!isApiError(error)) throw error;
-    // Any other refusal from Rails is left alone. The page below makes its own
-    // call and owns its own error state; this layout asks one question, and an
-    // unanswered question is not a reason to replace the whole app.
-  }
+  // Built once and passed to both renders of the shell. The account element is
+  // the same object in the fallback and in the resolved tree, which is what
+  // makes the swap a no-op for everything outside the main column.
+  const shellProps = {
+    account: <SignOutButton email={user.email} name={name} />,
+    superAdmin: isSuperAdmin(user.id),
+  };
 
   return (
-    <AdminShell
-      account={<SignOutButton email={user.email} name={name} />}
-      superAdmin={isSuperAdmin(user.id)}
+    <Suspense
+      fallback={
+        <AdminShell {...shellProps}>
+          <AdminRouteFallback />
+        </AdminShell>
+      }
     >
-      {children}
-    </AdminShell>
-  );
-}
-
-/**
- * The house's NAME comes from `/api/me`, the one route a suspended house still
- * answers, and it is fetched only on this path — a running house pays nothing for
- * it. If even that call fails the screen says "This house": the fact is the
- * message and the name is the courtesy.
- *
- * The screen itself is `HousePausedScreen`, which is a component rather than JSX
- * here so that it can be rendered from a fixture — a real screenshot of it would
- * mean suspending a real house behind a real WorkOS session.
- */
-async function PausedHouse({ email, name }: { email: string; name?: string }) {
-  let house: string | null = null;
-  try {
-    house = (await getMe()).group.name;
-  } catch {
-    // Deliberately swallowed. The paused screen must render either way, and there
-    // is nothing an admin could do with the reason this second call failed.
-  }
-
-  return (
-    <HousePausedScreen name={house} account={<SignOutButton email={email} name={name} />} />
+      <PausedGate shellProps={shellProps}>{children}</PausedGate>
+    </Suspense>
   );
 }
