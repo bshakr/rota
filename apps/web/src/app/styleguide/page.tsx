@@ -506,9 +506,9 @@ const SPACING = [
 ];
 
 const BLOBS = [
-  { cls: "bg-peach", size: "size-24", pos: "top-2 left-6", delay: "0s" },
-  { cls: "bg-mint", size: "size-20", pos: "top-10 left-28", delay: "1.2s" },
-  { cls: "bg-lilac", size: "size-16", pos: "top-4 left-48", delay: "2.4s" },
+  { cls: "bg-blob-peach", size: "size-24", pos: "top-2 left-6", delay: "0s" },
+  { cls: "bg-blob-mint", size: "size-20", pos: "top-10 left-28", delay: "1.2s" },
+  { cls: "bg-blob-lilac", size: "size-16", pos: "top-4 left-48", delay: "2.4s" },
 ];
 
 const BLOB_SHAPE = "58% 42% 45% 55% / 55% 48% 52% 45%";
@@ -885,7 +885,7 @@ export default function StyleguidePage() {
                   className="block"
                 >
                   <div className="w-full">
-                    <div className="bg-lavender-pane relative h-44 overflow-hidden rounded-4xl">
+                    <div className="bg-lavender-pane relative h-44 overflow-hidden rounded-4xl dark:bg-card">
                       {BLOBS.map((b) => (
                         <span
                           key={b.cls}
@@ -900,7 +900,10 @@ export default function StyleguidePage() {
                     </div>
                     <p className="text-muted-foreground mt-3 text-xs text-pretty">
                       Organic pastel shapes on an asymmetric border-radius,
-                      wearing the soft clay. They bob on a 6s ease-in-out loop
+                      wearing the soft clay. The one pastel that follows the
+                      theme: bg-blob-* is the sticker by day and its deep night
+                      cut after dark, because hero text sits on top of a blob
+                      and goes white at night. They bob on a 6s ease-in-out loop
                       that translates only, so nothing wobbles, and
                       prefers-reduced-motion stills them outright rather than
                       speeding them up.
