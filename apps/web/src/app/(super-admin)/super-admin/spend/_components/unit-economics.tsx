@@ -21,7 +21,7 @@ import { unitFigure } from "@/lib/hq-spend";
  * as free.
  *
  * Every one of these can legitimately have no answer, and each says "not enough
- * data" rather than "$0.00". On a page where the output is a price, a zero that
+ * data" rather than "£0.00". On a page where the output is a price, a zero that
  * means "we could not measure" is the most expensive thing on screen.
  */
 export function UnitEconomics({ spend }: { spend: SuperAdminSpend }) {
@@ -84,16 +84,16 @@ export function UnitEconomics({ spend }: { spend: SuperAdminSpend }) {
                   words: a sentence in the 20px display numeral wraps to three
                   shouted lines and reads as the loudest thing on the card, which
                   is the opposite of what "we could not measure this" should look
-                  like. Never "$0.00" either — on a pricing page that is the most
+                  like. Never "£0.00" either — on a pricing page that is the most
                   expensive lie on screen. */}
               {figure.value === null ? (
-                <dd className="text-muted-foreground mt-1 text-sm">{unitFigure(null)}</dd>
+                <dd className="text-muted-foreground mt-1 text-sm">{unitFigure(null, spend.currency)}</dd>
               ) : (
                 <dd
                   className="font-heading text-foreground mt-1 text-xl leading-none font-semibold"
                   data-numeric
                 >
-                  {unitFigure(figure.value)}
+                  {unitFigure(figure.value, spend.currency)}
                 </dd>
               )}
               <dd className="text-muted-foreground mt-1.5 text-xs text-pretty">{figure.note}</dd>

@@ -15,7 +15,7 @@ import { plural } from "@/lib/hq-overview";
 import {
   allocatedFixedCostTotal,
   fixedCostPerHousePerMonth,
-  formatUsd,
+  formatMoney,
   perActiveMemberNote,
 } from "@/lib/hq-spend";
 
@@ -60,7 +60,7 @@ import {
  * to "which house costs most".
  */
 export function HouseTable({ spend }: { spend: SuperAdminSpend }) {
-  const showFixed = spend.fixed_monthly_cost_usd !== null;
+  const showFixed = spend.fixed_monthly_cost_gbp !== null;
   const fixedTotal = allocatedFixedCostTotal(spend);
   const fixedPerMonth = fixedCostPerHousePerMonth(spend);
 
@@ -106,7 +106,7 @@ export function HouseTable({ spend }: { spend: SuperAdminSpend }) {
                     <span className="text-muted-foreground block text-xs">{house.slug}</span>
                   </TableCell>
                   <TableCell className="text-right font-medium" data-numeric>
-                    {formatUsd(house.total)}
+                    {formatMoney(house.total, spend.currency)}
                   </TableCell>
                   {/* Null is "nobody to divide by", said in words. Not a dash,
                       which reads as a figure somebody forgot to fill in, and
@@ -119,7 +119,7 @@ export function HouseTable({ spend }: { spend: SuperAdminSpend }) {
                     }
                     data-numeric={house.total_per_active_member === null ? undefined : true}
                   >
-                    {perActiveMemberNote(house)}
+                    {perActiveMemberNote(house, spend.currency)}
                   </TableCell>
                   <TableCell className="text-right" data-numeric>
                     {formatCount(house.active_members)}
@@ -142,10 +142,10 @@ export function HouseTable({ spend }: { spend: SuperAdminSpend }) {
                     ) : null}
                   </TableCell>
                   <TableCell className="text-right" data-numeric>
-                    {formatUsd(house.sms_cost_settled)}
+                    {formatMoney(house.sms_cost_settled, spend.currency)}
                   </TableCell>
                   <TableCell className="text-right" data-numeric>
-                    {formatUsd(house.sms_cost_estimated)}
+                    {formatMoney(house.sms_cost_estimated, spend.currency)}
                   </TableCell>
                   <TableCell className="text-right whitespace-nowrap">
                     <span data-numeric>{formatCount(house.claude_calls)}</span>
@@ -154,14 +154,27 @@ export function HouseTable({ spend }: { spend: SuperAdminSpend }) {
                       out
                     </span>
                   </TableCell>
-                  <TableCell className="text-right" data-numeric>
-                    {formatUsd(house.claude_cost)}
+                  {/* Null is "there is no figure in this currency", not zero.
+                      A £0.00 here would say this house's Claude calls were
+                      free; the alert at the top of the page says what is
+                      actually missing and what it cost in dollars. */}
+                  <TableCell
+                    className={
+                      house.claude_cost === null
+                        ? "text-muted-foreground text-right text-xs"
+                        : "text-right"
+                    }
+                    data-numeric={house.claude_cost === null ? undefined : true}
+                  >
+                    {house.claude_cost === null
+                      ? "not converted"
+                      : formatMoney(house.claude_cost, spend.currency)}
                   </TableCell>
                   {showFixed ? (
                     <TableCell className="text-muted-foreground text-right" data-numeric>
                       {house.allocated_fixed_cost === null
                         ? "none set"
-                        : formatUsd(house.allocated_fixed_cost)}
+                        : formatMoney(house.allocated_fixed_cost, spend.currency)}
                     </TableCell>
                   ) : null}
                 </TableRow>
@@ -172,7 +185,7 @@ export function HouseTable({ spend }: { spend: SuperAdminSpend }) {
               <TableRow>
                 <TableCell className="whitespace-nowrap">Every house</TableCell>
                 <TableCell className="text-right font-medium" data-numeric>
-                  {formatUsd(spend.totals.total)}
+                  {formatMoney(spend.totals.total, spend.currency)}
                 </TableCell>
                 <TableCell className="text-right" />
                 <TableCell className="text-right" />
@@ -187,10 +200,10 @@ export function HouseTable({ spend }: { spend: SuperAdminSpend }) {
                   {formatCount(spend.totals.texts_sent)}
                 </TableCell>
                 <TableCell className="text-right" data-numeric>
-                  {formatUsd(spend.totals.sms_cost_settled)}
+                  {formatMoney(spend.totals.sms_cost_settled, spend.currency)}
                 </TableCell>
                 <TableCell className="text-right" data-numeric>
-                  {formatUsd(spend.totals.sms_cost_estimated)}
+                  {formatMoney(spend.totals.sms_cost_estimated, spend.currency)}
                 </TableCell>
                 <TableCell className="text-right whitespace-nowrap">
                   <span data-numeric>{formatCount(spend.totals.claude_calls)}</span>
@@ -200,7 +213,9 @@ export function HouseTable({ spend }: { spend: SuperAdminSpend }) {
                   </span>
                 </TableCell>
                 <TableCell className="text-right" data-numeric>
-                  {formatUsd(spend.totals.claude_cost)}
+                  {spend.totals.claude_cost === null
+                    ? "not converted"
+                    : formatMoney(spend.totals.claude_cost, spend.currency)}
                 </TableCell>
                 {showFixed ? (
                   // The COLUMN'S total, summed from the shares above it, because
@@ -210,10 +225,10 @@ export function HouseTable({ spend }: { spend: SuperAdminSpend }) {
                   // of window-length allocations — a totals row that did not
                   // total its column.
                   <TableCell className="text-right whitespace-nowrap" data-numeric>
-                    {fixedTotal === null ? null : formatUsd(fixedTotal)}
+                    {fixedTotal === null ? null : formatMoney(fixedTotal, spend.currency)}
                     {fixedPerMonth === null ? null : (
                       <span className="text-muted-foreground block text-xs">
-                        ({formatUsd(fixedPerMonth)} a month each)
+                        ({formatMoney(fixedPerMonth, spend.currency)} a month each)
                       </span>
                     )}
                   </TableCell>

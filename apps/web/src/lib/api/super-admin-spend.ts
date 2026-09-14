@@ -59,8 +59,13 @@ const nullableMoney = money.nullable();
 const timestamp = z.iso.datetime({ offset: true });
 
 /**
- * A currency Rails could not add into the USD total, carried beside it
+ * A currency Rails could not add into the GBP total, carried beside it
  * unconverted. Empty in the normal case; see the plan's "Currency" decision.
+ *
+ * Twilio bills this account in pounds, so this is the exception rather than the
+ * rule — and it stays unconverted because Twilio's rate for that destination is
+ * not a fact we hold. `gbp_per_usd` is ANTHROPIC's rate; borrowing it for a
+ * Twilio charge would be a different guess wearing a real number.
  */
 const otherCurrencySchema = z.object({
   /** An ISO 4217 unit as Twilio spelled it, upper-cased by the query: "GBP". */
@@ -92,16 +97,39 @@ const figuresShape = {
   sms_cost_estimated: money,
   /** Settled plus estimated. Published so the page never adds the two itself. */
   sms_cost: money,
-  /** Charges Rails refused to convert into the USD total. Usually empty. */
+  /** Charges Rails refused to convert into the GBP total. Usually empty. */
   sms_cost_other_currencies: z.array(otherCurrencySchema),
   claude_calls: count,
   claude_tokens_in: count,
   claude_tokens_out: count,
-  claude_cost: money,
+  /**
+   * What Anthropic charged, in the currency Anthropic charged in. Always present
+   * — it is the source figure, and the only Claude figure there is when no rate
+   * has been configured.
+   */
+  claude_usd: money,
+  /**
+   * `claude_usd` in the reporting currency, or NULL when `SPEND_GBP_PER_USD` is
+   * unset and Rails therefore cannot express it in pounds at all.
+   *
+   * Null and not zero, and the page must keep that distinction all the way to
+   * the screen: a "£0.00" in the Claude column would read as "Claude was free
+   * this month", which is the most expensive thing this page can say wrongly.
+   * When this is null, `claude_unconverted` at the root is true and every
+   * `total` beside it excludes Claude.
+   */
+  claude_cost: nullableMoney,
   /** Calls whose model was missing from the rate table, so the cost is short by these. */
   claude_calls_unpriced: count,
   titles_classified: count,
-  /** SMS settled + SMS estimated + Claude. Never includes the allocated fixed cost. */
+  /**
+   * SMS settled + SMS estimated + Claude. Never includes the allocated fixed
+   * cost — that is an allocation, not a charge a house incurred.
+   *
+   * Claude joins it only when there is a rate to convert it with. When
+   * `claude_unconverted` is true this figure is SHORT by `claude_usd`, and the
+   * page has to say so rather than let a complete-looking total imply otherwise.
+   */
   total: money,
 };
 
@@ -160,7 +188,7 @@ const houseSchema = z
      */
     total_per_active_member: nullableMoney,
     /**
-     * This house's share of `FIXED_MONTHLY_COST_USD` over the window, split evenly
+     * This house's share of `FIXED_MONTHLY_COST_GBP` over the window, split evenly
      * across the houses that spent anything. NULL when no fixed cost is configured
      * — the plan's "Fixed costs" decision: unset means no line at all, because a
      * zero there would read as "hosting is free".
@@ -199,8 +227,37 @@ const unitEconomicsSchema = z.object({
 
 export const spendSchema = z.object({
   range: z.enum(SPEND_RANGES),
-  /** "USD". Both vendors bill in it and nothing converts; see the plan's Currency decision. */
+  /**
+   * "GBP". The reporting currency, decided 2026-09-14: the business is in the UK
+   * and Twilio bills the account in pounds.
+   *
+   * Read rather than assumed everywhere it is rendered. The page has no
+   * hardcoded currency symbol — `formatMoney` in ../hq-spend.ts takes this
+   * string — so the day this becomes something else the figures follow it
+   * instead of growing the wrong sign.
+   */
   currency: z.string(),
+
+  /**
+   * What one US dollar was worth in pounds when this payload was built, or NULL
+   * when no rate is configured.
+   *
+   * Anthropic bills in dollars and this page reports pounds, so exactly one
+   * figure here crosses a currency. The rate travels WITH the figures it moved
+   * so the page can print "converted at 0.79" and a reader can check the
+   * arithmetic — a converted total with no rate beside it cannot be checked, and
+   * quietly implies the figure was always pounds.
+   */
+  gbp_per_usd: nullableMoney,
+
+  /**
+   * True when no rate is configured, so Claude could not be expressed in pounds.
+   *
+   * Every `total` in the payload then EXCLUDES Claude, and `claude_cost` is null
+   * while `claude_usd` carries the real figure. The page must say this in words:
+   * a total that is silently short is worse than no total.
+   */
+  claude_unconverted: z.boolean(),
   starts_at: timestamp,
   ends_at: timestamp,
 
@@ -216,10 +273,20 @@ export const spendSchema = z.object({
    */
   months_in_range: z.number().positive(),
 
-  /** `FIXED_MONTHLY_COST_USD`, or null when the operator has not set one. */
-  fixed_monthly_cost_usd: nullableMoney,
+  /** `FIXED_MONTHLY_COST_GBP`, or null when the operator has not set one. */
+  fixed_monthly_cost_gbp: nullableMoney,
   /** What one unsettled segment is priced at while Twilio has not answered. */
-  sms_estimated_segment_cost_usd: money,
+  sms_estimated_segment_cost_gbp: money,
+  /**
+   * How many settled texts that per-segment rate was MEASURED from, or null when
+   * it is the configured figure rather than a measurement.
+   *
+   * Rails prefers the measured rate — the mean settled price per segment over
+   * the trailing ninety days — once twenty texts have settled, because what this
+   * account was really charged beats any list price at predicting the next
+   * charge. Two very different claims, so the page says which one it is showing.
+   */
+  sms_estimated_segment_cost_from_settled: count.nullable(),
 
   /** Houses that spent (or tried to spend) anything in the window. */
   houses_with_spend: count,
@@ -285,10 +352,13 @@ export const overviewSpendSchema = z.object({
   /** The window these figures were derived from, so the tile can link to it. */
   range: z.enum(SPEND_RANGES),
   currency: z.string(),
+  /** True when Claude could not be converted, so `total` below excludes it. */
+  claude_unconverted: z.boolean(),
   this_month: z.object({
     month: z.string(),
     sms_cost: money,
-    claude_cost: money,
+    /** Null when unconverted — never zero. See `claude_cost` on the figures above. */
+    claude_cost: nullableMoney,
     total: money,
   }),
   /**
@@ -301,7 +371,7 @@ export const overviewSpendSchema = z.object({
     .object({
       month: z.string(),
       sms_cost: money,
-      claude_cost: money,
+      claude_cost: nullableMoney,
       total: money,
     })
     .nullable(),

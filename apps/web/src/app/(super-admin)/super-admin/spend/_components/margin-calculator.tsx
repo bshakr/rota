@@ -9,7 +9,8 @@ import { formatRate } from "@/lib/hq-overview";
 import {
   type MarginAt,
   type MarginInputs,
-  formatUsd,
+  currencySymbol,
+  formatMoney,
   lossMakingNote,
   marginSummary,
   parseCandidatePrice,
@@ -65,7 +66,9 @@ export function MarginCalculator({
       <CardContent className="grid gap-5">
         <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_auto] sm:items-end">
           <div className="grid gap-1.5">
-            <Label htmlFor={priceFieldId}>Monthly price per house ({currency})</Label>
+            <Label htmlFor={priceFieldId}>
+              Monthly price per house ({currencySymbol(currency)}, {currency})
+            </Label>
             <Input
               id={priceFieldId}
               // `inputMode="decimal"` rather than type="number": a number input
@@ -129,8 +132,14 @@ export function MarginCalculator({
                   label="At the median house"
                   at={summary.median}
                   price={summary.price}
+                  currency={currency}
                 />
-                <MarginBlock label="At the p90 house" at={summary.p90} price={summary.price} />
+                <MarginBlock
+                  label="At the p90 house"
+                  at={summary.p90}
+                  price={summary.price}
+                  currency={currency}
+                />
               </dl>
 
               <p
@@ -150,7 +159,7 @@ export function MarginCalculator({
           two things this product actually pays for per house.{" "}
           {inputs.fixedPerHousePerMonth === null
             ? "No fixed monthly cost is configured, so hosting, WorkOS and the Twilio number are not in these figures at all."
-            : `"Plus fixed costs" adds ${formatUsd(inputs.fixedPerHousePerMonth)} a month, one house's share of hosting, WorkOS and the Twilio number.`}
+            : `"Plus fixed costs" adds ${formatMoney(inputs.fixedPerHousePerMonth, currency)} a month, one house's share of hosting, WorkOS and the Twilio number.`}
         </p>
       </CardContent>
     </Card>
@@ -161,17 +170,20 @@ export function MarginCalculator({
  * One margin, with the cost it was measured against underneath it.
  *
  * The cost travels with the margin because a margin on its own is unreadable: a
- * dollar of margin is wonderful against four cents of cost and a disaster
+ * pound of margin is wonderful against four pence of cost and a disaster
  * against forty.
  */
 function MarginBlock({
   label,
   at,
   price,
+  currency,
 }: {
   label: string;
   at: MarginAt | null;
   price: number;
+  /** The payload's reporting currency, so nothing here carries a hardcoded sign. */
+  currency: string;
 }) {
   return (
     <div className="bg-muted/60 rounded-xl px-4 py-3.5">
@@ -187,14 +199,14 @@ function MarginBlock({
             )}
             data-numeric
           >
-            {formatUsd(at.margin)}
+            {formatMoney(at.margin, currency)}
           </dd>
           <dd className="text-muted-foreground mt-1.5 text-xs">
-            <span data-numeric>{formatUsd(price)}</span> less{" "}
-            <span data-numeric>{formatUsd(at.cost)}</span> of cost
+            <span data-numeric>{formatMoney(price, currency)}</span> less{" "}
+            <span data-numeric>{formatMoney(at.cost, currency)}</span> of cost
             {at.rate === null ? null : (
               <>
-                {" — "}
+                {", "}
                 <span data-numeric>{formatRate(at.rate)}</span> of the price
               </>
             )}

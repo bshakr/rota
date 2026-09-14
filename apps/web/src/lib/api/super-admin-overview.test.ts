@@ -205,7 +205,8 @@ describe("parseOverview", () => {
   it("accepts the tile's own shape, and still accepts the null Rails sends today", () => {
     const spend = {
       range: "90d",
-      currency: "USD",
+      currency: "GBP",
+      claude_unconverted: false,
       this_month: { month: "2026-09", sms_cost: 2.9273, claude_cost: 0.36963, total: 3.29693 },
       last_month: { month: "2026-08", sms_cost: 5.5415, claude_cost: 0.784, total: 6.3255 },
     };

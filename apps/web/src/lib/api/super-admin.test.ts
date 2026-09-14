@@ -258,7 +258,7 @@ describe("super admin API client", () => {
         "Dray Lane",
       ]);
       expect(spend.totals.total).toBe(17.88923);
-      expect(spend.sms_estimated_segment_cost_usd).toBe(0.0079);
+      expect(spend.sms_estimated_segment_cost_gbp).toBe(0.0079);
     });
 
     it("refuses a 200 whose shape is not the spend payload", async () => {

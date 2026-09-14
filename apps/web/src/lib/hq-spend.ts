@@ -40,17 +40,23 @@ import { formatRate, plural } from "./hq-overview";
  *
  *   1. NEVER ROUND BELOW THE SOURCE. Rails computes every money figure at six
  *      decimals because a single SMS segment costs under a hundredth of a cent
- *      and four decimals reported a real cost as zero. So `formatUsd` prints
- *      every decimal the API sent, down to a floor of two — "$0.0079" is the
- *      cost of a text and "$0.01" is a lie about it. Rates keep one decimal
+ *      and four decimals reported a real cost as zero. So `formatMoney` prints
+ *      every decimal the API sent, down to a floor of two — "£0.0423" is the
+ *      cost of a text and "£0.04" is a lie about it. Rates keep one decimal
  *      (project rule, BLO-1454).
  *   2. NULL IS NOT ZERO. A house with nobody left to text has no cost per
  *      member; a window with no texts has no cost per text. Each of those says
- *      so in words. "$0.00" on a cost page is the single most expensive lie this
+ *      so in words. "£0.00" on a cost page is the single most expensive lie this
  *      product can tell.
  *   3. SETTLED IS NOT ESTIMATED. Twilio's price lands minutes after delivery, so
  *      the newest rows are always priced at a list rate. The two are never
  *      blended into one figure without the page saying which is which.
+ *   4. THE CURRENCY COMES FROM THE PAYLOAD. Nothing here hardcodes a symbol.
+ *      Rails reports pounds (decided 2026-09-14) and says so in `currency`, and
+ *      every formatter below takes that string — so the day it changes, the
+ *      figures follow it instead of growing the wrong sign. The one figure that
+ *      crosses a currency is Anthropic's bill, and rule 2 governs it: with no
+ *      rate configured it has NO pound value, and null is what says so.
  */
 
 // --- The range picker -------------------------------------------------------
@@ -109,9 +115,9 @@ const group = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
  * `0.0079` prints "0.0079", `17.88923` prints "17.88923", `2.5` prints "2.50".
  *
  * Trailing zeros are trimmed down to two and no further, so the common case
- * reads as ordinary money and a sub-cent figure keeps every digit that carries
- * information. Rounding to whole cents is forbidden outright: the cost of one
- * text is $0.0079, and a page that renders that as $0.01 has overstated the
+ * reads as ordinary money and a sub-penny figure keeps every digit that carries
+ * information. Rounding to whole pence is forbidden outright: the cost of one
+ * text is £0.0079, and a page that renders that as £0.01 has overstated the
  * product's variable cost by twenty-seven per cent on the figure a price is set
  * against.
  *
@@ -130,18 +136,66 @@ export function formatAmount(value: number): string {
   return `${sign}${group(whole)}.${fraction.slice(0, end)}`;
 }
 
-/** `formatAmount` wearing the dollar sign, with the sign outside it: "-$3.20". */
-export function formatUsd(value: number): string {
-  const amount = formatAmount(value);
-  return amount.startsWith("-") ? `-$${amount.slice(1)}` : `$${amount}`;
+/**
+ * The symbol for an ISO 4217 code: "GBP" is "£", "USD" is "$".
+ *
+ * `Intl.NumberFormat` resolves it, and this is the ONLY thing Intl is used for
+ * on this page — deliberately, because the digits must not go near it. A
+ * currency-styled formatter defaults to two fraction digits, which would round
+ * £0.0423 to £0.04 and break rule 1 outright; and the grouping separators would
+ * resolve differently under Node's ICU and a browser's, which is the hydration
+ * mismatch lib/date.ts warns about at length. A single symbol glyph has neither
+ * problem: £ has meant GBP in every CLDR revision there has ever been.
+ *
+ * The locale is en-GB, which matters for more than the pound: it renders USD as
+ * "US$" rather than a bare "$". On a page of pounds that disambiguation is the
+ * point — a lone "$" beside "£" invites a reader to take both as the same money.
+ *
+ * Memoised because the lookup is not free and the page formats a few hundred
+ * figures. A code Intl does not know comes back as the code itself, which
+ * `formatMoney` then renders trailing rather than in front of the number.
+ */
+const symbols = new Map<string, string>();
+
+export function currencySymbol(code: string): string {
+  const cached = symbols.get(code);
+  if (cached !== undefined) return cached;
+
+  let symbol = code;
+  try {
+    const part = new Intl.NumberFormat("en-GB", { style: "currency", currency: code })
+      .formatToParts(0)
+      .find((candidate) => candidate.type === "currency");
+    if (part !== undefined) symbol = part.value;
+  } catch {
+    // An unknown or malformed code. The code itself is a fine thing to print.
+  }
+
+  symbols.set(code, symbol);
+  return symbol;
 }
 
 /**
- * A charge in a currency the API refused to convert: "0.324000 GBP".
+ * `formatAmount` wearing the payload's currency, with the sign outside the
+ * symbol: "-£3.20".
  *
- * The unit trails the number rather than wearing a symbol, because the page has
- * no symbol table and inventing one is how a Norwegian krone charge gets a pound
- * sign in front of it.
+ * A currency with no symbol of its own trails its code instead — "3.20 XTS" —
+ * rather than printing "XTS3.20", which reads as a typo.
+ */
+export function formatMoney(value: number, currency: string): string {
+  const amount = formatAmount(value);
+  const symbol = currencySymbol(currency);
+  if (symbol === currency) return `${amount} ${currency}`;
+
+  return amount.startsWith("-") ? `-${symbol}${amount.slice(1)}` : `${symbol}${amount}`;
+}
+
+/**
+ * A charge in a currency the API refused to convert: "0.324000 USD".
+ *
+ * The unit always trails the number here, even for a currency `currencySymbol`
+ * knows. That is the point: these figures are NOT in the reporting currency, and
+ * a symbol in front of them would make them look like the ones that are.
  */
 export function formatOtherCurrency(amount: number, unit: string): string {
   return `${formatAmount(amount)} ${unit}`;
@@ -228,15 +282,47 @@ export const SPEND_SERIES: readonly {
  * two of those fills — see the note on SPEND_SERIES — otherwise has the row
  * total and no way to know which vendor it went to. Printed, they do.
  */
-export function seriesSplitNote(figures: SpendFigures): string {
-  return SPEND_SERIES.map((series) => `${formatUsd(figures[series.key])} ${series.short}`).join(
-    " · ",
-  );
+/**
+ * The series that HAVE a figure in the reporting currency, with that figure.
+ *
+ * One definition of "what can be drawn", because there are two callers and they
+ * must not disagree: the group card draws each series as its own bar with its
+ * own printed total, and the split note prints them as a line of text. An
+ * unconverted Claude cost has no figure in pounds, so it appears in neither —
+ * drawing it at zero would be the page asserting Claude was free, which is the
+ * one thing this surface must never say. `claudeUnconvertedNote` is what says
+ * where the figure went.
+ *
+ * The stacked MONTH bars are the exception and use `seriesValues` instead: a
+ * zero-length segment inside a bar draws nothing and claims nothing, and the
+ * legend beside it already says "not converted".
+ */
+export function drawableSeries(
+  figures: SpendFigures,
+): { key: (typeof SPEND_SERIES)[number]["key"]; label: string; short: string; tone: BarTone; value: number }[] {
+  return SPEND_SERIES.filter((series) => figures[series.key] !== null).map((series) => ({
+    ...series,
+    value: figures[series.key] as number,
+  }));
 }
 
-/** The three money figures of a bucket, in `SPEND_SERIES` order. */
+export function seriesSplitNote(figures: SpendFigures, currency: string): string {
+  return drawableSeries(figures)
+    .map((series) => `${formatMoney(series.value, currency)} ${series.short}`)
+    .join(" · ");
+}
+
+/**
+ * The three money figures of a bucket, in `SPEND_SERIES` order.
+ *
+ * An unconverted Claude cost is null, and it becomes 0 HERE and only here —
+ * because a bar chart draws lengths, and the length of a figure that does not
+ * exist in this currency is nothing. It is not a claim that Claude was free:
+ * `seriesSplitNote` drops the series from the text rather than printing a zero,
+ * and `claudeUnconvertedNote` says outright what is missing from the chart.
+ */
 export function seriesValues(figures: SpendFigures): number[] {
-  return SPEND_SERIES.map((series) => figures[series.key]);
+  return SPEND_SERIES.map((series) => figures[series.key] ?? 0);
 }
 
 // --- What the SMS figure can and cannot say ---------------------------------
@@ -262,14 +348,28 @@ export function settledShare(figures: SpendFigures): number | null {
  * settled price and a list-rate estimate is the difference between a number an
  * operator can put in a spreadsheet and one they cannot.
  */
-export function pricingNote(figures: SpendFigures, segmentCost: number): string {
+export function pricingNote(
+  figures: SpendFigures,
+  segmentCost: number,
+  currency: string,
+  /** How many settled texts the rate was measured from, or null when configured. */
+  fromSettled: number | null = null,
+): string {
   if (figures.texts_sent === 0) return "No texts were sent in this window, so nothing is priced.";
 
   const settled = `${formatCount(figures.texts_settled)} of ${formatCount(figures.texts_sent)} texts carry the price Twilio charged (${formatRate(settledShare(figures) ?? 0)}).`;
 
+  // Where the estimate's rate came from, because "a list price we typed in" and
+  // "the mean of what Twilio actually charged us" are different claims and the
+  // second is much the stronger one.
+  const source =
+    fromSettled === null
+      ? ""
+      : `, the mean of ${formatCount(fromSettled)} settled ${plural(fromSettled, "text", "texts")},`;
+
   const waiting =
     figures.texts_estimated > 0
-      ? ` ${formatCount(figures.texts_estimated)} ${plural(figures.texts_estimated, "is", "are")} still estimated at ${formatUsd(segmentCost)} a segment while Twilio settles.`
+      ? ` ${formatCount(figures.texts_estimated)} ${plural(figures.texts_estimated, "is", "are")} still estimated at ${formatMoney(segmentCost, currency)} a segment${source} while Twilio settles.`
       : "";
 
   const never =
@@ -299,23 +399,49 @@ export function claudeShortfallNote(figures: SpendFigures): string | null {
  *
  * Null when there are none. A conversion would need a rate, and a rate is one
  * more thing to be wrong about (the plan's Currency decision), so these sit
- * beside the USD total rather than inside it — and the page has to say so, or
+ * beside the GBP total rather than inside it — and the page has to say so, or
  * the total silently understates the bill.
  */
-export function otherCurrenciesNote(figures: SpendFigures): string | null {
+export function otherCurrenciesNote(figures: SpendFigures, currency: string): string | null {
   if (figures.sms_cost_other_currencies.length === 0) return null;
 
   const charges = figures.sms_cost_other_currencies
     .map((charge) => formatOtherCurrency(charge.amount, charge.unit))
     .join(", ");
 
-  return `Twilio also billed ${charges}. Nothing here converts it, so the totals on this page are USD only and the bill is larger than they say.`;
+  return `Twilio also billed ${charges}. Nothing here converts it, so the totals on this page are ${currency} only and the bill is larger than they say.`;
+}
+
+/**
+ * What the totals leave out when Anthropic's dollars could not be converted, and
+ * how to make them whole. Null when a rate is configured and nothing is missing.
+ *
+ * Said in words rather than left to a null cell, because the figure it is
+ * missing from — `total` — renders perfectly and looks complete. An operator
+ * setting a price against a total that quietly dropped its Claude column has
+ * been told something false in the most expensive possible way.
+ */
+export function claudeUnconvertedNote(spend: {
+  claude_unconverted: boolean;
+  currency: string;
+  totals: { claude_usd: number };
+}): string | null {
+  if (!spend.claude_unconverted) return null;
+
+  return `Anthropic bills in USD and no conversion rate is configured, so Claude is not in any ${spend.currency} figure on this page. It cost ${formatOtherCurrency(spend.totals.claude_usd, "USD")} in this window, and every total here is short by that much. Set SPEND_GBP_PER_USD to fold it in.`;
+}
+
+/** How a converted figure was arrived at, for the page to print beside it. */
+export function conversionNote(gbpPerUsd: number | null, currency: string): string | null {
+  if (gbpPerUsd === null) return null;
+
+  return `Claude is billed in USD and converted at ${formatAmount(gbpPerUsd)} ${currency} to the dollar.`;
 }
 
 /** The per-member cell: a figure, or why there isn't one. Never an em dash. */
-export function perActiveMemberNote(house: SpendHouse): string {
+export function perActiveMemberNote(house: SpendHouse, currency: string): string {
   if (house.total_per_active_member === null) return "no active members";
-  return formatUsd(house.total_per_active_member);
+  return formatMoney(house.total_per_active_member, currency);
 }
 
 /** "9 housemates" / "nobody on the roll" — the denominator, in words. */
@@ -329,11 +455,11 @@ export function activeMembersNote(house: SpendHouse): string {
  *
  * Every one of them can legitimately have no answer — no houses, no members, no
  * texts — and Rails says nil rather than zero for each. "Not enough data" and
- * "$0.00" are different answers to a pricing question, and only one of them is
+ * "£0.00" are different answers to a pricing question, and only one of them is
  * true.
  */
-export function unitFigure(value: number | null): string {
-  return value === null ? "not enough data" : formatUsd(value);
+export function unitFigure(value: number | null, currency: string): string {
+  return value === null ? "not enough data" : formatMoney(value, currency);
 }
 
 // --- The overview tile ------------------------------------------------------
@@ -392,6 +518,7 @@ export function overviewSpend(spend: SuperAdminSpend): OverviewSpend | null {
   return {
     range: spend.range,
     currency: spend.currency,
+    claude_unconverted: spend.claude_unconverted,
     this_month: figures(thisMonth),
     last_month: lastMonth === undefined ? null : figures(lastMonth),
   };
@@ -416,6 +543,10 @@ export type HouseSpendWindow = {
   monthsInRange: number;
   /** What one unsettled segment is priced at, so the card can say what its estimate assumes. */
   estimatedSegmentCost: number;
+  /** How many settled texts that rate was measured from, or null when configured. */
+  estimatedSegmentCostFromSettled: number | null;
+  /** True when Claude could not be converted, so this house's `total` excludes it. */
+  claudeUnconverted: boolean;
   house: SpendHouse | null;
 };
 
@@ -440,7 +571,9 @@ export function houseSpend(spend: SuperAdminSpend, groupId: number): HouseSpendW
     currency: spend.currency,
     months: spend.months.map((month) => month.month),
     monthsInRange: spend.months_in_range,
-    estimatedSegmentCost: spend.sms_estimated_segment_cost_usd,
+    estimatedSegmentCost: spend.sms_estimated_segment_cost_gbp,
+    estimatedSegmentCostFromSettled: spend.sms_estimated_segment_cost_from_settled,
+    claudeUnconverted: spend.claude_unconverted,
     house: spend.houses.find((house) => house.group_id === groupId) ?? null,
   };
 }
@@ -467,8 +600,8 @@ export function monthsCoveredNote(months: readonly string[]): string {
  * the table column in step; hq-spend.test.ts pins the two against each other.
  */
 export function fixedCostPerHousePerMonth(spend: SuperAdminSpend): number | null {
-  if (spend.fixed_monthly_cost_usd === null || spend.houses_with_spend === 0) return null;
-  return roundMoney(spend.fixed_monthly_cost_usd / spend.houses_with_spend);
+  if (spend.fixed_monthly_cost_gbp === null || spend.houses_with_spend === 0) return null;
+  return roundMoney(spend.fixed_monthly_cost_gbp / spend.houses_with_spend);
 }
 
 /**
@@ -482,7 +615,7 @@ export function fixedCostPerHousePerMonth(spend: SuperAdminSpend): number | null
  * to total.
  */
 export function allocatedFixedCostTotal(spend: SuperAdminSpend): number | null {
-  if (spend.fixed_monthly_cost_usd === null) return null;
+  if (spend.fixed_monthly_cost_gbp === null) return null;
 
   return roundMoney(
     spend.houses.reduce((sum, house) => sum + (house.allocated_fixed_cost ?? 0), 0),

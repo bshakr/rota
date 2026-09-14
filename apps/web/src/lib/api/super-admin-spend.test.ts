@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { emptySpendPayload, spendPayload as payload } from "@/test/spend-payload";
+import {
+  emptySpendPayload,
+  spendPayload as payload,
+  unconvertedSpendPayload,
+} from "@/test/spend-payload";
 
 import { DEFAULT_SPEND_RANGE, MONEY_DECIMALS, SPEND_RANGES } from "../spend-constants";
 
@@ -19,15 +23,19 @@ import {
 //   DEFAULT_RANGE   = "30d"
 //   MONEY_PRECISION = 6
 //
+//   CURRENCY        = "GBP"
+//
 //   #call      -> range, currency, starts_at, ends_at, months_in_range,
-//                 fixed_monthly_cost_usd, sms_estimated_segment_cost_usd,
+//                 gbp_per_usd, claude_unconverted, fixed_monthly_cost_gbp,
+//                 sms_estimated_segment_cost_gbp,
+//                 sms_estimated_segment_cost_from_settled,
 //                 houses_with_spend, houses_total, totals, months, houses,
 //                 unit_economics
 //   #figures   -> texts_sent, segments, texts_settled, sms_cost_settled,
 //                 texts_estimated, texts_unpriceable, sms_cost_estimated,
 //                 sms_cost, sms_cost_other_currencies, claude_calls,
-//                 claude_tokens_in, claude_tokens_out, claude_cost,
-//                 claude_calls_unpriced, titles_classified, total
+//                 claude_tokens_in, claude_tokens_out, claude_usd,
+//                 claude_cost, claude_calls_unpriced, titles_classified, total
 //   #month_rows-> month, starts_on, + #figures
 //   #house_row -> group_id, name, slug, + #figures, active_members,
 //                 total_per_active_member, allocated_fixed_cost
@@ -50,8 +58,11 @@ const RUBY_TOP_LEVEL_KEYS = [
   "starts_at",
   "ends_at",
   "months_in_range",
-  "fixed_monthly_cost_usd",
-  "sms_estimated_segment_cost_usd",
+  "gbp_per_usd",
+  "claude_unconverted",
+  "fixed_monthly_cost_gbp",
+  "sms_estimated_segment_cost_gbp",
+  "sms_estimated_segment_cost_from_settled",
   "houses_with_spend",
   "houses_total",
   "totals",
@@ -73,6 +84,7 @@ const RUBY_FIGURE_KEYS = [
   "claude_calls",
   "claude_tokens_in",
   "claude_tokens_out",
+  "claude_usd",
   "claude_cost",
   "claude_calls_unpriced",
   "titles_classified",
@@ -162,8 +174,9 @@ describe("parseSpend", () => {
   it("carries money through at the six decimals Rails sent, unrounded", () => {
     const spend = parseSpend(payload());
 
-    expect(spend.sms_estimated_segment_cost_usd).toBe(0.0079);
+    expect(spend.sms_estimated_segment_cost_gbp).toBe(0.0079);
     expect(spend.totals.total).toBe(17.88923);
+    expect(spend.totals.claude_usd).toBe(2.670788);
     expect(spend.totals.claude_cost).toBe(2.13663);
     expect(spend.houses[0].total_per_active_member).toBe(1.234681);
     expect(spend.houses[0].allocated_fixed_cost).toBe(31.04723);
@@ -232,12 +245,28 @@ describe("parseSpend", () => {
   it("keeps every 'nothing to measure' as null rather than zero", () => {
     const spend = parseSpend(emptySpendPayload());
 
-    expect(spend.fixed_monthly_cost_usd).toBeNull();
+    expect(spend.fixed_monthly_cost_gbp).toBeNull();
     expect(spend.unit_economics.cost_per_house_per_month.median).toBeNull();
     expect(spend.unit_economics.cost_per_active_member_per_month.p90).toBeNull();
     expect(spend.unit_economics.cost_per_text_sent).toBeNull();
     expect(spend.unit_economics.cost_per_title_classified).toBeNull();
     expect(spend.houses).toEqual([]);
+  });
+
+  // The state production is in until a rate is configured. Null is the only
+  // honest Claude figure in pounds then, and the schema has to keep it — a
+  // schema that refused the payload would black out the page, and one that
+  // coerced the null to 0 would report Claude as free.
+  it("keeps an unconverted Claude cost as null, with the dollar figure beside it", () => {
+    const spend = parseSpend(unconvertedSpendPayload());
+
+    expect(spend.claude_unconverted).toBe(true);
+    expect(spend.gbp_per_usd).toBeNull();
+    expect(spend.totals.claude_usd).toBe(2.670788);
+    expect(spend.totals.claude_cost).toBeNull();
+    // The total is SMS only. Rails leaves Claude out rather than folding in a
+    // figure in the wrong currency, and the flag above is what says so.
+    expect(spend.totals.total).toBe(15.7526);
   });
 
   it("keeps a house with nobody left to text, with a null per-member figure", () => {
@@ -247,12 +276,13 @@ describe("parseSpend", () => {
     expect(house?.total_per_active_member).toBeNull();
   });
 
-  it("keeps a charge in another currency beside the USD total rather than inside it", () => {
+  it("keeps a charge in another currency beside the GBP total rather than inside it", () => {
     const spend = parseSpend(payload());
 
-    expect(spend.totals.sms_cost_other_currencies).toEqual([{ unit: "GBP", amount: 0.324 }]);
-    // The USD total is settled + estimated and nothing else: the GBP charge is
-    // reported, never converted, never added.
+    expect(spend.totals.sms_cost_other_currencies).toEqual([{ unit: "USD", amount: 0.324 }]);
+    // The GBP total is settled + estimated and nothing else: the dollar charge
+    // is reported, never converted, never added. `gbp_per_usd` is ANTHROPIC's
+    // rate and is not borrowed for a Twilio charge.
     //
     // `toBeCloseTo` and not `toBe`, and the reason is the reason Rails publishes
     // `sms_cost` at all: adding these two in IEEE floats gives
@@ -272,7 +302,8 @@ describe("the overview tile's shape", () => {
   it("accepts a derived tile, with or without a month to compare against", () => {
     const tile = {
       range: "90d",
-      currency: "USD",
+      currency: "GBP",
+      claude_unconverted: false,
       this_month: { month: "2026-09", sms_cost: 2.9273, claude_cost: 0.36963, total: 3.29693 },
       last_month: { month: "2026-08", sms_cost: 5.5415, claude_cost: 0.784, total: 6.3255 },
     };
@@ -281,10 +312,26 @@ describe("the overview tile's shape", () => {
     expect(overviewSpendSchema.parse({ ...tile, last_month: null }).last_month).toBeNull();
   });
 
+  // Null is the shape an unconverted Claude cost takes all the way to the tile.
+  // A schema that refused it would push the page into its error state on a
+  // perfectly good payload; one that coerced it to 0 would draw a lie.
+  it("accepts a tile whose Claude cost could not be converted", () => {
+    const tile = {
+      range: "90d",
+      currency: "GBP",
+      claude_unconverted: true,
+      this_month: { month: "2026-09", sms_cost: 2.9273, claude_cost: null, total: 2.9273 },
+      last_month: null,
+    };
+
+    expect(overviewSpendSchema.parse(tile).this_month.claude_cost).toBeNull();
+  });
+
   it("refuses a tile whose figures went missing", () => {
     const tile = {
       range: "90d",
-      currency: "USD",
+      currency: "GBP",
+      claude_unconverted: false,
       this_month: { month: "2026-09", sms_cost: 2.9273, claude_cost: 0.36963 },
       last_month: null,
     };
