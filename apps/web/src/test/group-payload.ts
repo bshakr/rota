@@ -22,6 +22,14 @@
  * calendar that has stopped syncing, a text that failed at the carrier, and a
  * draft rota with nobody on it. That is not an unusual house — it is exactly the
  * shape of the house an operator opens this page to look at.
+ *
+ * Its four admins are the four shapes `SuperAdmin::AdminSerializer` can emit —
+ * named with an address, named without one, unnamed with an address, and neither.
+ * Both halves go missing for the same reason (an AuthKit token carries no `name`
+ * and no `email` claim unless the WorkOS JWT template adds them), so a house
+ * whose first admin signed in before the template was configured has rows like
+ * the last two, and they are what blanked the whole page in
+ * https://linear.app/bloombase/issue/BLO-1694.
  */
 
 /** The instant every date below is measured from. A Monday, deliberately. */
@@ -78,7 +86,10 @@ export function groupPayload(): unknown {
       suspended_at: null,
       notes: "Trial house for the school run.\nBilling contact is Priya, not Dan.",
       status: "live",
-      admins_count: 2,
+      // Four, and two of them have no name: `report.admins` below carries every
+      // shape `SuperAdmin::AdminSerializer` can emit, and the header's count has
+      // to agree with the list under it.
+      admins_count: 4,
       active_members_count: 5,
       running_rotas_count: 1,
       paused_rotas_count: 1,
@@ -342,6 +353,35 @@ export function groupPayload(): unknown {
           role: "admin",
           last_seen_at: null,
           user_sign_in_count: 1,
+          user_sign_in_count_30d: 0,
+        },
+        {
+          id: 9,
+          user_id: 72,
+          // WorkOS never sent a name claim either — `users.name` has no NOT NULL
+          // and Rails serves what it holds. This is the row that used to blank
+          // the entire page with a shape error
+          // (https://linear.app/bloombase/issue/BLO-1694), and it is here so that
+          // it can never do so again unnoticed.
+          name: null,
+          email: "rosa@example.com",
+          workos_user_id: "user_01HZY5",
+          role: "admin",
+          last_seen_at: "2026-09-12T18:05:00.000Z",
+          user_sign_in_count: 4,
+          user_sign_in_count_30d: 4,
+        },
+        {
+          // Neither half: the same token gap produces both at once, so this is
+          // the likelier of the two in production rather than the exotic one.
+          id: 10,
+          user_id: 73,
+          name: null,
+          email: null,
+          workos_user_id: "user_01HZY6",
+          role: "admin",
+          last_seen_at: null,
+          user_sign_in_count: 0,
           user_sign_in_count_30d: 0,
         },
       ],

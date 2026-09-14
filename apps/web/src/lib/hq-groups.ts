@@ -396,6 +396,68 @@ export function rosterNote(size: number): string {
  */
 export const NO_EMAIL = "Not provided";
 
+/**
+ * What we hold for an admin's name: nothing at all.
+ *
+ * `users.name` carries no NOT NULL, and an AuthKit access token carries no `name`
+ * claim unless the WorkOS JWT template was configured to add one — the same gap
+ * `NO_EMAIL` covers, on the same column-that-was-never-filled. Rails serves null
+ * rather than inventing a name, so the page has to have a word for it.
+ *
+ * "No name yet" and not "Unknown": the person is perfectly known — they are
+ * signing in, they run this house — it is WorkOS that has never told us what to
+ * call them, and "yet" is the difference between a fact about the person and a
+ * gap in what we were sent.
+ */
+export const NO_NAME = "No name yet";
+
+/** The two lines of an admin's row: who they are, and how to reach them. */
+export interface AdminLabel {
+  /** The heading. Never empty: their name, else the address, else `NO_NAME`. */
+  heading: string;
+  /** The heading is an address — it breaks anywhere, and it is not a name. */
+  headingIsEmail: boolean;
+  /** The heading is the stand-in phrase rather than a fact. Render it muted. */
+  headingIsPlaceholder: boolean;
+  /** The line under it: the address, or the phrase for whichever half is missing. */
+  note: string;
+}
+
+/**
+ * How to name an admin the console holds no name for.
+ *
+ * The heading slot has to identify SOMEBODY, so a nameless admin is headed by
+ * their email — the only other thing we hold that a human recognises — and the
+ * line under it says "No name yet" instead of printing the same address twice.
+ * With neither, the heading is the phrase and the note is "Not provided": two
+ * gaps, said once each, and never a blank line where a person should be.
+ *
+ * A name that is present but blank (`""`, or spaces WorkOS was handed by a signup
+ * form) is treated exactly as a missing one. It would otherwise render as an
+ * empty heading, which is the one outcome worse than saying so.
+ */
+export function adminLabel({
+  name,
+  email,
+}: {
+  name: string | null;
+  email: string | null;
+}): AdminLabel {
+  const given = name?.trim();
+  if (given) {
+    return {
+      heading: given,
+      headingIsEmail: false,
+      headingIsPlaceholder: false,
+      note: email ?? NO_EMAIL,
+    };
+  }
+  if (email) {
+    return { heading: email, headingIsEmail: true, headingIsPlaceholder: false, note: NO_NAME };
+  }
+  return { heading: NO_NAME, headingIsEmail: false, headingIsPlaceholder: true, note: NO_EMAIL };
+}
+
 /** Where an operator goes to impersonate or reset — deliberately not built here. */
 export function workosUserUrl(workosUserId: string): string {
   return `https://dashboard.workos.com/users/${encodeURIComponent(workosUserId)}`;

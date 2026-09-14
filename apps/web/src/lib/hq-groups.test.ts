@@ -11,12 +11,15 @@ import {
   MEMBER_STATUSES,
   MEMBER_STATUS_PILL,
   NOTES_MAX,
+  NO_EMAIL,
+  NO_NAME,
   NO_FILTERS,
   groupsHref,
   groupsQuery,
   groupsSearchParams,
   hasNarrowingFilters,
   housePausedBody,
+  adminLabel,
   housePausedTitle,
   memberRotasNote,
   notesCounter,
@@ -299,6 +302,67 @@ describe("the list's own sentences", () => {
 describe("people", () => {
   it("links an admin to the WorkOS dashboard by their WorkOS id", () => {
     expect(workosUserUrl("user_01H")).toBe("https://dashboard.workos.com/users/user_01H");
+  });
+
+  // Both halves of an admin's identity are nullable for the same reason: an
+  // AuthKit access token carries neither a `name` nor an `email` claim unless the
+  // WorkOS JWT template was configured to add them.
+  // https://linear.app/bloombase/issue/BLO-1694
+  describe("naming an admin", () => {
+    it("uses the name, with the address under it", () => {
+      expect(adminLabel({ name: "Ada Admin", email: "ada@example.com" })).toEqual({
+        heading: "Ada Admin",
+        headingIsEmail: false,
+        headingIsPlaceholder: false,
+        note: "ada@example.com",
+      });
+    });
+
+    it("says the address is missing under a name it has", () => {
+      expect(adminLabel({ name: "Ada Admin", email: null })).toEqual({
+        heading: "Ada Admin",
+        headingIsEmail: false,
+        headingIsPlaceholder: false,
+        note: NO_EMAIL,
+      });
+    });
+
+    // The address is promoted rather than printed twice: the heading has to
+    // identify somebody, and the line under it explains why it is an address.
+    it("heads a nameless admin with their address, and says so underneath", () => {
+      expect(adminLabel({ name: null, email: "rosa@example.com" })).toEqual({
+        heading: "rosa@example.com",
+        headingIsEmail: true,
+        headingIsPlaceholder: false,
+        note: NO_NAME,
+      });
+    });
+
+    it("says both are missing when neither arrived", () => {
+      expect(adminLabel({ name: null, email: null })).toEqual({
+        heading: NO_NAME,
+        headingIsEmail: false,
+        headingIsPlaceholder: true,
+        note: NO_EMAIL,
+      });
+    });
+
+    // A blank name would render as an empty heading, which is worse than saying
+    // there isn't one.
+    it.each(["", "   "])("treats %o as no name at all", (blank) => {
+      expect(adminLabel({ name: blank, email: null }).heading).toBe(NO_NAME);
+    });
+
+    it("never renders an empty heading", () => {
+      const cases = [
+        { name: "Ada", email: "ada@example.com" },
+        { name: null, email: "ada@example.com" },
+        { name: "  ", email: null },
+        { name: null, email: null },
+      ];
+
+      for (const admin of cases) expect(adminLabel(admin).heading.trim()).not.toBe("");
+    });
   });
 
   it("names the rotas a housemate sits on, and says when there are none", () => {

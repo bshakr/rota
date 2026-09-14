@@ -134,7 +134,17 @@ const adminSchema = z.object({
   /** The GroupAdmin membership's id — the same person appears again under another house. */
   id: z.number().int().positive(),
   user_id: z.number().int().positive(),
-  name: z.string(),
+  /**
+   * NULLABLE, for the same reason `email` below is: an AuthKit access token
+   * carries no `name` claim unless the WorkOS JWT template was configured to add
+   * one, `users.name` has no NOT NULL on it, and `User.defaults_from` writes
+   * whatever the claim held — which is nothing. Rails serves that as null rather
+   * than inventing a name; `adminLabel` in src/lib/hq-groups.ts decides what the
+   * page says instead. Typed non-null, this blanked the whole house page with a
+   * shape error for every house whose first admin signed in before the template
+   * carried a name (https://linear.app/bloombase/issue/BLO-1694).
+   */
+  name: z.string().nullable(),
   /**
    * Null when the only address we hold is the `.invalid` placeholder a JIT
    * provision writes (an AuthKit token carries no email unless the WorkOS JWT

@@ -22,6 +22,13 @@ import { groupDetailSchema, groupSmsMessagesSchema } from "./super-admin-groups"
 //     admins        → AdminSerializer + last_seen_at, user_sign_in_count, user_sign_in_count_30d
 //     members       → MemberSerializer + last_seen_at
 //
+//   apps/api/app/serializers/super_admin/admin_serializer.rb
+//     as_json       → id, user_id, name, email, workos_user_id, role
+//     name          → NULLABLE (`users.name` has no NOT NULL; an AuthKit token carries no
+//                     `name` claim unless the WorkOS JWT template adds one)
+//     email         → NULLABLE (null where the stored address is the JIT .invalid placeholder)
+//   `members.name`, by contrast, IS NOT NULL — a housemate is typed in by an admin.
+//
 //   apps/api/app/queries/super_admin/warnings_input.rb
 //     call          → group, rotas, members, failed_sms
 //     (::GroupSerializer, ::RotaSerializer, ::MemberSerializer minus access_token,
@@ -144,6 +151,50 @@ describe("groupDetailSchema", () => {
       covers: 1,
     });
     expect(detail.report.spend).toBeNull();
+  });
+
+  // The production bug this schema had: `users.name` carries no NOT NULL and an
+  // AuthKit token has no `name` claim unless the WorkOS JWT template adds one, so
+  // Rails serves null — and a non-null `z.string()` turned one such row into a
+  // shape error that blanked the entire house page.
+  // https://linear.app/bloombase/issue/BLO-1694
+  it("reads an admin WorkOS never named", () => {
+    const admins = parsed().report.admins;
+
+    expect(admins.map((admin) => admin.name)).toEqual([
+      "Priya Raman",
+      "Dan Okoro",
+      null,
+      null,
+    ]);
+  });
+
+  it.each([
+    ["an admin with no name but an address", { name: null, email: "rosa@example.com" }],
+    ["an admin with neither", { name: null, email: null }],
+  ])("parses a report carrying %s", (_what, overrides) => {
+    const body = groupPayload() as { report: { admins: Record<string, unknown>[] } };
+    const only = {
+      ...body,
+      report: { ...body.report, admins: [{ ...body.report.admins[0], ...overrides }] },
+    };
+
+    const result = groupDetailSchema.safeParse(only);
+    expect(result.success).toBe(true);
+    expect(result.data?.report.admins[0]).toMatchObject(overrides);
+  });
+
+  // Nullable, not "anything". A number where a name should be is still drift.
+  it("still refuses a name that is neither a string nor null", () => {
+    const body = groupPayload() as { report: { admins: Record<string, unknown>[] } };
+    const broken = {
+      ...body,
+      report: { ...body.report, admins: [{ ...body.report.admins[0], name: 42 }] },
+    };
+
+    const result = groupDetailSchema.safeParse(broken);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0].path.join(".")).toBe("report.admins.0.name");
   });
 
   it("reads a house nothing has happened on yet", () => {

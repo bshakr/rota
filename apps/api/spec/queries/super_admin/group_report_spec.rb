@@ -349,6 +349,18 @@ RSpec.describe SuperAdmin::GroupReport do
       expect(admin_row.fetch(:email)).to be_nil
     end
 
+    # The other half of the same gap, and the one that blanked the operator's house page: an
+    # AuthKit token carries no `name` claim either unless the WorkOS JWT template adds one, and
+    # `users.name` has no NOT NULL. Null, never "" — the console decides what to say instead.
+    # https://linear.app/bloombase/issue/BLO-1694
+    it "carries a null name where WorkOS never sent one" do
+      nameless = create(:user, name: nil, email: "nameless@example.com",
+                               workos_user_id: "user_01NONAME")
+      create(:group_admin, group: group, user: nameless)
+
+      expect(admin_row).to include(name: nil, email: "nameless@example.com")
+    end
+
     it "counts every sign-in ever, and the ones inside thirty days" do
       create(:group_admin, group: group, user: user)
       create(:sign_in, user: user, created_at: now - 2.days)
