@@ -10,7 +10,7 @@
   and name just after the row is created and the house arrives on the next request. It goes to
   `SIGNUP_ALERT_PHONE`, a new and optional env var: unset means nothing is enqueued at all, and a
   value that is set is normalised to E.164 at boot and refuses to boot if it does not parse. The
-  alert writes no `sms_messages` row, so the spend page does not count its roughly 4p. (#TBD)
+  alert writes no `sms_messages` row, so the spend page does not count its roughly 4p. (#67)
 
 - `GET /api/shifts`: every upcoming turn of the house's running rotas in one request, ordered by
   due date then rota name, the same order the member feed uses, and each turn carries the
