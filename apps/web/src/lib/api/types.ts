@@ -476,12 +476,11 @@ export interface MemberScheduleResponse {
 // ---------------------------------------------------------------------------
 
 /**
- * GET /api/super_admin/overview.
+ * GET /api/super_admin/overview lives in ./super-admin-overview.ts, not here.
  *
- * Deliberately open-ended for now: the endpoint answers `{}` until the query
- * object behind it lands (https://linear.app/bloombase/issue/BLO-1677), and
- * inventing field names here before Rails has them would be a shape the
- * serializer then has to live up to. Narrow this to the real payload in that
- * ticket rather than adding speculative keys now.
+ * It is the one payload in this app that is PARSED rather than cast — every
+ * figure on that page is derived, so a key Rails renamed renders as a plausible
+ * zero rather than an obvious blank. Its types are inferred from the zod schema
+ * that does the parsing, and a type restated here would be a second answer to
+ * the same question. Import `SuperAdminOverview` from ./super-admin-overview.
  */
-export type SuperAdminOverview = Record<string, unknown>;

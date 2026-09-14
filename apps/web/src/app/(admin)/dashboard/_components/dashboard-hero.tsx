@@ -1,5 +1,6 @@
 import { ArrowRightLeft, CalendarDays, Sun, Users } from "lucide-react";
 
+import { LedgerTile, type LedgerCoin } from "@/components/ledger-tile";
 import { cn } from "@/lib/utils";
 
 // The blobs behind the hero. Organic rather than circular, each with its own
@@ -41,6 +42,11 @@ const BLOBS = [
  * The tile hues follow the sticker sheet: lemon = NOW (today's turns), lilac =
  * the week ahead, sky = covered (a turn on its way to someone else). Housemates
  * wears peach, warmth rather than status.
+ *
+ * The tile itself is `<LedgerTile>`, shared with HQ's overview — same geometry,
+ * same coin, same numeral. What is local to the hero is the SURFACE: these sit
+ * on the lavender pane, so they wear lavender paper rather than the card white a
+ * tile takes on the ordinary page.
  */
 export function DashboardHero({
   groupName,
@@ -55,20 +61,20 @@ export function DashboardHero({
   coveredCount: number;
   memberCount: number;
 }) {
-  const stats = [
+  const stats: { label: string; value: number; icon: typeof Sun; coin: LedgerCoin }[] = [
     {
       label: todayCount === 1 ? "turn today" : "turns today",
       value: todayCount,
       icon: Sun,
-      coin: "bg-lemon",
+      coin: "lemon",
     },
-    { label: "this week", value: weekCount, icon: CalendarDays, coin: "bg-lilac" },
-    { label: "covered", value: coveredCount, icon: ArrowRightLeft, coin: "bg-sky" },
+    { label: "this week", value: weekCount, icon: CalendarDays, coin: "lilac" },
+    { label: "covered", value: coveredCount, icon: ArrowRightLeft, coin: "sky" },
     {
       label: memberCount === 1 ? "housemate" : "housemates",
       value: memberCount,
       icon: Users,
-      coin: "bg-peach",
+      coin: "peach",
     },
   ];
 
@@ -104,27 +110,12 @@ export function DashboardHero({
         </div>
 
         <ul className="grid shrink-0 grid-cols-2 gap-3">
-          {stats.map(({ label, value, icon: Icon, coin }) => (
-            <li
-              key={label}
-              className="bg-lavender min-w-32 rounded-2xl px-4 py-3.5 shadow-xs dark:bg-background"
-            >
-              <span className="flex items-center gap-2.5">
-                <span
-                  className={cn("grid size-7 shrink-0 place-items-center rounded-full", coin)}
-                  aria-hidden
-                >
-                  <Icon className="text-plum size-3.5" strokeWidth={2.5} />
-                </span>
-                <span
-                  className="font-heading text-foreground text-2xl leading-none font-semibold"
-                  data-numeric
-                >
-                  {value}
-                </span>
-              </span>
-              <span className="text-muted-foreground mt-1.5 block text-xs">{label}</span>
-            </li>
+          {stats.map((stat) => (
+            <LedgerTile
+              key={stat.label}
+              {...stat}
+              className="bg-lavender dark:bg-background"
+            />
           ))}
         </ul>
       </div>
