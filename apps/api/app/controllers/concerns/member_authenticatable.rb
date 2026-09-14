@@ -29,6 +29,7 @@ module MemberAuthenticatable
 
     if @current_member
       record_last_seen
+      record_first_open
       return
     end
 
@@ -50,6 +51,34 @@ module MemberAuthenticatable
     return if @current_member.group.suspended?
 
     @current_member.touch_last_seen
+  end
+
+  # The moment a housemate's magic link first works. Not a page view: this is the token resolving,
+  # which is the only signal that reaches the server whether the link was opened from the text, a
+  # bookmark, or a tap on a cover button. It is the last step of the funnel (wave 4c) and it fires
+  # exactly once per housemate, ever.
+  #
+  # Paused houses are skipped, for a sharper reason than the last-seen touch above. A housemate who
+  # opens their link while the house is paused sees the paused notice, not their rota — they have not
+  # turned up in any sense the funnel means, and stamping `first_opened_at` there would burn the
+  # once-ever event on a screen that showed them nothing. Resuming leaves the claim still to make.
+  #
+  # The claim is a CONDITIONAL UPDATE rather than a read-then-write, so two requests racing off one
+  # text (a link preview fetch and the tap behind it, say) can only produce one event: exactly one of
+  # them changes a row, and only that one captures. No read-modify-write, no lock, no extra column
+  # per event — `first_opened_at` is the timestamp the members table was missing, and it is also what
+  # answers "did two housemates open within seven days".
+  def record_first_open
+    member = @current_member
+    return if member.first_opened_at.present?
+    return if member.group.suspended?
+
+    now = Time.current
+    claimed = Member.where(id: member.id, first_opened_at: nil).update_all(first_opened_at: now, updated_at: now)
+    return if claimed.zero?
+
+    member.first_opened_at = now
+    AnalyticsEvent.record(AnalyticsEvent::FIRST_MEMBER_LINK_OPENED, group: member.group, member_id: member.id)
   end
 
   # Only the header, and only the bearer scheme. A token in the query string would already be in the

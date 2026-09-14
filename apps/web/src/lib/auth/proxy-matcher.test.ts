@@ -83,6 +83,17 @@ describe("AuthKit proxy matcher", () => {
     expect(PROXY_MATCHER.startsWith("/(")).toBe(true);
   });
 
+  // The analytics capture route carries no dot, so the matcher runs the proxy over it. A logged-out
+  // visitor on the homepage is exactly who posts to it, so without the unauthenticatedPaths entry
+  // every event from the one page that matters would be 307'd to WorkOS.
+  it("lets a logged-out visitor post an analytics event", () => {
+    expect(proxyMatches("/api/analytics")).toBe(true);
+
+    const source = readFileSync(fileURLToPath(new URL("../../proxy.ts", import.meta.url)), "utf8");
+    const paths = source.match(/unauthenticatedPaths:\s*\[([^\]]*)\]/)?.[1];
+    expect(paths).toContain('"/api/analytics"');
+  });
+
   it("lets the login handler and reauth prompt run without proxy-initiated login", () => {
     const source = readFileSync(fileURLToPath(new URL("../../proxy.ts", import.meta.url)), "utf8");
     const paths = source.match(/unauthenticatedPaths:\s*\[([^\]]*)\]/)?.[1];

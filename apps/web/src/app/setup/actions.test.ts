@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(), refresh: vi.fn(), list: vi.fn(), createMembership: vi.fn(),
   lookup: vi.fn(), create: vi.fn(), get: vi.fn(), update: vi.fn(), request: vi.fn(),
+  // The first-touch cookie the proxy stamped on the visitor's very first landing.
+  getCookie: vi.fn(), deleteCookie: vi.fn(),
 }));
 vi.mock("@workos-inc/authkit-nextjs", () => ({
   withAuth: mocks.auth,
@@ -20,6 +22,9 @@ vi.mock("next/navigation", () => ({
   },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: mocks.getCookie, delete: mocks.deleteCookie }),
+}));
 vi.mock("@/lib/api/http", () => ({ requestJson: mocks.request }));
 
 import { initialHousehold } from "@/lib/auth/household";
@@ -50,6 +55,51 @@ describe("first household setup", () => {
     mocks.create.mockResolvedValue(organization);
     mocks.get.mockResolvedValue(organization);
     mocks.request.mockResolvedValue({ group: { timezone_confirmed: false } });
+    mocks.getCookie.mockReturnValue(undefined);
+  });
+
+  // Attribution: the campaign a visitor landed on `/` with, carried across the WorkOS round trip in
+  // a cookie and handed to Rails exactly once, on the request that names the house.
+  describe("first-touch attribution", () => {
+    function withFirstTouch(value: object) {
+      mocks.getCookie.mockReturnValue({ value: encodeURIComponent(JSON.stringify(value)) });
+    }
+
+    it("sends the stored campaign alongside the name and timezone, then clears the cookie", async () => {
+      withFirstTouch({ utm_source: "reddit", ref: "r-ukhousing" });
+
+      await expect(submit()).rejects.toThrow("REDIRECT:/dashboard");
+
+      expect(mocks.request).toHaveBeenLastCalledWith("/api/group", "NEW_ORG_TOKEN", {
+        method: "PATCH",
+        body: {
+          name: "Our house", timezone: "Europe/London",
+          first_touch: { utm_source: "reddit", ref: "r-ukhousing" },
+        },
+      });
+      expect(mocks.deleteCookie).toHaveBeenCalledWith("rm_first_touch");
+    });
+
+    it("omits the field entirely for a house that arrived direct", async () => {
+      await expect(submit()).rejects.toThrow("REDIRECT:/dashboard");
+
+      expect(mocks.request).toHaveBeenLastCalledWith("/api/group", "NEW_ORG_TOKEN", {
+        method: "PATCH",
+        body: { name: "Our house", timezone: "Europe/London" },
+      });
+    });
+
+    // A cookie somebody edited by hand is not a reason to fail setting up a house.
+    it("ignores a cookie it cannot read", async () => {
+      mocks.getCookie.mockReturnValue({ value: "not-json" });
+
+      await expect(submit()).rejects.toThrow("REDIRECT:/dashboard");
+
+      expect(mocks.request).toHaveBeenLastCalledWith("/api/group", "NEW_ORG_TOKEN", {
+        method: "PATCH",
+        body: { name: "Our house", timezone: "Europe/London" },
+      });
+    });
   });
 
   it("creates a household and membership, refreshes into it and initializes Rails with the NEW token", async () => {

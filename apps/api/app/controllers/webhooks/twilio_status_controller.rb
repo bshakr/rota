@@ -51,7 +51,15 @@ module Webhooks
       # delivery callback that beat that write would find no row and be dropped, and Twilio (given a
       # 204) would not retry. The window is as small as it can be without a SID we do not yet have.
       if message && status && !message.delivered? && !message.failed?
+        group = message.member.group
+        # Asked before the write, so the row being flipped cannot count itself. This is the funnel
+        # step that matters most: a carrier-confirmed text is the first moment the product has
+        # actually done its job for a house, and it is the only one no client can fake.
+        first_delivery = status == "delivered" && !group.sms_messages.delivered.exists?
+
         message.update!(status: status, error_code: callback["ErrorCode"].presence)
+
+        AnalyticsEvent.record(AnalyticsEvent::FIRST_TEXT_DELIVERED, group: group) if first_delivery
       end
 
       head :no_content

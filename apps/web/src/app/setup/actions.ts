@@ -2,12 +2,14 @@
 
 import { getWorkOS, switchToOrganization, withAuth } from "@workos-inc/authkit-nextjs";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 
 import { requestJson } from "@/lib/api/http";
 import type { GroupResponse } from "@/lib/api/types";
 import { householdKey, initialHousehold, membershipsFor } from "@/lib/auth/household";
+import { FIRST_TOUCH_COOKIE, decodeFirstTouch } from "@/lib/first-touch";
 
 const schema = z.object({
   name: z.string().trim().min(1).max(100),
@@ -74,10 +76,22 @@ export async function setupHousehold(_state: { error: string }, form: FormData) 
       });
       const { group } = await requestJson<GroupResponse>("/api/group", session.accessToken);
       if (!group.timezone_confirmed) {
+        // The naming request, and the one chance to tell the API where this house came from. The
+        // campaign was written to a cookie on the visitor's first landing, before WorkOS dropped the
+        // query string (src/lib/first-touch.ts); this is where it is handed over and forgotten.
+        const cookieStore = await cookies();
+        const firstTouch = decodeFirstTouch(cookieStore.get(FIRST_TOUCH_COOKIE)?.value);
         await requestJson("/api/group", session.accessToken, {
           method: "PATCH",
-          body: { name: organization.name, timezone: organization.metadata.setup_timezone },
+          body: {
+            name: organization.name,
+            timezone: organization.metadata.setup_timezone,
+            ...(firstTouch ? { first_touch: firstTouch } : {}),
+          },
         });
+        // Handed over, so it has no further job. The API stores a first touch once and refuses to
+        // overwrite it, so clearing here is tidiness rather than the guarantee.
+        cookieStore.delete(FIRST_TOUCH_COOKIE);
       }
       await getWorkOS().organizations.updateOrganization({
         organization: organizationId,

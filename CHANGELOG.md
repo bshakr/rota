@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.0.3.1] - 2026-09-13
+
+### Added
+
+- In-house analytics: ten named funnel events stored in an `analytics_events` table, with no third
+  party, no SDK, no script in the page and no analytics cookie. The six that belong to a house are
+  written by Rails in-process and fire only the first time each can be true; the four that happen
+  before a house exists are posted to the app's own `/api/analytics` and forwarded to Rails behind
+  `ANALYTICS_SHARED_SECRET`. A browser can send only three of the ten, so the numbers that matter
+  cannot be forged. The landing page fires its view on mount and names which of its three calls
+  to action was pressed, through a client wrapper that renders the same plain anchor as before
+  and cannot delay the navigation.
+- First-touch attribution: the UTM parameters and `ref` a visitor lands on `/` with are kept in an
+  httpOnly functional cookie across the WorkOS round trip and stored once on the house at `/setup`
+  (`groups.first_touch`), so a house can be traced back to what brought it.
+- `members.first_opened_at`, the moment a housemate's magic link first worked, which is what makes
+  "houses with a text delivered and two housemates opened within seven days" computable.
+- `analytics:funnel`, `analytics:sources` and `analytics:prune` rake tasks, the last deleting
+  anonymous events after ninety days. Runbook: docs/runbooks/analytics-funnel.md.
+
 ## [0.0.2.6] - 2026-09-14
 
 ### Added

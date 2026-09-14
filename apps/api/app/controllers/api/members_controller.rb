@@ -8,7 +8,11 @@ module Api
     end
 
     def create
+      # Asked before the insert, so it is genuinely "this house had nobody in it". A member who was
+      # later deactivated still counts as added: this is a funnel step, not a headcount.
+      first_member = !group_scope(:members).exists?
       member = group_scope(:members).create!(member_params)
+      AnalyticsEvent.record(AnalyticsEvent::FIRST_MEMBER_ADDED, group: current_group) if first_member
       render json: { member: MemberSerializer.one(member) }, status: :created
     end
 

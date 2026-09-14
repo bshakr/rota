@@ -19,10 +19,13 @@ module Api
     end
 
     def create
+      # "First" is the absence of any other rota, asked before this one exists. No bookkeeping column.
+      first_rota = !group_scope(:rotas).exists?
       rota = group_scope(:rotas).create!(rota_params)
       # A rota with no roster is a draft, so this is a no-op today; running it anyway means a rota
       # created with a roster in one call still gets its window, by the same path an edit would use.
       ShiftGenerator.new(rota).call
+      AnalyticsEvent.record(AnalyticsEvent::FIRST_ROTA_SAVED, group: current_group) if first_rota
       render json: { rota: RotaSerializer.one(rota) }, status: :created
     end
 

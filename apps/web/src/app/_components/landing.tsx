@@ -19,12 +19,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { avatarTint } from "@/lib/avatar-tint";
 import { initials } from "@/lib/format";
-import { SITE_TAGLINE, SITE_TITLE } from "@/lib/site";
+import { SIGN_IN_HREF, SITE_TAGLINE, SITE_TITLE } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
 import { Faq } from "./faq";
 import { HousemateCard } from "./housemate-card";
 import { HowItWorks } from "./how-it-works";
+import { SignInLink } from "./sign-in-link";
 import { SiteFooter } from "./site-footer";
 
 /**
@@ -127,8 +128,11 @@ const BLOB_SHAPES = {
  * href here), and a signed-in click simply lands on the dashboard. A plain
  * anchor rather than <Link> on purpose: prefetching a protected route while
  * logged out would only fire cross-origin redirects.
+ *
+ * Each CTA is wrapped in <SignInLink>, which renders that same plain anchor and
+ * adds only an onClick that records which one was pressed (wave 4c). It changes
+ * no attribute, no class and no copy, and it cannot delay the navigation.
  */
-const SIGN_IN_HREF = "/dashboard";
 
 export function Landing() {
   return (
@@ -144,7 +148,9 @@ export function Landing() {
         <div className="flex items-center gap-1.5">
           <ThemeToggle />
           <Button asChild variant="ghost">
-            <a href={SIGN_IN_HREF}>Sign in</a>
+            <SignInLink href={SIGN_IN_HREF} position="header">
+              Sign in
+            </SignInLink>
           </Button>
         </div>
       </header>
@@ -203,10 +209,10 @@ export function Landing() {
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-3">
                 <Button asChild size="lg">
-                  <a href={SIGN_IN_HREF}>
+                  <SignInLink href={SIGN_IN_HREF} position="hero">
                     Set up your house
                     <ArrowRight data-icon="inline-end" aria-hidden />
-                  </a>
+                  </SignInLink>
                 </Button>
                 <span className="text-sm text-muted-foreground">
                   Free. Sign in with email, two minutes, promise.
@@ -549,10 +555,10 @@ export function Landing() {
               </p>
               <div className="flex flex-col items-center gap-3">
                 <Button asChild size="lg">
-                  <a href={SIGN_IN_HREF}>
+                  <SignInLink href={SIGN_IN_HREF} position="closing">
                     Set up your house
                     <ArrowRight data-icon="inline-end" aria-hidden />
-                  </a>
+                  </SignInLink>
                 </Button>
                 <span className="text-sm text-muted-foreground">
                   Free. Two minutes, promise.

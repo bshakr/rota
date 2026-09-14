@@ -14,7 +14,11 @@ module Api
     PREVIEW_DAYS_MAX = CalendarSync::FUTURE_DAYS
 
     def update
+      # A house with no connection getting one is the funnel step. Re-pasting a link onto a house
+      # that already has one is an edit, and an edit is not a conversion.
+      connecting = current_group.calendar_connection.nil?
       connection = CalendarConnect.call(group: current_group, url: params.require(:ical_url))
+      AnalyticsEvent.record(AnalyticsEvent::CALENDAR_CONNECTED, group: current_group) if connecting
       render json: { calendar: CalendarConnectionSerializer.one(connection),
                      events_preview: preview(connection, PREVIEW_DAYS) }
     rescue CalendarConnect::Invalid => e

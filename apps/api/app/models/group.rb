@@ -19,6 +19,11 @@ class Group < ApplicationRecord
   # cleanly through members — a group only ever sees its own house's texts.
   has_many :sms_messages, through: :members
 
+  # The house's own funnel history (wave 4c). `delete_all` rather than `destroy_all`: these rows have
+  # no callbacks and no dependents, so one statement is the whole job. The database cascades too, so
+  # a row can never outlive the house it describes and be counted as anonymous traffic.
+  has_many :analytics_events, dependent: :delete_all
+
   # The house's shared calendar, if an admin connected one (BLO-1667). Destroying the group takes the
   # link and every synced event with it.
   has_one :calendar_connection, dependent: :destroy
