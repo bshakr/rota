@@ -167,16 +167,22 @@ describe("parseTraffic", () => {
     expect(() => parseTraffic({ ...body, funnel })).toThrow(/ladder has "landing_views"/);
   });
 
-  // `tracked` decides whether the page draws a bar or the words "not tracked
-  // yet". A payload where it disagrees with `count` draws a confident zero over
-  // a step nobody is counting.
-  it("refuses a step that claims to be tracked with nothing behind it", () => {
+  // `tracked` decides whether the page draws a bar or prints why there is none,
+  // and `count` is what it draws. A payload where the two disagree renders a
+  // confident bar over a step nobody is counting, or hides a step that has a
+  // real figure. Asserted in both directions.
+  it("refuses a step whose tracked flag disagrees with its count", () => {
     const body = payload();
-    const funnel = body.funnel.map((step) =>
-      step.key === "landing_views" ? { ...step, tracked: true } : step,
-    );
 
-    expect(() => parseTraffic({ ...body, funnel })).toThrow(/tracked/);
+    const uncounted = body.funnel.map((step) =>
+      step.key === "landing_views" ? { ...step, tracked: false } : step,
+    );
+    expect(() => parseTraffic({ ...body, funnel: uncounted })).toThrow(/tracked/);
+
+    const claimed = body.funnel.map((step) =>
+      step.key === "signed_in" ? { ...step, count: null } : step,
+    );
+    expect(() => parseTraffic({ ...body, funnel: claimed })).toThrow(/tracked/);
   });
 
   // Every chart draws the weeks left to right in array order, so a shuffled

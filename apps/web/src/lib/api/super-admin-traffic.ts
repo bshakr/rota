@@ -106,8 +106,11 @@ const funnelStepSchema = z.object({
   unit: z.enum(FUNNEL_UNITS),
   /**
    * False means the step is not measured AT ALL — not that it measured zero.
-   * Only step 1 is untracked today (landing views need the `page_views` table
-   * that is the epic's last phase, and anonymous traffic cannot be backfilled).
+   * Every step is measured today: step 1 started counting `landing_view` events
+   * when https://github.com/bshakr/rota/pull/44 landed them. The flag stays in
+   * the payload because it is the invariant the refinement below leans on, and
+   * because a step that stops being countable must be able to say so rather
+   * than publish a confident zero.
    */
   tracked: z.boolean(),
   count: count.nullable(),
@@ -123,7 +126,12 @@ const funnelStepSchema = z.object({
    * funnel looks odd.
    */
   rate_from_previous: z.number().nullable(),
-  /** Rails' own words for an untracked step ("not tracked yet"); null otherwise. */
+  /**
+   * Rails' own caveat about what this step counted, or null when it needs none.
+   * Step 1 always carries one: landing views are posted by the page's own
+   * script, so crawlers and clients without JavaScript are missed and the figure
+   * undercounts. The page prints it verbatim rather than paraphrasing it.
+   */
   note: z.string().nullable(),
 });
 
@@ -190,10 +198,10 @@ export const trafficSchema = z.object({
   generated_at: timestamp,
 
   /**
-   * All eight steps, always, in ladder order — an untracked step is published
-   * with a null count rather than omitted, so the page never renumbers the
-   * funnel. A short array would mean a step quietly stopped being counted, and
-   * a bar that is not there cannot look wrong.
+   * All eight steps, always, in ladder order — a step that ever stops being
+   * counted is published with a null count rather than omitted, so the page
+   * never renumbers the funnel. A short array would mean a step quietly stopped
+   * being counted, and a bar that is not there cannot look wrong.
    */
   funnel: z
     .array(funnelStepSchema)

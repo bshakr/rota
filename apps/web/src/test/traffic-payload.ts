@@ -73,10 +73,12 @@ export function trafficPayload() {
         step: 1,
         key: "landing_views",
         unit: "views",
-        tracked: false,
-        count: null,
+        tracked: true,
+        count: 1420,
+        // Nothing above it to be a share of. Its note takes the bar's footnote
+        // slot instead, which is why the fixture carries a real one.
         rate_from_previous: null,
-        note: "not tracked yet",
+        note: "browser visits only: crawlers and clients without JavaScript are missed, so this undercounts",
       },
       {
         step: 2,
@@ -84,8 +86,8 @@ export function trafficPayload() {
         unit: "users",
         tracked: true,
         count: 184,
-        // No rate: the step above is not counted, so there is no denominator.
-        rate_from_previous: null,
+        // 184 of 1420, to one decimal.
+        rate_from_previous: 13.0,
         note: null,
       },
       {
@@ -268,7 +270,7 @@ export function emptyTrafficPayload() {
     ...payload,
     funnel: payload.funnel.map((step) => ({
       ...step,
-      count: step.tracked ? 0 : null,
+      count: 0,
       rate_from_previous: null,
     })),
     median_hours_to_first_text: null,

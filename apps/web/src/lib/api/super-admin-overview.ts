@@ -51,14 +51,14 @@ export type AttentionReason = (typeof ATTENTION_REASONS)[number];
  * The onboarding ladder, lowest rung first.
  *
  * MUST stay in step with `SuperAdmin::Overview::FUNNEL_STEPS`. These are steps 3
- * to 8 of the plan's eight-step funnel. Step 1 (landing views) needs the
- * `page_views` table that is Phase 5. Step 2 (signed in) IS tracked —
- * https://linear.app/bloombase/issue/BLO-1671 landed `sign_ins` — but this query
- * does not join it, because a house's furthest rung is asked of the house and a
- * sign-in belongs to a person who may not have one yet; that funnel is the
- * traffic query's job (https://linear.app/bloombase/issue/BLO-1681). So both are
- * absent from THIS payload rather than guessed at, and the page says so rather
- * than renumbering the ladder.
+ * to 8 of the plan's eight-step funnel. Steps 1 and 2 are both counted — landing
+ * views from `analytics_events`, sign-ins from the `sign_ins` table
+ * https://linear.app/bloombase/issue/BLO-1671 added — but this query joins
+ * neither, because a house's furthest rung is asked of the house and both a
+ * visit and a sign-in belong to somebody who may not have one yet; that funnel
+ * is the traffic query's job (https://linear.app/bloombase/issue/BLO-1681). So
+ * both are absent from THIS payload rather than guessed at, and the page says so
+ * rather than renumbering the ladder.
  */
 export const FUNNEL_STEPS = [
   "made_house",

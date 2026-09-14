@@ -120,11 +120,11 @@ export function attentionSentence(reason: AttentionReason, count: number | null)
 export const PLAN_FUNNEL_STEPS = 8;
 
 /**
- * Steps 1 (landing views) and 2 (signed in) are not COUNTED ON THIS PAGE. Step 1
- * needs the `page_views` table that is Phase 5; step 2 is tracked — `sign_ins`
- * landed with https://linear.app/bloombase/issue/BLO-1671 — but the overview
- * query does not join it, because that funnel belongs to the traffic dashboard
- * (https://linear.app/bloombase/issue/BLO-1681).
+ * Steps 1 (landing views) and 2 (signed in) are not COUNTED ON THIS PAGE. Both
+ * are counted elsewhere — landing views from `analytics_events`, sign-ins from
+ * the `sign_ins` table https://linear.app/bloombase/issue/BLO-1671 added — but
+ * the overview query joins neither, because that funnel belongs to the traffic
+ * dashboard (https://linear.app/bloombase/issue/BLO-1681).
  *
  * The page says so rather than renumbering: calling `made_house` "step 1" would
  * quietly redefine the funnel everyone else is reading.
