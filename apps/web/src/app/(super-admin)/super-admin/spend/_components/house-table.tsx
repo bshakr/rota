@@ -8,11 +8,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SuperAdminSpend } from "@/lib/api/super-admin-spend";
 import { formatCount } from "@/lib/charts";
 import { plural } from "@/lib/hq-overview";
-import { formatUsd, perActiveMemberNote } from "@/lib/hq-spend";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  allocatedFixedCostTotal,
+  fixedCostPerHousePerMonth,
+  formatUsd,
+  perActiveMemberNote,
+} from "@/lib/hq-spend";
 
 /**
  * Every house that spent anything, dearest first, with every column the API
@@ -56,6 +61,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
  */
 export function HouseTable({ spend }: { spend: SuperAdminSpend }) {
   const showFixed = spend.fixed_monthly_cost_usd !== null;
+  const fixedTotal = allocatedFixedCostTotal(spend);
+  const fixedPerMonth = fixedCostPerHousePerMonth(spend);
 
   return (
     <Card>
@@ -196,8 +203,19 @@ export function HouseTable({ spend }: { spend: SuperAdminSpend }) {
                   {formatUsd(spend.totals.claude_cost)}
                 </TableCell>
                 {showFixed ? (
-                  <TableCell className="text-right" data-numeric>
-                    {formatUsd(spend.fixed_monthly_cost_usd ?? 0)} a month
+                  // The COLUMN'S total, summed from the shares above it, because
+                  // that is the only figure a totals row can be checked against.
+                  // It used to print the configured monthly cost, which is a
+                  // different number in a different unit sitting under a column
+                  // of window-length allocations — a totals row that did not
+                  // total its column.
+                  <TableCell className="text-right whitespace-nowrap" data-numeric>
+                    {fixedTotal === null ? null : formatUsd(fixedTotal)}
+                    {fixedPerMonth === null ? null : (
+                      <span className="text-muted-foreground block text-xs">
+                        ({formatUsd(fixedPerMonth)} a month each)
+                      </span>
+                    )}
                   </TableCell>
                 ) : null}
               </TableRow>

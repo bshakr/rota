@@ -109,27 +109,41 @@ export function MarginCalculator({
           )}
         </div>
 
-        {summary === null ? (
-          <p className="text-muted-foreground bg-muted/60 rounded-xl px-4 py-6 text-center text-sm text-pretty">
-            Type a price to see the margin it leaves at the median house and at the dearest tenth.
-          </p>
-        ) : (
-          <>
-            <dl className="grid gap-3 sm:grid-cols-2">
-              <MarginBlock label="At the median house" at={summary.median} price={summary.price} />
-              <MarginBlock label="At the p90 house" at={summary.p90} price={summary.price} />
-            </dl>
-
-            <p
-              className={cn(
-                "text-sm text-pretty",
-                summary.lossMaking > 0 ? "text-destructive font-medium" : "text-muted-foreground",
-              )}
-            >
-              {lossMakingNote(summary)}
+        {/* The answer changes as the operator types, with nothing on screen
+            moving to announce it: a screen reader would read the field's own
+            value back and never the three figures that are the whole point of
+            the panel. `polite` rather than `assertive` because it changes on
+            every keystroke and must wait for a pause in typing. The region is
+            ALWAYS in the tree — a live region that appears at the same moment
+            its content does is not announced at all — so the empty prompt and
+            the results share one wrapper. */}
+        <div aria-live="polite" className="grid gap-5">
+          {summary === null ? (
+            <p className="text-muted-foreground bg-muted/60 rounded-xl px-4 py-6 text-center text-sm text-pretty">
+              Type a price to see the margin it leaves at the median house and at the dearest tenth.
             </p>
-          </>
-        )}
+          ) : (
+            <>
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <MarginBlock
+                  label="At the median house"
+                  at={summary.median}
+                  price={summary.price}
+                />
+                <MarginBlock label="At the p90 house" at={summary.p90} price={summary.price} />
+              </dl>
+
+              <p
+                className={cn(
+                  "text-sm text-pretty",
+                  summary.lossMaking > 0 ? "text-destructive font-medium" : "text-muted-foreground",
+                )}
+              >
+                {lossMakingNote(summary)}
+              </p>
+            </>
+          )}
+        </div>
 
         <p className="text-muted-foreground text-xs text-pretty">
           Margin is a share of the PRICE, not of the cost. Variable cost is texts and Claude, the

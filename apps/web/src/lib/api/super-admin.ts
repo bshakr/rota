@@ -6,7 +6,8 @@ import { requireSuperAdmin } from "@/lib/auth/super-admin";
 import { isApiError } from "./errors";
 import { type ApiRequestInit, requestJson } from "./http";
 import { type SuperAdminOverview, parseOverview } from "./super-admin-overview";
-import { type SpendRange, type SuperAdminSpend, parseSpend } from "./super-admin-spend";
+import { type SuperAdminSpend, parseSpend } from "./super-admin-spend";
+import type { SpendRange } from "../spend-constants";
 import {
   type SuperAdminTraffic,
   type TrafficRange,

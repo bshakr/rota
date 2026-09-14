@@ -38,7 +38,10 @@ export function UnitEconomics({ spend }: { spend: SuperAdminSpend }) {
     {
       label: "p90 house, per month",
       value: unit.cost_per_house_per_month.p90,
-      note: "the dearest tenth starts here",
+      // The sample size rides with the p90 exactly as it does with the median
+      // beside it. A ninetieth percentile of four houses is one house, and a
+      // reader who cannot see that from the tile will quote it as a spread.
+      note: `p90 of ${formatCount(houses)} ${plural(houses, "house", "houses")}: the dearest tenth starts here`,
     },
     {
       label: "Median housemate, per month",
@@ -48,7 +51,7 @@ export function UnitEconomics({ spend }: { spend: SuperAdminSpend }) {
     {
       label: "p90 housemate, per month",
       value: unit.cost_per_active_member_per_month.p90,
-      note: "houses with nobody left to text are not in this spread",
+      note: `p90 of ${formatCount(housed)} ${plural(housed, "house", "houses")}; houses with nobody left to text are not in this spread`,
     },
     {
       label: "Per text sent",

@@ -8,7 +8,7 @@ import {
   SPEND_RANGE_LABELS,
   SPEND_SERIES,
   activeMembersNote,
-    formatUsd,
+  formatUsd,
   monthsCoveredNote,
   perActiveMemberNote,
   pricingNote,

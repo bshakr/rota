@@ -9,7 +9,7 @@ import { formatTimestamp, relativeTime } from "@/lib/date";
 import { plural } from "@/lib/hq-overview";
 import {
   SPEND_RANGE_LABELS,
-    formatUsd,
+  formatUsd,
   marginInputs,
   otherCurrenciesNote,
 } from "@/lib/hq-spend";

@@ -7,10 +7,11 @@ import { emptySpendPayload, spendPayload } from "@/test/spend-payload";
 import {
   SPEND_RANGE_LABELS,
   activeMembersNote,
+  allocatedFixedCostTotal,
   claudeShortfallNote,
   fixedCostPerHousePerMonth,
   formatAmount,
-    formatOtherCurrency,
+  formatOtherCurrency,
   formatUsd,
   houseMonthlyCosts,
   houseSpend,
@@ -26,6 +27,7 @@ import {
   parseSpendRange,
   perActiveMemberNote,
   pricingNote,
+  seriesSplitNote,
   settledShare,
   spendRangeHref,
   unitFigure,
@@ -150,6 +152,20 @@ describe("what the SMS figure can and cannot say", () => {
 
 // Null and zero are opposite answers to a pricing question. Every one of these
 // says so in words, and none of them renders "$0.00".
+describe("every number in the chart is also in text", () => {
+  // The stacked bar carries three values in three fills, and two of those chart
+  // cuts are hard to separate for a protanopic reader (see SPEND_SERIES). The
+  // printed split is what makes the row complete without colour at all, so it
+  // has to carry the same three figures the bar does, in the same order.
+  it("prints a bucket's three figures in series order, at full precision", () => {
+    expect(seriesSplitNote(spend.months[2])).toBe("$5.4704 settled · $0.0711 estimated · $0.784 Claude");
+  });
+
+  it("still prints all three when a month cost nothing", () => {
+    expect(seriesSplitNote(empty.totals)).toBe("$0.00 settled · $0.00 estimated · $0.00 Claude");
+  });
+});
+
 describe("nothing to measure is never a zero", () => {
   it("says why there is no per-member figure, without an em dash", () => {
     const nobody = spend.houses.find((row) => row.slug === "cobblers-yard")!;
@@ -250,6 +266,18 @@ describe("the margin calculator", () => {
     expect(share).toBe(10.5);
     expect(share).toBeCloseTo(perHouse / spend.months_in_range, 4);
     expect(fixedCostPerHousePerMonth(empty)).toBeNull();
+  });
+
+  // A totals row exists so a reader can check that the column above it adds up.
+  // Summed from the rows, not recomputed as `fixed_monthly × months`, because a
+  // figure derived a second way cannot do that job.
+  it("totals the allocated fixed cost column from the shares in it", () => {
+    expect(allocatedFixedCostTotal(spend)).toBe(124.18892);
+    expect(allocatedFixedCostTotal(spend)).toBeCloseTo(
+      spend.houses.reduce((sum, house) => sum + (house.allocated_fixed_cost ?? 0), 0),
+      6,
+    );
+    expect(allocatedFixedCostTotal(empty)).toBeNull();
   });
 
   it("measures margin as a share of the price, not of the cost", () => {

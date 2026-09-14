@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { SPEND_RANGES } from "../spend-constants";
+
 // The shape of GET /api/super_admin/spend, checked at the boundary.
 //
 // Parsed rather than cast, for the same reason ./super-admin-overview.ts and
@@ -25,35 +27,11 @@ import { z } from "zod";
 // the one Client Component on the spend page (the margin calculator) is handed
 // plain numbers rather than the payload.
 
-/**
- * The three windows the page offers.
- *
- * MUST stay in step with `SuperAdmin::Spend::RANGE_DAYS`, whose keys these are.
- * Rails answers 400 `invalid_range` for anything else, so this list is also what
- * keeps a hand-typed `?range=` out of the API.
- *
- * They are NOT calendar windows: each is an exact number of days ending now (30,
- * 90, 365), which is why `months_in_range` below is fractional and why the
- * oldest bar of the `months` series is always a partial month.
- */
-export const SPEND_RANGES = ["30d", "90d", "12m"] as const;
-export type SpendRange = (typeof SPEND_RANGES)[number];
-
-/** What a bare visit to the page asks for. `SuperAdmin::Spend::DEFAULT_RANGE`. */
-export const DEFAULT_SPEND_RANGE: SpendRange = "30d";
-
-/**
- * How many decimal places every money figure in this payload carries.
- *
- * `SuperAdmin::Spend::MONEY_PRECISION` — six, because that is the precision of
- * the columns the figures are summed from (`ai_calls.cost_usd` is decimal(12,6),
- * `sms_messages.price` decimal(10,5)). A single SMS segment costs under a
- * hundredth of a cent, and at four decimals a real cost reported as zero.
- *
- * It is here so the renderer in hq-spend.ts has ONE number to honour: nothing on
- * this page may round a figure below the precision the API computed it at.
- */
-export const MONEY_DECIMALS = 6;
+// The window keys, the default and the money precision are in ../spend-constants.ts,
+// a leaf module both this file and the Client Component side import. See its
+// header: the margin calculator needs them, and reaching them through this file
+// would bundle the schema below — and zod — into the browser to validate a
+// payload the browser never sees.
 
 /** A count Rails produced by counting rows: a whole number, never negative. */
 const count = z.number().int().nonnegative();

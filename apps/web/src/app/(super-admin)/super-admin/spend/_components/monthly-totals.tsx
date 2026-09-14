@@ -6,9 +6,10 @@ import {
   SPEND_SERIES,
   claudeShortfallNote,
   fixedCostPerHousePerMonth,
-    formatUsd,
+  formatUsd,
   monthLabel,
   pricingNote,
+  seriesSplitNote,
 } from "@/lib/hq-spend";
 
 /**
@@ -39,7 +40,11 @@ export function MonthlyTotals({ spend }: { spend: SuperAdminSpend }) {
   const items = spend.months.map((month) => ({
     label: monthLabel(month.month),
     value: month.total,
-    note: `${formatCount(month.segments)} ${month.segments === 1 ? "segment" : "segments"}, ${formatCount(month.titles_classified)} ${month.titles_classified === 1 ? "title" : "titles"} classified`,
+    // Every number in the bar, in text, under the bar. The three segments are
+    // the only place the split exists otherwise, and two of these chart cuts are
+    // hard to tell apart for a protanopic reader (see SPEND_SERIES); printed,
+    // the row is complete without them. The counts say what the money bought.
+    note: `${seriesSplitNote(month)} · ${formatCount(month.segments)} ${month.segments === 1 ? "segment" : "segments"}, ${formatCount(month.titles_classified)} ${month.titles_classified === 1 ? "title" : "titles"} classified`,
     segments: SPEND_SERIES.map((series) => ({
       key: series.key,
       label: series.label,
@@ -82,17 +87,14 @@ export function MonthlyTotals({ spend }: { spend: SuperAdminSpend }) {
                 {formatUsd(spend.fixed_monthly_cost_usd)}
               </span>
             </span>
-            {/* Its own full-width track on its own scale, and deliberately not to
-                the same scale as the months above: hosting can dwarf a month of
-                texts, and a shared axis would flatten every bar in the chart to
-                nothing. The number beside it is the datum; the mark only says
-                "this is a separate line". */}
-            <span
-              className="bg-muted mt-1.5 block h-2.5 w-full overflow-hidden rounded-full"
-              aria-hidden
-            >
-              <span className="bg-chart-4 block h-full w-full rounded-full" />
-            </span>
+            {/* NO BAR HERE, deliberately. This figure cannot share the scale
+                above it — hosting can dwarf a month of texts, and a shared axis
+                would flatten every bar in the chart to nothing — and a
+                full-width mark on its own scale is worse than none: sitting
+                directly under four bars whose LENGTH is their value, it reads as
+                the longest bar on the chart while meaning nothing at all. The
+                numeral is the datum; the rule above and the caption below are
+                what say "separate line". */}
             <p className="text-muted-foreground mt-2 text-xs text-pretty">
               Hosting, WorkOS and the Twilio number: paid whether or not anybody texts, so it is
               never stacked into a month above.{" "}

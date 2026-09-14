@@ -2,10 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { emptySpendPayload, spendPayload as payload } from "@/test/spend-payload";
 
+import { DEFAULT_SPEND_RANGE, MONEY_DECIMALS, SPEND_RANGES } from "../spend-constants";
+
 import {
-  DEFAULT_SPEND_RANGE,
-  MONEY_DECIMALS,
-  SPEND_RANGES,
   SpendShapeError,
   isSpendShapeError,
   overviewSpendSchema,

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { SPEND_RANGES, type SpendRange } from "@/lib/api/super-admin-spend";
+import { SPEND_RANGES, type SpendRange } from "@/lib/spend-constants";
 import { SPEND_RANGE_LABELS, spendRangeHref } from "@/lib/hq-spend";
 import { cn } from "@/lib/utils";
 

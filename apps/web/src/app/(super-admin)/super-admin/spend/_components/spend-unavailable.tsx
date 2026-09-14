@@ -3,8 +3,8 @@ import { CloudOff } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { isApiError } from "@/lib/api/errors";
-import type { SpendRange } from "@/lib/api/super-admin-spend";
 import { isSpendShapeError } from "@/lib/api/super-admin-spend";
+import type { SpendRange } from "@/lib/spend-constants";
 
 import { RangePicker } from "./range-picker";
 

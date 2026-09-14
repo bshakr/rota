@@ -1,15 +1,23 @@
 import type { BarTone } from "@/components/charts/bars";
 
+// TYPES ONLY from the schema module, and that `import type` is load-bearing
+// rather than tidy: it is erased at compile, so the margin calculator — a Client
+// Component that imports this file for its arithmetic — does not drag the zod
+// schema, or zod, into the browser chunk behind it. The values it needs come
+// from ./spend-constants, a leaf module. See that file's header, and the
+// client-chunk grep in scripts/assert-token-not-in-bundle.mjs that proves it.
+import type {
+  OverviewSpend,
+  SpendFigures,
+  SpendHouse,
+  SuperAdminSpend,
+} from "./api/super-admin-spend";
 import {
   DEFAULT_SPEND_RANGE,
   MONEY_DECIMALS,
-  type OverviewSpend,
   SPEND_RANGES,
-  type SpendFigures,
-  type SpendHouse,
   type SpendRange,
-  type SuperAdminSpend,
-} from "./api/super-admin-spend";
+} from "./spend-constants";
 import { formatCount } from "./charts";
 import { MONTH_SHORT } from "./date";
 import { formatRate, plural } from "./hq-overview";
@@ -183,25 +191,48 @@ export function monthLabel(month: string): string {
  * measured two ways, and the legend says so; blending them into one "texts" bar
  * is exactly the silence the plan forbids.
  *
+ * The ORDER IS THE ARGUMENT, and it is [settled, estimated, Claude]: the two
+ * halves of one vendor's bill sit side by side, so a month reads as "this much
+ * of the texts is invoiced, this much is still a guess, and then Claude". Moving
+ * Claude between them to separate two pastels would break that reading, and it
+ * would not help anyway — the awkward pair travels with them.
+ *
  * The tones are the shared chart cuts (./charts/bars.tsx), not the sticker
- * pastels, and the ORDER is chosen so the two SMS cuts never share an edge:
- * settled is grape and estimated is peach, with Claude's mint between them and
- * peach only. The pair a reader most needs to separate is therefore the pair
- * furthest apart in hue, and the one pair the dataviz validator puts in the 6-8
- * protanopia band (mint against peach) is legal here for the reason globals.css
- * gives — every chart drawn from these ships a legend with its own totals, every
- * row prints its figure, and the table below holds every number in the chart.
- * Colour is an identity marker, never the only carrier of a value.
+ * pastels. Run through the dataviz validator, mint against peach scores ΔE 7.7
+ * for protanopia — inside the 6-8 band — and it scores that whether they are
+ * adjacent or a segment apart, because the deficiency does not care about
+ * distance along a bar. So the relief is NOT the order; it is that colour is
+ * never the only carrier here. Every row prints its own total AND its per-series
+ * split in text, the legend carries each series' total, and the table below holds
+ * every number in the chart. A reader who cannot separate the two pastels loses
+ * nothing but the glance.
  */
 export const SPEND_SERIES: readonly {
   key: "sms_cost_settled" | "sms_cost_estimated" | "claude_cost";
   label: string;
+  /** The same series in a running line of figures, where "Texts," is redundant. */
+  short: string;
   tone: BarTone;
 }[] = [
-  { key: "sms_cost_settled", label: "Texts, settled", tone: "grape" },
-  { key: "sms_cost_estimated", label: "Texts, estimated", tone: "peach" },
-  { key: "claude_cost", label: "Claude", tone: "mint" },
+  { key: "sms_cost_settled", label: "Texts, settled", short: "settled", tone: "grape" },
+  { key: "sms_cost_estimated", label: "Texts, estimated", short: "estimated", tone: "peach" },
+  { key: "claude_cost", label: "Claude", short: "Claude", tone: "mint" },
 ];
+
+/**
+ * A bucket's three figures as one line of text: "$5.4704 settled · $0.0711
+ * estimated · $0.784 Claude".
+ *
+ * This is what makes the chart above it readable without colour at all. A
+ * stacked bar carries three values in three fills; a reader who cannot separate
+ * two of those fills — see the note on SPEND_SERIES — otherwise has the row
+ * total and no way to know which vendor it went to. Printed, they do.
+ */
+export function seriesSplitNote(figures: SpendFigures): string {
+  return SPEND_SERIES.map((series) => `${formatUsd(figures[series.key])} ${series.short}`).join(
+    " · ",
+  );
+}
 
 /** The three money figures of a bucket, in `SPEND_SERIES` order. */
 export function seriesValues(figures: SpendFigures): number[] {
@@ -421,6 +452,24 @@ export function monthsCoveredNote(months: readonly string[]): string {
 export function fixedCostPerHousePerMonth(spend: SuperAdminSpend): number | null {
   if (spend.fixed_monthly_cost_usd === null || spend.houses_with_spend === 0) return null;
   return roundMoney(spend.fixed_monthly_cost_usd / spend.houses_with_spend);
+}
+
+/**
+ * The whole window's allocated fixed cost: the "Fixed cost share" column added
+ * up, which is what a totals row in that column has to say.
+ *
+ * Summed from the ROWS rather than recomputed as `fixed_monthly × months`, for
+ * the same reason the rest of the footer is: a totals row exists so a reader can
+ * check that the column above it adds up, and a figure derived a second way
+ * cannot do that job. Null when no fixed cost is configured — there is no column
+ * to total.
+ */
+export function allocatedFixedCostTotal(spend: SuperAdminSpend): number | null {
+  if (spend.fixed_monthly_cost_usd === null) return null;
+
+  return roundMoney(
+    spend.houses.reduce((sum, house) => sum + (house.allocated_fixed_cost ?? 0), 0),
+  );
 }
 
 /**
