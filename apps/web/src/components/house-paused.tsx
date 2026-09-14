@@ -3,7 +3,8 @@ import { PauseCircle } from "lucide-react";
 import { Container } from "@/components/container";
 import { EmptyState } from "@/components/empty-state";
 import { Wordmark } from "@/components/wordmark";
-import { HOUSE_PAUSED_BODY, housePausedTitle } from "@/lib/hq-groups";
+import { HOUSE_PAUSED_BODY_LEAD, HOUSE_PAUSED_BODY_TAIL, housePausedTitle } from "@/lib/hq-groups";
+import { CONTACT_EMAIL } from "@/lib/site";
 
 /**
  * What a paused house looks like from inside it.
@@ -11,8 +12,7 @@ import { HOUSE_PAUSED_BODY, housePausedTitle } from "@/lib/hq-groups";
  * An operator can suspend a house (https://linear.app/bloombase/issue/BLO-1675).
  * Three surfaces then have to say so — the admin app, a housemate's own page, and
  * the household entry page — and they share this component so that an admin and
- * their housemates are told the same thing in the same words. The plan fixes the
- * copy: "This house is paused. Nothing is lost. Email us to pick it back up."
+ * their housemates are told the same thing in the same words.
  *
  * IN THE HOUSE VOICE, not the operator's. The operator's word is "suspended",
  * which is administrative and sounds like a punishment; the house is told its
@@ -20,19 +20,49 @@ import { HOUSE_PAUSED_BODY, housePausedTitle } from "@/lib/hq-groups";
  * suspension is not a delete, nothing has been thrown away, and somebody arriving
  * here has to know that before they start again somewhere else.
  *
+ * THE WAY BACK IS A REAL ADDRESS. `CONTACT_EMAIL` is the studio mailbox the
+ * footer, the privacy page and the terms page already name — one spelling of it
+ * in the whole app, and a real mailbox rather than a hello@ on this domain that
+ * does not exist — rendered as a `mailto:` with the address itself as the link
+ * text. A screen that says "email us" and names nobody is asking the reader to go
+ * and find out who, on the one screen where they cannot look it up in the app.
+ * Decided by Bass, 2026-09-14.
+ *
  * No error styling, no red, no code. Nothing has gone wrong from the reader's
  * point of view — a thing was switched off on purpose — so it wears the ordinary
  * empty-state panel with a peach coin, the same object every "nothing here yet"
  * in the product uses.
- *
- * There is deliberately no mailto. This product has no published support address
- * yet, and inventing one here would put an address on screen that bounces. The
- * sentence is the plan's, unchanged; when there is a real address to link, this
- * is the one place it goes.
  */
 export function HousePaused({ name }: { name: string | null }) {
   return (
-    <EmptyState icon={PauseCircle} title={housePausedTitle(name)} description={HOUSE_PAUSED_BODY} />
+    <EmptyState icon={PauseCircle} title={housePausedTitle(name)} description={<PausedBody />} />
+  );
+}
+
+/**
+ * "Nothing is lost. Email hello@bloombase.studio to pick it back up.", with the
+ * address as a `mailto:` link.
+ *
+ * The words come from `hq-groups.ts` and the address from `site.ts`; this only
+ * puts the link between them. Shared by all three surfaces, so the sentence and
+ * the mailbox cannot drift between an admin's screen and their housemates'.
+ */
+function PausedBody() {
+  return (
+    <>
+      {HOUSE_PAUSED_BODY_LEAD}
+      <a
+        href={`mailto:${CONTACT_EMAIL}`}
+        // The same link idiom the legal pages' `MailLink` uses — grape ink, a
+        // real underline at a readable offset, and a solid offset focus ring.
+        // Written out rather than imported, because that component lives inside
+        // the legal-page shell module and this is not a legal page.
+        className="text-link focus-visible:outline-ring rounded-sm underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2"
+      >
+        {CONTACT_EMAIL}
+      </a>
+      {HOUSE_PAUSED_BODY_TAIL}
+    </>
   );
 }
 
@@ -43,8 +73,8 @@ export function HousePaused({ name }: { name: string | null }) {
  * No sidebar, no nav, nothing of the dashboard behind it: every one of those
  * links leads to a route Rails will refuse, and a navigation that always lands
  * back on the same notice teaches an admin that the app is broken rather than
- * that their house is resting. What is left is the wordmark, the sentence, and
- * `account` — the way out, so nobody is trapped here.
+ * that their house is resting. What is left is the wordmark, the sentence, the
+ * address to write to, and `account` — the way out, so nobody is trapped here.
  *
  * A component rather than JSX inside the layout so that it can be rendered from a
  * fixture: this is a screen no screenshot could otherwise reach, because getting
@@ -83,6 +113,8 @@ export function HousePausedScreen({
  * The same fact, inline, for a surface that already has a card and a heading of
  * its own — the household entry page, where the house's name is the card's title
  * and a second panel inside it would say it twice.
+ *
+ * Same sentence and same mailbox as the panel above, through `PausedBody`.
  */
 export function HousePausedNote() {
   return (
@@ -90,7 +122,9 @@ export function HousePausedNote() {
       <PauseCircle className="text-muted-foreground mt-0.5 size-5 shrink-0" aria-hidden />
       <p className="text-sm text-pretty">
         <span className="font-medium">This house is paused.</span>{" "}
-        <span className="text-muted-foreground">{HOUSE_PAUSED_BODY}</span>
+        <span className="text-muted-foreground">
+          <PausedBody />
+        </span>
       </p>
     </div>
   );

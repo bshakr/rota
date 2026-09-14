@@ -444,17 +444,32 @@ export const RESUME_CONSEQUENCES: readonly string[] = [
 
 /**
  * The paused screen's copy, in the HOUSE voice — warm, blameless, and with a way
- * out. Taken from the plan verbatim: "This house is paused. Nothing is lost.
- * Email us to pick it back up."
+ * out. The plan's sentence is "This house is paused. Nothing is lost. Email us to
+ * pick it back up."; "us" is now the address itself, because a screen that says
+ * "email us" and then names nobody is asking the reader to go and find out who.
  *
- * One constant for all three surfaces (the admin layout, the member page and the
- * household entry page) so a housemate and their admin are told the same thing.
- * Each surface decides its own surrounding tone; the promise does not change.
+ * One set of words for all three surfaces (the admin layout, the member page and
+ * the household entry page) so a housemate and their admin are told the same
+ * thing. Each surface decides its own surrounding tone; the promise does not
+ * change.
+ *
+ * The body is SPLIT because the address inside it has to be a real `mailto:`
+ * link, and a link cannot live inside a string. The component assembles the two
+ * halves around it; `housePausedBody` reassembles the same sentence as plain text
+ * so the words can be asserted without a DOM. The address itself is NOT here —
+ * it is `CONTACT_EMAIL` in src/lib/site.ts, which the footer, the privacy page
+ * and the terms page already name, and which is the only place it is spelled.
  */
 export const HOUSE_PAUSED_TITLE = "This house is paused";
-export const HOUSE_PAUSED_BODY = "Nothing is lost. Email us to pick it back up.";
+export const HOUSE_PAUSED_BODY_LEAD = "Nothing is lost. Email ";
+export const HOUSE_PAUSED_BODY_TAIL = " to pick it back up.";
 
 /** The title with the house's name in it, when the surface knows it. */
 export function housePausedTitle(name: string | null): string {
   return name ? `${name} is paused` : HOUSE_PAUSED_TITLE;
+}
+
+/** The body as one plain sentence, for assertions and for anything that cannot render a link. */
+export function housePausedBody(address: string): string {
+  return `${HOUSE_PAUSED_BODY_LEAD}${address}${HOUSE_PAUSED_BODY_TAIL}`;
 }

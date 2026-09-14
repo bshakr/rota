@@ -15,6 +15,7 @@ import {
   groupsQuery,
   groupsSearchParams,
   hasNarrowingFilters,
+  housePausedBody,
   housePausedTitle,
   memberRotasNote,
   notesCounter,
@@ -29,6 +30,7 @@ import {
   timezoneNote,
   workosUserUrl,
 } from "./hq-groups";
+import { CONTACT_EMAIL } from "./site";
 
 // The Ruby lists, hardcoded rather than imported, exactly as
 // super-admin-overview.test.ts hardcodes Overview's. A test that reads a union
@@ -290,12 +292,30 @@ describe("the notes counter", () => {
   });
 });
 
-describe("the paused screen's title", () => {
-  it("names the house when the surface knows it", () => {
+describe("the paused screen's copy", () => {
+  it("names the house in the title when the surface knows it", () => {
     expect(housePausedTitle("Alma Road")).toBe("Alma Road is paused");
   });
 
   it("falls back to the house-voice sentence when it does not", () => {
     expect(housePausedTitle(null)).toBe("This house is paused");
+  });
+
+  // The way back off this screen. It is the one screen where the reader cannot
+  // look the address up in the app, so the sentence has to carry it: the halves
+  // exist only so the component can put a real mailto link between them, and
+  // this asserts they still close around an address into one sentence.
+  it("puts the address inside the sentence, not after it", () => {
+    expect(housePausedBody(CONTACT_EMAIL)).toBe(
+      "Nothing is lost. Email hello@bloombase.studio to pick it back up.",
+    );
+  });
+
+  // Hardcoded, not read from the constant, because the address is a decision
+  // (Bass, 2026-09-14) and a real mailbox somebody has to be reading. A test
+  // that took it from the same constant the code takes it from could not notice
+  // it being changed to one that bounces.
+  it("writes to the studio mailbox, never a rota.monster or ritualpass address", () => {
+    expect(CONTACT_EMAIL).toBe("hello@bloombase.studio");
   });
 });
