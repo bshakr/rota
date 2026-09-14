@@ -36,12 +36,17 @@ export default authkitProxy({
     // crawler — would be 307'd to WorkOS instead of getting the card image.
     // Facebook, Slack and X all fetch it anonymously. robots.txt and sitemap.xml
     // need no entry: they carry a dot, so the matcher already skips them.
+    //
+    // "/privacy" and "/terms" are linked from the public footer, so a logged-out
+    // visitor must be able to read them without being sent to WorkOS first.
     unauthenticatedPaths: [
       "/",
       "/opengraph-image",
       "/styleguide",
       "/auth/sign-in",
       "/auth/reauth",
+      "/privacy",
+      "/terms",
     ],
   },
 });

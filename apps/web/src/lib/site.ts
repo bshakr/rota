@@ -69,3 +69,22 @@ export const SITE_DESCRIPTION =
  * that every surface renders the same string the page's own typography uses.
  */
 export const SITE_TAGLINE = "Whose turn? Who’s home? Sorted.";
+
+/**
+ * Where a visitor writes to. The footer's contact link uses it, and the privacy
+ * and terms pages name it as the contact point, so it lives here rather than
+ * being typed into three files.
+ *
+ * The studio mailbox rather than one on this domain, because hello@rota.monster
+ * does not exist. Confirmed by Bass on 2026-09-13. It matters that this one is
+ * real: the privacy page offers it as the route for a UK GDPR request, and those
+ * carry a statutory one month clock.
+ */
+export const CONTACT_EMAIL = "hello@bloombase.studio";
+
+/**
+ * Who made it. The footer credits the studio rather than a person, and links
+ * out. Decided by Bass on 2026-09-13.
+ */
+export const MAKER_NAME = "bloombase.studio";
+export const MAKER_URL = "https://bloombase.studio";

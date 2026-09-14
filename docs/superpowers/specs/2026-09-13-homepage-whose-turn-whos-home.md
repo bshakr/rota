@@ -116,5 +116,69 @@ changes. What changed in `landing.tsx` and why.
 - The hero text column lost `animate-pop`: it started the h1 at opacity 0 for 0.45s
   and the h1 is the largest contentful paint. The vignette beside it still pops.
 
-Waves 2 to 4 (page metadata and Open Graph, a how-it-works block and an FAQ, then
-the demo house and analytics) are tracked in the review round, not here.
+## 8. Revisions 2026-09-13 (trust and objections, wave 3)
+
+Four sections added to the page, and two pages added to the site. The page had been
+selling without closing: it never said what the next ten minutes look like, never
+answered what it costs or what it does with the calendar, and its footer offered no
+privacy, no terms and no way to reach anybody.
+
+- **"How it works", after the pair.** Three numbered steps: add the housemates and
+  their numbers, add the chores and who takes turns, paste the calendar link if the
+  house has one. It closes on "Rota Monster does the texting from here." Numbered
+  because it is a real sequence, and on the bare paper rather than in a pane, so the
+  page does not become a stack of boxes. Step three says "if you have one", which is
+  the third place the calendar is made optional.
+- **"What a housemate gets", after the hand-off card.** The page talks to the admin
+  throughout, because the admin is the only person who ever visits it. This card
+  answers the question the admin gets asked back: no app, a text with a link to your
+  own page, nothing to download and no password to forget.
+- **"Questions", before the closing panel.** The six merged questions from the review
+  round, answered inside what the product does today. No STOP handling, no reply by
+  text and no escalation is claimed, because none of those is built. The component
+  also emits a FAQPage JSON-LD graph built from the same array as the visible copy,
+  so the structured data cannot drift from the page. One entry departs from the merged
+  copy: "We don't use Google Calendar." became "What if we don't use Google Calendar?",
+  answer unchanged. That string is emitted as a `Question` name in the graph, where a
+  statement is wrong, and it was the only one of the six not phrased as a question.
+- **A shared site footer** replaces the landing page's inline one. Wordmark, the
+  tagline from `SITE_TAGLINE`, privacy, terms, a contact address and a "Made by
+  bloombase.studio" link. The legal pages use the same component at the prose
+  measure, so their wordmark, document and footer sit on one left edge.
+- **`/privacy` and `/terms`**, the first legal documents the app has had, written as
+  short plain documents for a free product run by one person. Every factual claim was
+  checked against the code: the calendar disconnect deletes the link and every event,
+  removing a housemate stops their link but keeps their name and number, nothing is
+  on a deletion timer, there is no self-serve house delete, descriptions and guests
+  are never read out of the feed, and the classifier request carries the housemates'
+  names as well as the event titles. Where the code does nothing, the pages say so.
+  Both paths are in the proxy's `unauthenticatedPaths`.
+
+One spacing rule came out of the QA pass and is worth keeping: a section's boundary
+gaps have to beat its internal ones, or the block reads as inserted rather than as
+part of the page. "How it works" first shipped with 48/34/37/30px inside it and only
+26px under its closing caption, so the caption read as a label on the hand-off card
+below. It now sits at 64px above and 78px below, against 28 and 32 inside. The
+housemate card went from under 18px of clear space under the hand-off card to 41px,
+which is a beat rather than a footnote.
+
+The footer speaks one link vocabulary: privacy, terms, contact and the maker credit
+are all underlined at rest. The credit is quiet by colour, not by decoration, because
+underlining only the credit would have left it louder than the two legal links above
+it. The wordmark stays undecorated, being a logo rather than a text link.
+
+Not built, by Bass's decision: the founder note. It is out of scope rather than
+pending.
+
+The contact address is `hello@bloombase.studio`, one constant in
+`apps/web/src/lib/site.ts` feeding the footer and both legal pages. It is the studio
+mailbox rather than one on this domain, because hello@rota.monster does not exist
+(Bass, 2026-09-13). Note that `apps/api/app/mailers/application_mailer.rb` still
+defaults `from:` to that non-existent address; it is dormant, with no subclass and
+nothing delivering, so it is a separate ticket rather than part of this wave.
+
+Open, for Bass rather than for code: no postal address is given for the operator, no
+hosting region is recorded anywhere in the repo, and neither document has been read by
+a lawyer.
+
+Wave 4 (the demo house and analytics) is tracked in the review round, not here.
