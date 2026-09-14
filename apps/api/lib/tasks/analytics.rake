@@ -58,9 +58,9 @@ namespace :analytics do
     end
   end
 
-  desc "Delete anonymous events older than N days (default 90). A house's own events are kept."
+  desc "Delete anonymous events older than N days (default 180). A house's own events are kept."
   task :prune, [ :days ] => :environment do |_task, args|
-    days = Integer(args[:days] || 90)
+    days = Integer(args[:days] || 180)
     deleted = AnalyticsEvent.prune_anonymous(older_than: days.days)
 
     puts "Pruned #{deleted} anonymous #{'event'.pluralize(deleted)} older than #{days} days."

@@ -129,10 +129,13 @@ readable the day the events start arriving rather than the day a screen is built
 ## Retention
 
 ```
-bin/rails "analytics:prune[90]"
+bin/rails "analytics:prune[180]"
 ```
 
-Deletes anonymous events older than ninety days. A house's own events are kept for as long as the
+Deletes anonymous events older than a hundred and eighty days, which is the default the task takes
+when you pass it no number. Twice the longest window the super admin traffic page offers, so the
+oldest bucket of a 90-day range is never being pruned while the page is still drawing it. A house's
+own events are kept for as long as the
 house is, and go with it: the foreign key cascades, so a deleted house's funnel rows can never
 outlive it and be miscounted as anonymous traffic.
 

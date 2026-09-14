@@ -97,8 +97,10 @@ RSpec.describe AnalyticsEvent do
 
   describe ".prune_anonymous" do
     it "deletes anonymous events past the retention window and keeps a house's own" do
-      old_anonymous = described_class.create!(name: described_class::LANDING_VIEW, occurred_at: 100.days.ago)
-      recent_anonymous = described_class.create!(name: described_class::LANDING_VIEW, occurred_at: 10.days.ago)
+      old_anonymous = described_class.create!(name: described_class::LANDING_VIEW, occurred_at: 200.days.ago)
+      # Inside the window and older than the 90 days this used to keep: the traffic page's longest
+      # range reaches back here, which is the reason the retention was doubled.
+      recent_anonymous = described_class.create!(name: described_class::LANDING_VIEW, occurred_at: 100.days.ago)
       old_house = described_class.create!(name: described_class::HOUSE_NAMED, group: group, occurred_at: 400.days.ago)
 
       expect(described_class.prune_anonymous).to eq(1)

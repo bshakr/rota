@@ -57,7 +57,14 @@ class AnalyticsEvent < ApplicationRecord
   CTA_POSITIONS = %w[hero closing header].freeze
 
   # How long an anonymous event is kept. A house's own events are kept for as long as the house is.
-  ANONYMOUS_RETENTION = 90.days
+  #
+  # A hundred and eighty days, because the super admin traffic page offers a 90-day window and
+  # pruning at 90 clipped the far edge of it: the oldest bucket of the longest range was already
+  # losing rows to the pruner while the page was still drawing it. Twice the longest window leaves
+  # room for that range to be read in full, and for this year's figure to be held against last
+  # quarter's, without the table ever becoming a place anybody could look somebody up — there is
+  # nothing in a row to look up with.
+  ANONYMOUS_RETENTION = 180.days
 
   belongs_to :group, optional: true
 
