@@ -1,3 +1,5 @@
+import { createHash, createHmac } from "node:crypto";
+
 import { NextResponse } from "next/server";
 
 import {
@@ -6,6 +8,7 @@ import {
   isHostname,
   sanitiseBrowserProperties,
   visitContext,
+  type BrowserEvent,
   type CtaPosition,
   CTA_POSITIONS,
 } from "@/lib/analytics";
@@ -30,6 +33,12 @@ import { createTokenBucket } from "@/lib/rate-limit";
  * discarded without being kept either. See `visitContext` in src/lib/analytics.ts, which also lists
  * the Cloudflare location headers this app deliberately never reads.
  *
+ * It also computes one thing that is not a property and never becomes one: the DAILY VISITOR CODE,
+ * a hash of the address and the agent with a salt that changes at midnight UTC, sent to Rails in
+ * its own header so that "how many browsers" can be counted beside "how many visits" without a
+ * cookie and without anything in a row to join two visits together with. See `visitorDigest` below,
+ * which is where the argument for it lives.
+ *
  * What it cannot do, by construction: create an event that belongs to a house. `first_text_delivered`
  * is the number this whole wave exists to measure, and the boundary that stops a visitor forging one
  * is this allowlist plus the narrower one Rails enforces on arrival.
@@ -46,11 +55,71 @@ export const dynamic = "force-dynamic";
 // acceptable for this endpoint and would not be for anything guarding money or credentials.
 const limiter = createTokenBucket({ capacity: 20, refillPerSecond: 1 / 3 });
 
-function clientKey(request: Request): string {
+function clientIp(request: Request): string | undefined {
   const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
+  if (forwarded) return forwarded.split(",")[0]!.trim() || undefined;
 
-  return request.headers.get("x-real-ip")?.trim() || "unknown";
+  return request.headers.get("x-real-ip")?.trim() || undefined;
+}
+
+// Everything behind one proxy would otherwise share a bucket. "unknown" is a bucket of its own, and
+// a deploy with no proxy in front of it has no other answer to give.
+function clientKey(request: Request): string {
+  return clientIp(request) ?? "unknown";
+}
+
+/**
+ * The daily visitor code: how this site counts VISITORS without a cookie and without keeping
+ * anything that could name one.
+ *
+ * `sha256(hmac_sha256(secret, "visitor-salt:" + today in UTC) + "|" + ip + "|" + user agent)`.
+ *
+ * Read it in two halves. The inner HMAC is a SALT for the day, derived from the shared secret and
+ * the UTC date, held for the length of one request and never written down. The outer hash mixes that
+ * salt with the two things this request already carried — the address it came from and the string
+ * the browser says it is — into sixty-four characters of hex.
+ *
+ * What that buys, and what it deliberately does not:
+ *
+ *   - Two visits from one browser on one day produce the SAME code, so Rails can tell that the
+ *     second one is not a new visitor.
+ *   - The same browser tomorrow produces a DIFFERENT code, because the salt has changed, and there
+ *     is no kept copy of yesterday's salt to recompute the old one with. Nobody, including us, can
+ *     match a code across a midnight. That is the whole reason there is no "returning visitors"
+ *     figure anywhere in this product.
+ *   - The code cannot be turned back into an address. It is a hash of a secret nobody outside this
+ *     process has, so guessing it needs the secret as well as the address.
+ *
+ * Landing views only. A `cta_click` happens on a page whose visit was already counted, and giving
+ * the other two events a code would put the same identifier on three rows of the same visit, which
+ * is exactly the join this table is built not to have.
+ *
+ * No secret, no code. The events still flow: a deploy with no ANALYTICS_SHARED_SECRET simply counts
+ * visits and not visitors, which is where this product was last week.
+ *
+ * The address and the agent are both things this handler ALREADY reads — the address for the rate
+ * limiter's bucket, the agent for the device, browser and system families — and neither is stored,
+ * logged or forwarded. What leaves this function is the hex, and it travels in a header rather than
+ * in the properties (see forwardAnalyticsEvent), so there is no path by which it can be written into
+ * a row.
+ */
+function visitorDigest(request: Request, name: BrowserEvent): string | undefined {
+  if (name !== "landing_view") return undefined;
+
+  const secret = process.env.ANALYTICS_SHARED_SECRET?.trim();
+  if (!secret) return undefined;
+
+  // No address means no visitor to be the same as. A shared "unknown" code would count every
+  // visit with no proxy header in front of it as one browser, which is a made-up number rather
+  // than a missing one.
+  const ip = clientIp(request);
+  if (!ip) return undefined;
+
+  const day = new Date().toISOString().slice(0, 10);
+  const salt = createHmac("sha256", secret).update(`visitor-salt:${day}`).digest("hex");
+  const agent = request.headers.get("user-agent")?.trim() ?? "";
+
+  return createHash("sha256").update(`${salt}|${ip}|${agent}`).digest("hex");
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -114,7 +183,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return new NextResponse(null, { status: 204 });
   }
 
-  await forwardAnalyticsEvent(name, enriched);
+  await forwardAnalyticsEvent(name, enriched, visitorDigest(request, name));
 
   // Always 204 once the request itself was well formed. Whether Rails took it is our problem, not
   // the visitor's, and a failure here must never show up as an error in somebody's console.
