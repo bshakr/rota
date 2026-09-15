@@ -58,6 +58,11 @@ module Internal
     # browser that had already been here; it is a visit nobody counted, which is what every row
     # before this shipped and every row on a deploy with no shared secret is. The traffic page reads
     # absent and false differently and both readings have to stay available to it.
+    # It also NEVER RAISES, for the same reason AnalyticsEvent.record does not. The claim is one
+    # write to a table this request is not otherwise about: a missing `daily_visitors` between the
+    # web release and the API release, or a statement timeout, would otherwise cost a 500 and the
+    # event that was already good. A dropped flag is a visit counted without a visitor, which is a
+    # gap in one figure; a dropped event is a gap in every figure on the page.
     def counted_properties(name)
       return {} unless name == AnalyticsEvent::LANDING_VIEW
 
@@ -66,6 +71,9 @@ module Internal
       return {} if first.nil?
 
       { AnalyticsEvent::FIRST_VISIT_TODAY.to_sym => first }
+    rescue StandardError => e
+      Rails.logger.warn("[analytics] could not count a visitor: #{e.class}: #{e.message}")
+      {}
     end
 
     # 404, not 403, when no secret is configured: an unconfigured deploy should look like it has no

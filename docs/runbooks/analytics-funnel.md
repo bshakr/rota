@@ -161,9 +161,11 @@ reloaded thirty times this morning counts one. There is no cross-day figure and 
 which is why this product publishes no "returning visitors" anywhere.
 
 **Retention.** A `daily_visitors` row is kept for the day it belongs to and the day after, then
-deleted: `DailyVisitor.prune`, run by `analytics:prune` and by the `prune_analytics` entry in
+deleted: `DailyVisitor.prune`, run by `analytics:prune` and by the `prune_daily_visitors` entry in
 `config/recurring.yml` (daily, 2:40am UTC). The privacy page promises a day in words, so that
-schedule entry is part of the feature rather than housekeeping.
+schedule entry is part of the feature rather than housekeeping — and it is an entry of its own
+rather than a second statement beside the event sweep, because two statements in one command share
+a fate.
 
 ## First-touch attribution, and why there is still one cookie
 
@@ -228,9 +230,13 @@ argument: a visitor code means nothing after the day it was made, because the sa
 changed, so how long to keep one is not a choice to make at a command line. `DailyVisitor::RETENTION`
 is the rule.
 
-`prune_analytics` in `config/recurring.yml` runs both, daily at 2:40am UTC. It is scheduled rather
-than left to be run by hand because the privacy page tells a visitor their daily code is deleted, and
-a promise with a rake task behind it is not a promise.
+`config/recurring.yml` runs the same two deletions as separate entries: `prune_daily_visitors`
+(`DailyVisitor.prune`) daily at 2:40am UTC, and `prune_anonymous_events`
+(`AnalyticsEvent.prune_anonymous`) at 2:45am. Scheduled rather than left to be run by hand because
+the privacy page tells a visitor their daily code is deleted, and a promise with a rake task behind
+it is not a promise. Separate rather than one command because the codes are the half that carries
+the promise and the events are the half that can get slow, and two statements in one command share
+a fate.
 
 ## Switching it on
 

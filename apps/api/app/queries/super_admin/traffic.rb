@@ -328,7 +328,8 @@ module SuperAdmin
     # branch copied by hand is a WHERE clause left pointing at the one it was copied from.
     UNGROUPED_VISITS = {
       REFERRED_DIMENSION => "analytics_events.properties ->> 'referrer_host' IS NOT NULL",
-      UNIQUE_VISITORS_DIMENSION => "analytics_events.properties ->> 'first_visit_today' = 'true'"
+      UNIQUE_VISITORS_DIMENSION =>
+        "analytics_events.properties ->> '#{AnalyticsEvent::FIRST_VISIT_TODAY}' = 'true'"
     }.freeze
 
     # Where the visits in the window came from, six ways, plus the two figures that are not a column,

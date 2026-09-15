@@ -23,10 +23,11 @@
 #   row here says "some browser was here on the 15th" and a row there says "a visit happened, and it
 #   was that browser's first today"; there is nothing to put the two together with.
 #
-# And it is deleted. RETENTION below is the rule, `prune` is the method, and the `prune_analytics`
-# entry in config/recurring.yml is what actually runs it — the privacy page promises a day, so this
-# is one of the few places in this codebase where a scheduler entry is part of the feature rather
-# than housekeeping.
+# And it is deleted. RETENTION below is the rule, `prune` is the method, and the
+# `prune_daily_visitors` entry in config/recurring.yml is what actually runs it — the privacy page
+# promises a day, so this is the one place in this codebase where a scheduler entry is part of the
+# feature rather than housekeeping, and why it is an entry of its own rather than a second statement
+# beside the 180-day event sweep.
 class DailyVisitor < ApplicationRecord
   # As the web app sends it: lowercase hex, SHA-256's own length. Anything else did not come from
   # that function, so the controller drops it and the visit is simply counted without a visitor.

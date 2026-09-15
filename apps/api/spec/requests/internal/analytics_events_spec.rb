@@ -176,6 +176,19 @@ RSpec.describe "POST /internal/analytics/events" do
         expect(AnalyticsEvent.order(:id).last.properties).to eq("first_visit_today" => false)
       end
 
+      # A visit that was otherwise fine must not become a 500 because one extra write failed. The
+      # case that will really happen is a deploy skew: the web release goes out ahead of the API
+      # release and starts sending codes at a database with no `daily_visitors` yet. Losing the
+      # flag costs one figure; losing the event costs every figure on the page.
+      it "keeps the event when the claim cannot be made at all" do
+        allow(DailyVisitor).to receive(:claim).and_raise(ActiveRecord::StatementInvalid)
+
+        post_event({ name: "landing_view", properties: { path: "/" } }, visitor: code)
+
+        expect(response).to have_http_status(:no_content)
+        expect(AnalyticsEvent.sole.properties).to eq("path" => "/")
+      end
+
       # The invariant the privacy page rests on: the code is read, answered and dropped. It is on
       # the request and it is in daily_visitors; it is in no event, ever.
       it "never writes the code itself into an event" do

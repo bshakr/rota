@@ -102,10 +102,19 @@ RSpec.describe DailyVisitor do
     let(:config) { YAML.load_file(Rails.root.join("config/recurring.yml"), aliases: true) }
 
     it "is pruned daily in production" do
-      entry = config.dig("production", "prune_analytics")
+      entry = config.dig("production", "prune_daily_visitors")
 
-      expect(entry["command"]).to include("DailyVisitor.prune")
+      expect(entry["command"]).to eq("DailyVisitor.prune")
       expect(entry["schedule"]).to match(/every day/)
+    end
+
+    # On its own, never as a second statement beside the 180-day event sweep. Two statements in one
+    # command share a fate, and the one that would fail first is the one that does not matter.
+    it "does not share a command with anything that could fail before it" do
+      commands = config["production"].values.filter_map { |entry| entry["command"] }
+
+      expect(commands).to include("DailyVisitor.prune")
+      expect(commands.grep(/DailyVisitor/)).to eq([ "DailyVisitor.prune" ])
     end
   end
 end

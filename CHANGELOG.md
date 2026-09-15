@@ -15,8 +15,8 @@
   one. The super admin traffic page reads it as "1,420 views from 887 visitors (1.6 views each)" in
   step 1's footnote and under the visits panel, `analytics:funnel` prints it beside the landing
   views, and both say that a visitor means a browser on a day. Codes are deleted the day after the
-  day they were made, by `analytics:prune` and by a new `prune_analytics` recurring entry, which is
-  also the first time the analytics pruner has been scheduled at all. (#PR_NUMBER)
+  day they were made, by `analytics:prune` and by a new `prune_daily_visitors` recurring entry, which
+  is also the first time the analytics pruner has been scheduled at all. (#PR_NUMBER)
 
 ### Changed
 
