@@ -308,6 +308,11 @@ export function trafficPayload() {
       // there is a tail. A fixture where they matched would let the page go back
       // to summing the rows without a single test noticing.
       referred_count: 903,
+      // The browsers those 1,420 views came from: 1,420 / 887 is 1.6 views each.
+      // DELIBERATELY NOT 903. The two are ungrouped counts over the same rows and
+      // nothing makes them equal, so a fixture that reused the number would let
+      // the page read either one for the other without a test noticing.
+      unique_visitors: 887,
     },
 
     // 45 coded failures plus 5 with no code = the 50 failed texts in the weeks
@@ -355,6 +360,7 @@ export function emptyTrafficPayload() {
       browsers: [],
       operating_systems: [],
       referred_count: 0,
+      unique_visitors: 0,
     },
     weeks: payload.weeks.map((w) => ({
       ...w,

@@ -10,6 +10,14 @@
 # which is a deliberate limit rather than a missing feature — and it is why the site needs no consent
 # banner.
 #
+# ONE ROW KNOWS ONE THING ABOUT THE BROWSER THAT SENT IT, and it is worth being exact about what.
+# `first_visit_today` says whether this was that browser's first landing view of the day. It is
+# decided elsewhere, in DailyVisitor, from a code hashed with a salt that changes at midnight and is
+# never written here; what lands on the row is a single true or false. So a day's views can be
+# counted as browsers, and NOTHING else follows from it: the flag cannot be joined to another row,
+# cannot be traced back to an address, and cannot be matched to anything the same browser did
+# yesterday, because the code that would have matched them is unrecoverable by the next morning.
+#
 # Two halves, and the split is a security boundary rather than a category:
 #
 #   ANONYMOUS_NAMES  happen before a house exists, so they carry no group. Four of them, and they are
@@ -48,12 +56,15 @@ class AnalyticsEvent < ApplicationRecord
   FUNNEL = [ LANDING_VIEW, CTA_CLICK, SIGNIN_STARTED, SIGNIN_COMPLETED, HOUSE_NAMED,
              FIRST_ROTA_SAVED, FIRST_MEMBER_ADDED, FIRST_TEXT_DELIVERED, FIRST_MEMBER_LINK_OPENED ].freeze
 
-  # Every property any event may carry, and there will never be one that is not on this list. A
+  # Every property a SENDER may set, and there will never be one that is not on this list. A
   # campaign label, a CTA position, a path, the member id that makes "two housemates opened"
   # countable, and six coarse facts about a visit: the HOST that linked to us, the visitor's COUNTRY
   # as two letters and their CITY by name, whether they came on a phone, a tablet or a computer, and
   # which family of BROWSER on which family of OPERATING SYSTEM. No names, no phone numbers, no
   # tokens, no calendar URLs, no free text.
+  #
+  # Mirrored key for key by PROPERTY_KEYS in apps/web/src/lib/analytics.ts; analytics.test.ts reads
+  # this file and fails if the two ever drift apart.
   #
   # Those last six are the ones worth being explicit about, because they are the ones that sound like
   # tracking and are not. Each is COARSE and IDENTIFIER-FREE: a host is a site rather than a person, a
@@ -63,13 +74,33 @@ class AnalyticsEvent < ApplicationRecord
   # most of the internet, and "Chrome 141.0.7390.55 on macOS 15.6.1" is a handful of people.
   # None of them arrives with anything to join on — this table holds no visitor id, no session id, no
   # cookie and no IP address — so two rows written by one person still cannot be told apart from two
-  # rows written by two, however many of the six each carries. The referring URL's path and query
-  # are dropped in the browser before the event is sent, because those are where a search term or an
-  # email address would be; a host cannot hold either. The finer location a network can report — a
+  # rows written by two, however many of the six each carries. `first_visit_today` counts browsers
+  # without breaking that: it says a second row EXISTS somewhere, never which one it is. The
+  # referring URL's path and query are dropped in the browser before the event is sent, because
+  # those are where a search term or an email address would be; a host cannot hold either. The
+  # finer location a network can report — a
   # postcode, a region, a latitude and longitude — is never read at all, one layer up in
   # apps/web/src/lib/analytics.ts, which is the only way to be sure it is never written here.
-  PROPERTY_KEYS = %w[position path ref utm_source utm_medium utm_campaign utm_content member_id
-                     referrer_host country city device browser os].freeze
+  SENT_PROPERTY_KEYS = %w[position path ref utm_source utm_medium utm_campaign utm_content member_id
+                          referrer_host country city device browser os].freeze
+
+  # The one property no sender may set, and the only one on a row that is not a fact about the
+  # visit's own request: whether this was the first visit that BROWSER made today.
+  #
+  # It is decided here, in this process, from the daily visitor code in the `X-Analytics-Visitor`
+  # header (Internal::AnalyticsEventsController, DailyVisitor). It is deliberately off
+  # SENT_PROPERTY_KEYS, which is what the controller permits, because a caller who could set it
+  # could add a thousand visitors to the traffic page without sending a thousand visits — and the
+  # whole point of counting visitors is that it is harder to fake than counting visits.
+  #
+  # TRUE, FALSE and ABSENT are three different facts and the page reads all three. True is a new
+  # browser today; false is one that has already been here today; absent is a visit that carried no
+  # code at all, which is every visit before this shipped and every visit on a deploy with no shared
+  # secret. Counting absent as false would quietly turn "not counted" into "not new".
+  FIRST_VISIT_TODAY = "first_visit_today".freeze
+
+  # What a ROW may contain: everything a sender may set, plus the one thing only this process may.
+  PROPERTY_KEYS = (SENT_PROPERTY_KEYS + [ FIRST_VISIT_TODAY ]).freeze
 
   # Long enough for any real campaign name, short enough that the column can never become storage.
   MAX_VALUE_LENGTH = 200
@@ -232,6 +263,11 @@ class AnalyticsEvent < ApplicationRecord
       when "device" then DEVICE_CLASSES.include?(value)
       when "browser" then BROWSER_FAMILIES.include?(value)
       when "os" then OS_FAMILIES.include?(value)
+      # A boolean and nothing that merely reads like one. It is counted in SQL as
+      # `properties ->> 'first_visit_today' = 'true'`, and a STRING "true" would satisfy that
+      # comparison as happily as the boolean does — so the one shape that could inflate the
+      # visitor count without inflating the visit count is the one this line refuses.
+      when FIRST_VISIT_TODAY then [ true, false ].include?(value)
       else true
       end
     end

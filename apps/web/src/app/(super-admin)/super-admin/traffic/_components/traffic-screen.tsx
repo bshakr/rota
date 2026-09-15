@@ -59,7 +59,7 @@ export function TrafficScreen({ traffic, now }: { traffic: SuperAdminTraffic; no
       />
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-        <ConversionFunnel funnel={traffic.funnel} />
+        <ConversionFunnel funnel={traffic.funnel} uniqueVisitors={traffic.visits.unique_visitors} />
         <ConversionAside
           median={traffic.median_hours_to_first_text}
           sample={traffic.median_hours_sample}

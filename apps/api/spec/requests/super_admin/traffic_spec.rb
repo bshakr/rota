@@ -84,6 +84,24 @@ RSpec.describe "Super admin traffic" do
     expect(visits["cities"]).to eq([])
   end
 
+  # How many BROWSERS step 1's visits came from, counted from the flag Rails sets off the daily
+  # visitor code. The whole reason the page can say "1,420 views from 887 visitors" without a cookie.
+  it "publishes how many browsers those visits came from" do
+    2.times do
+      create(:analytics_event, name: "landing_view", occurred_at: 1.day.ago,
+                               properties: { "first_visit_today" => true })
+    end
+    create(:analytics_event, name: "landing_view", occurred_at: 1.day.ago,
+                             properties: { "first_visit_today" => false })
+    create(:analytics_event, name: "landing_view", occurred_at: 1.day.ago, properties: {})
+
+    get "/api/super_admin/traffic", headers: operator_headers
+
+    payload = response.parsed_body
+    expect(payload["visits"]["unique_visitors"]).to eq(2)
+    expect(payload["funnel"].first["count"]).to eq(4)
+  end
+
   it "reads across every house, which is the whole point of the surface" do
     first = create(:group)
     second = create(:group)

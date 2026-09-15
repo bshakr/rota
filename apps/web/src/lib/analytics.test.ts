@@ -68,8 +68,17 @@ describe("the Rails allowlist", () => {
     return body ? body.trim().split(/\s+/) : [];
   }
 
-  it("agrees on every property key", () => {
-    expect(rubyList("PROPERTY_KEYS")).toEqual([...PROPERTY_KEYS]);
+  it("agrees on every property key a sender may set", () => {
+    expect(rubyList("SENT_PROPERTY_KEYS")).toEqual([...PROPERTY_KEYS]);
+  });
+
+  // The one property that is NOT on this side's list, and must never be. Rails decides
+  // `first_visit_today` from the daily visitor code in the `X-Analytics-Visitor` header; a key this
+  // app could put in a body would be a key a stranger with curl could put in a body, and the
+  // traffic page's visitor count would become whatever a script felt like claiming.
+  it("keeps the property Rails decides for itself off this side's list", () => {
+    expect(model).toContain('FIRST_VISIT_TODAY = "first_visit_today"');
+    expect([...PROPERTY_KEYS]).not.toContain("first_visit_today");
   });
 
   it("agrees on the CTA positions", () => {

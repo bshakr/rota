@@ -7,6 +7,11 @@ RSpec.describe AnalyticsReport do
     AnalyticsEvent.create!(name: name, occurred_at: at)
   end
 
+  def visit(at: now - 1.day, **properties)
+    AnalyticsEvent.create!(name: AnalyticsEvent::LANDING_VIEW, occurred_at: at,
+                           properties: AnalyticsEvent.sanitise_properties(properties))
+  end
+
   def house_event(name, group:, at: now - 1.day, **properties)
     AnalyticsEvent.create!(name: name, group: group, occurred_at: at,
                            properties: AnalyticsEvent.sanitise_properties(properties))
@@ -22,6 +27,28 @@ RSpec.describe AnalyticsReport do
       expect(steps["landing_view"]).to include(count: 3, conversion: nil)
       expect(steps["cta_click"]).to include(count: 1, conversion: 33.3)
       expect(steps["signin_started"]).to include(count: 0, conversion: 0.0)
+    end
+
+    # Beside step 1, from the flag Rails sets off the daily visitor code. Browser-days, not people:
+    # three days of one browser is three, thirty reloads in a day is one.
+    it "counts how many browsers the landing views came from" do
+      2.times { visit(first_visit_today: true) }
+      2.times { visit(first_visit_today: false) }
+      visit
+
+      report = described_class.funnel(days: 7, now: now)
+
+      expect(report[:unique_visitors]).to eq(2)
+      expect(report[:steps].first).to include(name: "landing_view", count: 5)
+    end
+
+    # Absent is not false. Every view before the visitor code shipped carries no flag at all, so an
+    # old window reads nought rather than claiming every visit was a new browser — and the printer
+    # has to say "not counted" rather than draw a zero.
+    it "counts no browsers at all for views that carried no code" do
+      3.times { anonymous(AnalyticsEvent::LANDING_VIEW) }
+
+      expect(described_class.funnel(days: 7, now: now)[:unique_visitors]).to be_zero
     end
 
     it "ignores events older than the window" do

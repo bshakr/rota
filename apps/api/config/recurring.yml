@@ -59,6 +59,32 @@ default: &default
     command: "JobRun.prune!"
     schedule: every day at 2:20am
 
+  # Daily visitor codes past the day after the one they belong to (BLO-1701).
+  #
+  # Unlike every other entry in this file, this is not housekeeping. The privacy page tells a
+  # visitor that the code made from their address and browser is kept for a day and then deleted,
+  # which is a promise kept by this line and by nothing else — `analytics:prune` had no scheduler
+  # entry at all before today, and was documented as "run it by hand". A promise with a rake task
+  # behind it is not a promise.
+  #
+  # ITS OWN ENTRY, not a second statement on the one below. Two statements in one command share a
+  # fate: a hundred and eighty days of anonymous events timing out on the sweep would take the
+  # privacy promise down with it, silently, and the table that matters is the small one. Separate
+  # entries are separate jobs and separate failures. 2:40am is clear of the reminder sweep on the
+  # hour, the job-run prune at 2:20, the window top-up at 3am, the price backfill at 4:40am, the
+  # calendar sync at minute 27 and the queue cleanup at minute 12.
+  prune_daily_visitors:
+    command: "DailyVisitor.prune"
+    schedule: every day at 2:40am
+
+  # The other analytics table, and ordinary housekeeping by comparison: anonymous events past a
+  # hundred and eighty days, which is twice the longest window the traffic page draws. Five minutes
+  # after its neighbour so the two never contend, and second because it is the one that can get
+  # slow.
+  prune_anonymous_events:
+    command: "AnalyticsEvent.prune_anonymous"
+    schedule: every day at 2:45am
+
 development:
   <<: *default
 

@@ -25,6 +25,13 @@
  * visitor must never be able to forge "this house got a text delivered", which is the number the
  * whole funnel is for. The six house events are written in-process by Rails and have no HTTP path.
  *
+ * One thing is deliberately NOT here. A landing view also carries a DAILY VISITOR CODE, which is how
+ * "how many browsers" is counted without a cookie — but it is not a property, it is not on any list
+ * in this file, and it never touches a body. It is computed in the route handler and sent in its own
+ * header; see `visitorDigest` in src/app/api/analytics/route.ts. Anything a browser could put in a
+ * body is something a stranger with curl could put in a body, and a visitor count is only worth
+ * having because it is harder to fake than a visit count.
+ *
  * This module is the single definition shared by the browser, the route handler and the tests.
  * `analytics.test.ts` reads the Ruby model and asserts the two allowlists have not drifted apart.
  */
@@ -87,8 +94,12 @@ export const BROWSER_PROPERTY_KEYS = [
 export const SERVER_PROPERTY_KEYS = ["country", "city", "device", "browser", "os"] as const;
 
 /**
- * Every property any event may carry, and there will never be one that is not on this list.
- * Mirrors `AnalyticsEvent::PROPERTY_KEYS` in Rails, in the same order.
+ * Every property this app may set, and there will never be one that is not on this list.
+ * Mirrors `AnalyticsEvent::SENT_PROPERTY_KEYS` in Rails, in the same order.
+ *
+ * NOT `AnalyticsEvent::PROPERTY_KEYS`, which is that list plus `first_visit_today` — the one
+ * property a row may hold that no sender may set, because Rails decides it from the visitor code
+ * header. A key on this list is a key anybody with curl can post.
  */
 export const PROPERTY_KEYS = [...BROWSER_PROPERTY_KEYS, ...SERVER_PROPERTY_KEYS] as const;
 
