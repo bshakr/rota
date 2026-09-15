@@ -59,6 +59,20 @@ default: &default
     command: "JobRun.prune!"
     schedule: every day at 2:20am
 
+  # Both analytics tables' expiry dates, in one pass: anonymous events past a hundred and eighty
+  # days, and daily visitor codes past the day after the one they belong to (BLO-1701).
+  #
+  # Unlike its two neighbours, this is not housekeeping. The privacy page tells a visitor that the
+  # code made from their address and browser is kept for a day and then deleted, which is a promise
+  # kept by this line and by nothing else — `analytics:prune` had no scheduler entry at all before
+  # today, and was documented as "run it by hand". A promise with a rake task behind it is not a
+  # promise. 2:40am is clear of the reminder sweep on the hour, the job-run prune at 2:20, the
+  # window top-up at 3am, the price backfill at 4:40am, the calendar sync at minute 27 and the queue
+  # cleanup at minute 12.
+  prune_analytics:
+    command: "AnalyticsEvent.prune_anonymous; DailyVisitor.prune"
+    schedule: every day at 2:40am
+
 development:
   <<: *default
 

@@ -93,4 +93,19 @@ RSpec.describe DailyVisitor do
         .to eq(1)
     end
   end
+
+  # The privacy page tells a visitor this code is deleted, and the only thing that makes that true
+  # is the schedule entry. `analytics:prune` had none before today and was documented as "run it by
+  # hand", which is a fine way to keep a table small and no way at all to keep a promise. Guarded
+  # here the way the reminder sweep and the job-run prune guard theirs.
+  describe "recurring schedule" do
+    let(:config) { YAML.load_file(Rails.root.join("config/recurring.yml"), aliases: true) }
+
+    it "is pruned daily in production" do
+      entry = config.dig("production", "prune_analytics")
+
+      expect(entry["command"]).to include("DailyVisitor.prune")
+      expect(entry["schedule"]).to match(/every day/)
+    end
+  end
 end
