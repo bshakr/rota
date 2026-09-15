@@ -25,6 +25,13 @@
  * visitor must never be able to forge "this house got a text delivered", which is the number the
  * whole funnel is for. The six house events are written in-process by Rails and have no HTTP path.
  *
+ * One thing is deliberately NOT here. A landing view also carries a DAILY VISITOR CODE, which is how
+ * "how many browsers" is counted without a cookie — but it is not a property, it is not on any list
+ * in this file, and it never touches a body. It is computed in the route handler and sent in its own
+ * header; see `visitorDigest` in src/app/api/analytics/route.ts. Anything a browser could put in a
+ * body is something a stranger with curl could put in a body, and a visitor count is only worth
+ * having because it is harder to fake than a visit count.
+ *
  * This module is the single definition shared by the browser, the route handler and the tests.
  * `analytics.test.ts` reads the Ruby model and asserts the two allowlists have not drifted apart.
  */

@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-09-15
+
+### Added
+
+- **How many browsers** those landing views came from, counted without a cookie and therefore still
+  without a consent banner. Each landing view arrives with a daily visitor code: a hash of the
+  visit's network address and browser string with a salt derived from `ANALYTICS_SHARED_SECRET` and
+  the UTC date, computed server-side, sent to Rails in an `X-Analytics-Visitor` header and never in
+  the properties body. A new `daily_visitors` table claims it behind a unique index on
+  `[day, digest]`, so the insert itself answers "first today?", and the answer lands on the event as
+  `first_visit_today`. The salt changes at midnight and is never stored, so a code cannot be matched
+  across two days by anybody, us included: there is no returning-visitor figure and there cannot be
+  one. The super admin traffic page reads it as "1,420 views from 887 visitors (1.6 views each)" in
+  step 1's footnote and under the visits panel, `analytics:funnel` prints it beside the landing
+  views, and both say that a visitor means a browser on a day. Codes are deleted the day after the
+  day they were made, by `analytics:prune` and by a new `prune_analytics` recurring entry, which is
+  also the first time the analytics pruner has been scheduled at all. (#PR_NUMBER)
+
+### Changed
+
+- The privacy page says what the counting can now do, rather than a sentence that used to be true.
+  It can tell whether two visits on the same day came from the same browser, and nothing more; the
+  code behind that is kept for a day, is never stored next to a visit, and cannot be turned back
+  into an address, which is still never recorded. The super admin visits panel lost the matching
+  claim for the same reason. (#PR_NUMBER)
+
 ## 2026-09-14
 
 ### Added
