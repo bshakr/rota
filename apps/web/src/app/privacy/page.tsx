@@ -127,7 +127,7 @@ export default function PrivacyPage() {
           the code is not the address and cannot be turned into one, so no address is
           written down anywhere. Nothing stored with a visit joins it to another visit, so
           Rota Monster cannot follow anybody through the site and cannot build a picture of
-          anybody. The visit counts are deleted after 180 days, and the codes after a day.
+          anybody. The visit counts are deleted after 180 days, and the codes once the day after the one they were made in is over.
         </P>
       </Section>
 
