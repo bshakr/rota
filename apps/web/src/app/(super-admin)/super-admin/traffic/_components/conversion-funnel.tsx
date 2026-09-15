@@ -1,7 +1,7 @@
 import { type BarDatum, Bars } from "@/components/charts/bars";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { TrafficFunnelRow } from "@/lib/api/super-admin-traffic";
-import { TRAFFIC_STEP_LABELS, VISITORS_CAVEAT, funnelRateNote, visitorsNote } from "@/lib/hq-traffic";
+import { TRAFFIC_STEP_LABELS, funnelRateNote, visitorsClause } from "@/lib/hq-traffic";
 
 /**
  * The plan's eight steps, as bars, each with what it counts and how it did
@@ -22,10 +22,12 @@ import { TRAFFIC_STEP_LABELS, VISITORS_CAVEAT, funnelRateNote, visitorsNote } fr
  *      is re-stamped on every settings save, so an established house lands there
  *      without ever having been in step 3's count. Shown and explained, never
  *      capped.
- *   4. "VISITORS" ON STEP 1 MEANS BROWSER-DAYS. The figure beside the bar counts
+ *   4. "VISITORS" ON STEP 1 MEANS BROWSER-DAYS. The clause beside the bar counts
  *      views that were a browser's first that day, from a code thrown away at
- *      midnight, so somebody who came back on another day is two. The caveat
- *      under the chart says so, because "visitors" left alone reads as "people".
+ *      midnight, so somebody who came back on another day is two. What that word
+ *      means is spelled out ONCE on the page, under the visits panel, beside the
+ *      standalone form of the same figure. Saying it twice, once here and once
+ *      four hundred pixels down, taught a reader that the page repeats itself.
  *
  * Bar lengths are measured against the LONGEST step rather than against step 1,
  * which is the only honest choice when a later step can be bigger than an
@@ -51,7 +53,12 @@ export function ConversionFunnel({
     // the only one where "and how many browsers was that?" is a question. It
     // takes the slot the rate would have had, which step 1 has nothing above it
     // to fill.
-    const visitors = index === 0 ? visitorsNote(step.count ?? 0, uniqueVisitors) : null;
+    //
+    // The CLAUSE, not the sentence: the bar has just printed "1,420 views" and a
+    // footnote opening with the same number twenty pixels under it reads as two
+    // figures rather than one. The panel below the funnel prints the standalone
+    // form, where nothing has said the count yet.
+    const visitors = index === 0 ? visitorsClause(step.count ?? 0, uniqueVisitors) : null;
 
     return {
       label: `${step.step}. ${TRAFFIC_STEP_LABELS[step.key]}`,
@@ -83,8 +90,6 @@ export function ConversionFunnel({
           somebody who signed in last month lands below a step they were never counted in, and
           confirming a timezone is re-stamped every time a house saves its settings.
         </p>
-
-        <p className="text-muted-foreground mt-3 text-xs text-pretty">{VISITORS_CAVEAT}</p>
       </CardContent>
     </Card>
   );

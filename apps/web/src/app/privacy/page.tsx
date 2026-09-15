@@ -93,9 +93,10 @@ export default function PrivacyPage() {
           Rota Monster keeps a count of how many visits the site gets, how many different
           browsers they came from, and how many get through each step of setting a house
           up. The counting sets no cookie of its own (the one cookie a visit can pick up is
-          described under Cookies below) and keeps only counts, and for a day the scrambled
-          code described below, so it can say how many visits there were and never who made
-          one. About each visit, Rota Monster records the following and nothing else:
+          described under Cookies below). It keeps only counts, plus, for a day, the
+          scrambled code described below, so it can say how many visits there were and never
+          who made one. About each visit, and stored with it, Rota Monster records the
+          following and nothing else:
         </P>
         <Bullets
           items={[

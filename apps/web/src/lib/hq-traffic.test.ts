@@ -20,6 +20,7 @@ import {
   parseRange,
   rangeHref,
   VISITORS_CAVEAT,
+  visitorsClause,
   visitorsNote,
   visitsCoverageNote,
   weekLabel,
@@ -307,21 +308,43 @@ describe("where the visits came from", () => {
   // The figure that needs a cookie everywhere else, and the one sentence on this
   // page where a careless word would overstate what is actually known.
   describe("how many browsers those visits came from", () => {
-    it("says the views, the visitors and the views each at one decimal", () => {
-      expect(visitorsNote(1420, 887)).toBe("1,420 views from 887 visitors (1.6 views each)");
-      expect(visitorsNote(1, 1)).toBe("1 view from 1 visitor (1.0 views each)");
+    // The standalone form, under the visits panel: nothing above it has printed
+    // the count, and the panel is about VISITS from its heading down. The noun
+    // leaves the ratio rather than the sentence calling one number two things.
+    it("says the visits, the visitors and the ratio at one decimal", () => {
+      expect(visitorsNote(1420, 887)).toBe("1,420 visits from 887 visitors (1.6 each)");
+      expect(visitorsNote(1, 1)).toBe("1 visit from 1 visitor (1.0 each)");
     });
 
-    // NOT COUNTED, not none. Every view from before the visitor code shipped, and
-    // every view on a deploy with no shared secret, carries no code at all. A
-    // confident "0 visitors" under 1,420 views would be a lie with a number on it.
+    // The clause, under the funnel's first bar, which has just printed the count
+    // and its unit. Repeating "1,420 views" twenty pixels below the label that
+    // says "1,420 views" reads as two figures rather than one.
+    it("drops the count where the bar has already printed it", () => {
+      expect(visitorsClause(1420, 887)).toBe("from 887 visitors (1.6 views each)");
+      expect(visitorsClause(1420, 887)).not.toMatch(/1,420/);
+      expect(visitorsClause(1, 1)).toBe("from 1 visitor (1.0 views each)");
+    });
+
+    // One word per surface. The bar's unit is views, the panel is about visits,
+    // and neither is allowed to use the other's.
+    it("says views under the bar and visits under the panel, never both", () => {
+      expect(visitorsClause(1420, 887)).not.toMatch(/visits/);
+      expect(visitorsNote(1420, 887)).not.toMatch(/views/);
+    });
+
+    // NOT COUNTED, not none. Every visit from before the visitor code shipped,
+    // and every visit on a deploy with no shared secret, carries no code at all.
+    // A confident "0 visitors" under 1,420 visits would be a lie with a number
+    // on it, and both forms have to refuse it.
     it("says visitors are not counted rather than printing nought of them", () => {
       expect(visitorsNote(1420, 0)).toBe("Visitors aren't counted in this window");
+      expect(visitorsClause(1420, 0)).toBe("Visitors aren't counted in this window");
       expect(visitorsNote(1420, 0)).not.toMatch(/\b0 visitors\b/);
     });
 
-    it("says nothing at all when there were no views to divide", () => {
+    it("says nothing at all when there was nothing to divide", () => {
       expect(visitorsNote(0, 0)).toBeNull();
+      expect(visitorsClause(0, 0)).toBeNull();
     });
 
     // "Visitor" left alone reads as "person", and this figure is not people: it

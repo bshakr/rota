@@ -107,6 +107,11 @@ export function VisitsPanel({ visits, views }: { visits: TrafficVisits; views: n
   // Leads the sentence under the columns, because it is the figure the whole
   // panel is a breakdown OF: how many browsers those visits came from. Null when
   // there were no visits at all, where the coverage line already says so.
+  //
+  // The STANDALONE form, and it says "visits" rather than "views". Nothing above
+  // it on this panel has printed the count, and every heading, column and
+  // sentence here is about visits: calling the same number views in one clause
+  // and visits in the next is how a reader concludes they are two numbers.
   const visitors = visitorsNote(views, visits.unique_visitors);
 
   return (
@@ -166,11 +171,15 @@ export function VisitsPanel({ visits, views }: { visits: TrafficVisits; views: n
             could not be told apart from two visits from two. That stopped being
             true the day the figure above it shipped, and a privacy sentence left
             standing after the code moved under it is worse than none: what IS
-            still true is the interesting half, and it is what the caveat says. */}
+            still true is the interesting half, and it is what the caveat says.
+
+            The caveat only appears when there is a figure for it to qualify. On
+            a day with no traffic there is no "visitors" on the page, and a
+            paragraph explaining a word nothing used is noise. */}
         <p className="text-muted-foreground mt-3 text-xs text-pretty">
-          {VISITORS_CAVEAT} Nothing in a row here is stored against a visitor: no cookie, no
-          identifier and no address, and the code the visitor figure is counted from is never
-          written beside a visit.
+          {visitors ? `${VISITORS_CAVEAT} ` : ""}
+          Nothing in a row here is stored against a visitor: no cookie, no identifier and no
+          address, and the code the browsers are counted from is never written beside a visit.
         </p>
       </CardContent>
     </Card>
