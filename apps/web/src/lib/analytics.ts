@@ -94,8 +94,12 @@ export const BROWSER_PROPERTY_KEYS = [
 export const SERVER_PROPERTY_KEYS = ["country", "city", "device", "browser", "os"] as const;
 
 /**
- * Every property any event may carry, and there will never be one that is not on this list.
- * Mirrors `AnalyticsEvent::PROPERTY_KEYS` in Rails, in the same order.
+ * Every property this app may set, and there will never be one that is not on this list.
+ * Mirrors `AnalyticsEvent::SENT_PROPERTY_KEYS` in Rails, in the same order.
+ *
+ * NOT `AnalyticsEvent::PROPERTY_KEYS`, which is that list plus `first_visit_today` — the one
+ * property a row may hold that no sender may set, because Rails decides it from the visitor code
+ * header. A key on this list is a key anybody with curl can post.
  */
 export const PROPERTY_KEYS = [...BROWSER_PROPERTY_KEYS, ...SERVER_PROPERTY_KEYS] as const;
 

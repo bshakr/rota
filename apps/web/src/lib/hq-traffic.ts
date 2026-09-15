@@ -247,26 +247,6 @@ export const OS_LABELS: Record<OsFamily, string> = {
 };
 
 /**
- * The line under the six columns: how much of step 1 they could account for.
- *
- * Every column leaves out the visits its property was missing from, so the rows
- * never add up to the funnel's first bar, and a reader who notices that is owed
- * the reason rather than left to assume the page is broken. One decimal, like
- * every other rate here.
- *
- * `referred` MUST be the payload's `visits.referred_count` and never the sum of
- * the referrer rows. The list stops at ten hosts, so from the eleventh onwards a
- * summed figure is smaller than the truth and looks exactly as plausible.
- *
- * And the sentence stops at what is known. It does NOT say the remaining visits
- * were direct, because a missing referrer has at least three causes that cannot
- * be told apart from a stored row: somebody typed the address or opened it from
- * a text, the referring page sent no referrer at all under its own policy, or
- * the visit came from one of our own pages and the browser dropped it before the
- * event was sent. "Arrived from another site" is the only half of that anybody
- * can act on.
- */
-/**
  * "1,420 views from 887 visitors (1.6 views each)" — the one thing step 1 cannot
  * say about itself.
  *
@@ -305,6 +285,26 @@ export function visitorsNote(views: number, visitors: number): string | null {
 export const VISITORS_CAVEAT =
   "A visitor is a browser on a day, counted from a code that is thrown away at midnight, so somebody who came back on another day counts twice and nothing here can tell that they did.";
 
+/**
+ * The line under the six columns: how much of step 1 they could account for.
+ *
+ * Every column leaves out the visits its property was missing from, so the rows
+ * never add up to the funnel's first bar, and a reader who notices that is owed
+ * the reason rather than left to assume the page is broken. One decimal, like
+ * every other rate here.
+ *
+ * `referred` MUST be the payload's `visits.referred_count` and never the sum of
+ * the referrer rows. The list stops at ten hosts, so from the eleventh onwards a
+ * summed figure is smaller than the truth and looks exactly as plausible.
+ *
+ * And the sentence stops at what is known. It does NOT say the remaining visits
+ * were direct, because a missing referrer has at least three causes that cannot
+ * be told apart from a stored row: somebody typed the address or opened it from
+ * a text, the referring page sent no referrer at all under its own policy, or
+ * the visit came from one of our own pages and the browser dropped it before the
+ * event was sent. "Arrived from another site" is the only half of that anybody
+ * can act on.
+ */
 export function visitsCoverageNote(referred: number, views: number): string {
   if (views === 0) return "No visit was counted in this window.";
 

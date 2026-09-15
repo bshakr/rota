@@ -93,9 +93,9 @@ export default function PrivacyPage() {
           Rota Monster keeps a count of how many visits the site gets, how many different
           browsers they came from, and how many get through each step of setting a house
           up. The counting sets no cookie of its own (the one cookie a visit can pick up is
-          described under Cookies below) and keeps only totals, so it can say how many
-          visits there were and never who made one. About each visit, Rota Monster records
-          the following and nothing else:
+          described under Cookies below) and keeps only counts, and for a day the scrambled
+          code described below, so it can say how many visits there were and never who made
+          one. About each visit, Rota Monster records the following and nothing else:
         </P>
         <Bullets
           items={[
@@ -112,7 +112,7 @@ export default function PrivacyPage() {
           Rota Monster can tell whether two visits on the same day came from the same
           browser, and nothing more than that. To do it, the site makes a scrambled code out
           of the visit&rsquo;s network address and the description the browser sends of
-          itself, mixed with a secret that changes every midnight, and keeps that code for
+          itself, mixed with a secret that changes every midnight UTC, and keeps that code for
           the day it was made and the day after. The code cannot be turned back into an
           address. It is kept on its own and never stored next to a visit, so no visit can
           be traced to it. And because the secret has changed by the next morning, the same
@@ -125,9 +125,9 @@ export default function PrivacyPage() {
           about itself, a cookie, or a visitor or session number of any kind. The address
           and that string are used to make the day&rsquo;s code and are then thrown away;
           the code is not the address and cannot be turned into one, so no address is
-          written down anywhere. Nothing joins one visit to another, so Rota Monster cannot
-          follow anybody through the site and cannot build a picture of anybody. The visit
-          counts are deleted after 180 days, and the codes after a day.
+          written down anywhere. Nothing stored with a visit joins it to another visit, so
+          Rota Monster cannot follow anybody through the site and cannot build a picture of
+          anybody. The visit counts are deleted after 180 days, and the codes after a day.
         </P>
       </Section>
 
@@ -169,8 +169,8 @@ export default function PrivacyPage() {
         <P>
           Rota Monster keeps what a house gives it for as long as the house is using it. The
           visit counting above is the only thing deleted on a timer: the counts go after 180
-          days, and the daily browser codes go the day after the day they were made.
-          Nothing else is, and this page will say so plainly until something is.
+          days, and the daily browser codes go once the day after the one they were made in
+          is over. Nothing else is, and this page will say so plainly until something is.
         </P>
         <Bullets
           items={[
