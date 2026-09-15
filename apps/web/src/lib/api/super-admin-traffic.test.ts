@@ -4,7 +4,9 @@ import { emptyTrafficPayload, trafficPayload as payload } from "@/test/traffic-p
 
 import { FUNNEL_STEPS } from "./super-admin-overview";
 import {
+  BROWSER_FAMILIES,
   DEVICE_CLASSES,
+  OS_FAMILIES,
   TEXT_KINDS,
   TRAFFIC_FUNNEL_STEPS,
   TRAFFIC_RANGES,
@@ -27,13 +29,16 @@ import {
 //                  texts_settled, delivery_rate, covers, active_houses, active_users,
 //                  members_last_seen, new_houses
 //
-//     VISIT_DIMENSIONS = { referrers:, countries:, devices: }
+//     VISIT_DIMENSIONS = { referrers:, countries:, cities:, devices:, browsers:,
+//                          operating_systems: }
 //
 //   apps/api/app/models/sms_message.rb
 //     KINDS = { reminder:, cover_notice:, member_login: }
 //
 //   apps/api/app/models/analytics_event.rb
-//     DEVICE_CLASSES = %w[mobile tablet desktop]
+//     DEVICE_CLASSES   = %w[mobile tablet desktop]
+//     BROWSER_FAMILIES = %w[chrome safari firefox edge samsung other]
+//     OS_FAMILIES      = %w[ios android macos windows linux other]
 //
 // Hardcoded rather than read off disk on purpose, exactly as
 // super-admin-overview.test.ts does it. The point is not to re-derive the lists
@@ -53,8 +58,17 @@ const RUBY_STEPS = [
   "first_cover",
 ];
 const RUBY_KINDS = ["reminder", "cover_notice", "member_login"];
-const RUBY_VISIT_DIMENSIONS = ["referrers", "countries", "devices"];
+const RUBY_VISIT_DIMENSIONS = [
+  "referrers",
+  "countries",
+  "cities",
+  "devices",
+  "browsers",
+  "operating_systems",
+];
 const RUBY_DEVICE_CLASSES = ["mobile", "tablet", "desktop"];
+const RUBY_BROWSER_FAMILIES = ["chrome", "safari", "firefox", "edge", "samsung", "other"];
+const RUBY_OS_FAMILIES = ["ios", "android", "macos", "windows", "linux", "other"];
 const RUBY_WEEK_KEYS = [
   "week_starting",
   "texts_sent",
@@ -221,16 +235,44 @@ describe("parseTraffic", () => {
   });
 
   describe("where the visits came from", () => {
-    it("names the three columns Rails names", () => {
+    // Order included. It is the order the page draws the columns in, and it is
+    // what puts "where from" on one row and "what on" on the next.
+    it("names the six columns Rails names, in Rails' order", () => {
       expect([...VISIT_DIMENSIONS]).toEqual(RUBY_VISIT_DIMENSIONS);
       expect([...DEVICE_CLASSES]).toEqual(RUBY_DEVICE_CLASSES);
+      expect([...BROWSER_FAMILIES]).toEqual(RUBY_BROWSER_FAMILIES);
+      expect([...OS_FAMILIES]).toEqual(RUBY_OS_FAMILIES);
     });
 
     it("narrows each column to its own row shape", () => {
       const traffic = parseTraffic(payload());
 
       expect(traffic.visits.referrers[0]).toEqual({ host: "news.ycombinator.com", count: 341 });
+      expect(traffic.visits.countries[0]).toEqual({ code: "GB", count: 1044 });
+      expect(traffic.visits.cities[0]).toEqual({ city: "London", count: 412 });
       expect(traffic.visits.devices[0]).toEqual({ device: "mobile", count: 806 });
+      expect(traffic.visits.browsers[0]).toEqual({ browser: "chrome", count: 614 });
+      expect(traffic.visits.operating_systems[0]).toEqual({ os: "ios", count: 521 });
+    });
+
+    // A family and never a version. The enum is what makes that structural
+    // rather than a promise: a payload carrying "chrome 141" cannot be parsed,
+    // so it can never reach the page and be drawn as a bar of its own.
+    it("refuses a browser or a system that is a version rather than a family", () => {
+      const body = payload();
+
+      expect(() =>
+        parseTraffic({
+          ...body,
+          visits: { ...body.visits, browsers: [{ browser: "chrome 141", count: 3 }] },
+        }),
+      ).toThrow(/browsers/);
+      expect(() =>
+        parseTraffic({
+          ...body,
+          visits: { ...body.visits, operating_systems: [{ os: "macOS 15.6", count: 3 }] },
+        }),
+      ).toThrow(/operating_systems/);
     });
 
     // The figure the panel's sentence is built from. Rails counts it ungrouped
@@ -253,12 +295,16 @@ describe("parseTraffic", () => {
       expect(() => parseTraffic({ ...body, visits })).toThrow(/referred_count/);
     });
 
-    // Empty is the state of production today: the domain is DNS-only on
-    // Cloudflare, so no visit carries a country. A schema that demanded a row
-    // would turn that into a blank dashboard.
+    // An empty column is a real state, not a broken payload: no visit carries a
+    // city until Cloudflare's visitor location headers are switched on for the
+    // zone, and on day one no visit carries anything at all. A schema that
+    // demanded a row would turn either into a blank dashboard.
     it("accepts a column with nothing in it", () => {
-      expect(parseTraffic(payload()).visits.countries).toEqual([]);
-      expect(parseTraffic(emptyTrafficPayload()).visits.devices).toEqual([]);
+      const empty = parseTraffic(emptyTrafficPayload()).visits;
+
+      expect(empty.cities).toEqual([]);
+      expect(empty.devices).toEqual([]);
+      expect(empty.operating_systems).toEqual([]);
     });
 
     // `device` is a closed set in Rails, so a fourth word is a deploy skew rather

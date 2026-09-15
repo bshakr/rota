@@ -42,7 +42,7 @@ module SuperAdmin
     # confusing way to break a dashboard. Bump it whenever the payload changes — its shape OR its
     # values (a step that starts counting something different is the case worth naming, because the
     # old entry stays perfectly parseable and is simply wrong).
-    CACHE_KEY = "super_admin/traffic/v2".freeze
+    CACHE_KEY = "super_admin/traffic/v3".freeze
     CACHE_TTL = 60.seconds
 
     # The plan's eight steps, in order, as [ key, unit ].
@@ -83,19 +83,24 @@ module SuperAdmin
     # Enough to see the shape of a delivery problem without turning the page into a Twilio manual.
     FAILURE_CODES_SHOWN = 5
 
-    # The three coarse properties a landing view carries, as the payload spells them, mapped to the
-    # key each row publishes its value under. The page draws one column per entry.
+    # The six coarse properties a landing view carries, as the payload spells them, mapped to the key
+    # each row publishes its value under. The page draws one column per entry, IN THIS ORDER, which
+    # is what makes its two rows of three mean something: where the visit came from, then what it
+    # arrived on. VISITS_SQL is built from this hash too, so a seventh property is one line here.
     VISIT_DIMENSIONS = {
       "referrers" => { property: "referrer_host", key: :host },
       "countries" => { property: "country", key: :code },
-      "devices" => { property: "device", key: :device }
+      "cities" => { property: "city", key: :city },
+      "devices" => { property: "device", key: :device },
+      "browsers" => { property: "browser", key: :browser },
+      "operating_systems" => { property: "os", key: :os }
     }.freeze
 
     # A long tail of one-view referrers is not a finding. Ten is a column somebody reads.
     VISIT_ROWS_SHOWN = 10
 
-    # The fourth branch of VISITS_SQL, which is not a column on the page: an UNGROUPED count of the
-    # visits that carried a referrer at all.
+    # The ungrouped branch of VISITS_SQL, and the only one that is not a column on the page: a count
+    # of the visits that carried a referrer at all.
     #
     # It exists because the ten rows above cannot be added up into one. The eleventh referrer and
     # everything below it is outside the LIMIT, so a sentence built by summing the visible rows would
@@ -300,75 +305,55 @@ module SuperAdmin
       GROUP BY week_start
     SQL
 
-    # Where the visits in the window came from, three ways, in one round trip.
+    # Where the visits in the window came from, six ways, in one round trip.
     #
     # Landing views only. A `cta_click` fires on a page whose referrer is our own, and counting those
     # would put Rota Monster at the top of its own referrer table.
     #
-    # A row with the property MISSING is left out of every branch rather than bucketed. The three
+    # A row with the property MISSING is left out of every branch rather than bucketed. The six
     # columns each publish what they could see, and the funnel's own step 1 above them is the total
     # they are shares of, so the gap between the two IS the missing count and does not need a row of
-    # its own. That matters most for `country`, which is absent from every row today: the domain is
-    # still DNS-only on Cloudflare, the `cf-ipcountry` header is not sent, and the page says so in
-    # that column's empty state rather than drawing an empty chart and leaving it unexplained.
+    # its own. That matters most for `city`, which is absent from every row until the Cloudflare
+    # zone's "Add visitor location headers" transform is switched on: the page says so in that
+    # column's empty state rather than drawing an empty chart and leaving it unexplained.
     #
-    # The LIMIT is a constant of this file rather than a bind, because it is not a parameter: no
-    # caller chooses it and no request reaches it. Every value that DOES come from outside is bound
-    # by name, like everywhere else here.
-    VISITS_SQL = <<~SQL.freeze
-      (
-        SELECT 'referrers' AS dimension,
-               analytics_events.properties ->> 'referrer_host' AS value,
-               COUNT(*) AS count
-        FROM analytics_events
-        WHERE analytics_events.name = 'landing_view'
-          AND analytics_events.occurred_at >= :starts_at
-          AND analytics_events.occurred_at <= :ends_at
-          AND analytics_events.properties ->> 'referrer_host' IS NOT NULL
-        GROUP BY 2
-        ORDER BY COUNT(*) DESC, 2 ASC
-        LIMIT #{VISIT_ROWS_SHOWN}
-      )
-      UNION ALL
-      (
-        SELECT 'countries',
-               analytics_events.properties ->> 'country',
-               COUNT(*)
-        FROM analytics_events
-        WHERE analytics_events.name = 'landing_view'
-          AND analytics_events.occurred_at >= :starts_at
-          AND analytics_events.occurred_at <= :ends_at
-          AND analytics_events.properties ->> 'country' IS NOT NULL
-        GROUP BY 2
-        ORDER BY COUNT(*) DESC, 2 ASC
-        LIMIT #{VISIT_ROWS_SHOWN}
-      )
-      UNION ALL
-      (
-        SELECT 'referred',
-               NULL::text,
-               COUNT(*)
-        FROM analytics_events
-        WHERE analytics_events.name = 'landing_view'
-          AND analytics_events.occurred_at >= :starts_at
-          AND analytics_events.occurred_at <= :ends_at
-          AND analytics_events.properties ->> 'referrer_host' IS NOT NULL
-      )
-      UNION ALL
-      (
-        SELECT 'devices',
-               analytics_events.properties ->> 'device',
-               COUNT(*)
-        FROM analytics_events
-        WHERE analytics_events.name = 'landing_view'
-          AND analytics_events.occurred_at >= :starts_at
-          AND analytics_events.occurred_at <= :ends_at
-          AND analytics_events.properties ->> 'device' IS NOT NULL
-        GROUP BY 2
-        ORDER BY COUNT(*) DESC, 2 ASC
-        LIMIT #{VISIT_ROWS_SHOWN}
-      )
-    SQL
+    # BUILT FROM VISIT_DIMENSIONS RATHER THAN WRITTEN OUT SIX TIMES. Six near-identical branches
+    # copied by hand are six places for a property name to be mistyped or a WHERE clause to be left
+    # pointing at the one above, and both of those publish a column of the wrong thing under the
+    # right heading, which is the one kind of wrong a dashboard cannot be read out of. Every value
+    # interpolated below is a key of a frozen constant in this file: no caller chooses one and no
+    # request reaches one, the same standing the LIMIT has. Everything that DOES come from outside is
+    # still bound by name.
+    VISITS_SQL = (
+      VISIT_DIMENSIONS.map do |dimension, spec|
+        <<~SQL
+          (
+            SELECT '#{dimension}' AS dimension,
+                   analytics_events.properties ->> '#{spec.fetch(:property)}' AS value,
+                   COUNT(*) AS count
+            FROM analytics_events
+            WHERE analytics_events.name = 'landing_view'
+              AND analytics_events.occurred_at >= :starts_at
+              AND analytics_events.occurred_at <= :ends_at
+              AND analytics_events.properties ->> '#{spec.fetch(:property)}' IS NOT NULL
+            GROUP BY 2
+            ORDER BY COUNT(*) DESC, 2 ASC
+            LIMIT #{VISIT_ROWS_SHOWN}
+          )
+        SQL
+      end << <<~SQL
+        (
+          SELECT '#{REFERRED_DIMENSION}' AS dimension,
+                 NULL::text AS value,
+                 COUNT(*) AS count
+          FROM analytics_events
+          WHERE analytics_events.name = 'landing_view'
+            AND analytics_events.occurred_at >= :starts_at
+            AND analytics_events.occurred_at <= :ends_at
+            AND analytics_events.properties ->> 'referrer_host' IS NOT NULL
+        )
+      SQL
+    ).join("UNION ALL\n").freeze
 
     # The two weekly counts that are plain counts, in one round trip. `members_last_seen` is
     # housemates who opened their magic link — the only signal that the link ever arrived — and
@@ -555,13 +540,13 @@ module SuperAdmin
 
     # --- where the visits came from -----------------------------------------------------------------
 
-    # Three lists, each commonest first, each at most VISIT_ROWS_SHOWN long, plus the one figure that
+    # Six lists, each commonest first, each at most VISIT_ROWS_SHOWN long, plus the one figure that
     # cannot be read off them.
     #
     # Sorted again in Ruby rather than trusted from the UNION. Each branch orders and limits itself,
     # which is what keeps the long tail out of the round trip, but Postgres does not promise the
     # order of a UNION's result and a column whose rows quietly reshuffled between two reads of the
-    # same data would be a chart nobody could compare with itself. Thirty rows is nothing to sort.
+    # same data would be a chart nobody could compare with itself. Sixty rows is nothing to sort.
     #
     # `referred_count` is the ungrouped total described at REFERRED_DIMENSION: the page needs it to
     # say how many visits arrived from another site, and summing the ten visible rows would have

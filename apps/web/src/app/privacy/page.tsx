@@ -101,8 +101,10 @@ export default function PrivacyPage() {
             "Which page was opened.",
             "Which site linked to it, if any. The site’s address only, never the page on it and never anything after the question mark.",
             "The campaign labels on the link that brought them, when the link carried any.",
-            "The country, as reported by the network in front of the site. Never the city, and never the address the visit came from.",
+            "The country, as reported by the network in front of the site. Never the address the visit came from.",
+            "The city, when the network in front of the site reports one. Never the street, the postcode or a map position.",
             "Whether it was a phone, a tablet or a computer.",
+            "Which browser and operating system, by name only, such as Safari on iOS. Never the version, which is the part that would narrow a visit down to a person.",
           ]}
         />
         <P>

@@ -28,25 +28,34 @@ RSpec.describe "POST /internal/analytics/events" do
       expect(AnalyticsEvent.sole.properties).to eq("utm_source" => "reddit")
     end
 
-    # The web route derives these two from request headers rather than from the body, so they reach
-    # this endpoint from a server rather than from a browser. They still go through the model's own
-    # per-key check on arrival: this side knows what a REQUEST may contain and the model knows what a
-    # ROW may contain, and the day those disagree should be a dropped property, not a stored surprise.
-    it "takes the referrer host, country and device class the web app derived" do
+    # The web route derives five of these from request headers rather than from the body, so they
+    # reach this endpoint from a server rather than from a browser. They still go through the model's
+    # own per-key check on arrival: this side knows what a REQUEST may contain and the model knows
+    # what a ROW may contain, and the day those disagree should be a dropped property, not a stored
+    # surprise.
+    it "takes the visit properties the web app derived" do
       post_event({
         name: "landing_view",
-        properties: { referrer_host: "news.ycombinator.com", country: "GB", device: "mobile" }
+        properties: {
+          referrer_host: "news.ycombinator.com", country: "GB", city: "London",
+          device: "mobile", browser: "safari", os: "ios"
+        }
       })
 
       expect(response).to have_http_status(:no_content)
-      expect(AnalyticsEvent.sole.properties)
-        .to eq("referrer_host" => "news.ycombinator.com", "country" => "GB", "device" => "mobile")
+      expect(AnalyticsEvent.sole.properties).to eq(
+        "referrer_host" => "news.ycombinator.com", "country" => "GB", "city" => "London",
+        "device" => "mobile", "browser" => "safari", "os" => "ios"
+      )
     end
 
     it "keeps the event and drops a visit property whose shape is wrong" do
       post_event({
         name: "landing_view",
-        properties: { referrer_host: "https://reddit.com/r/uk?q=secret", country: "XX", device: "fridge" }
+        properties: {
+          referrer_host: "https://reddit.com/r/uk?q=secret", country: "XX", city: "51.5,-0.1",
+          device: "fridge", browser: "Chrome 141", os: "macOS"
+        }
       })
 
       expect(response).to have_http_status(:no_content)

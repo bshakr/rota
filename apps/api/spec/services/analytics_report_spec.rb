@@ -175,9 +175,21 @@ RSpec.describe AnalyticsReport do
       ])
     end
 
+    it "counts the city, the browser family and the system family too" do
+      2.times { view(country: "GB", city: "London", browser: "safari", os: "ios") }
+      view(country: "GB", city: "Bristol", browser: "chrome", os: "android")
+
+      sources = described_class.visit_sources(days: 7, now: now)
+
+      expect(sources["city"][:top]).to eq([ { value: "London", count: 2 }, { value: "Bristol", count: 1 } ])
+      expect(sources["browser"][:top]).to eq([ { value: "safari", count: 2 }, { value: "chrome", count: 1 } ])
+      expect(sources["os"][:top]).to eq([ { value: "ios", count: 2 }, { value: "android", count: 1 } ])
+    end
+
     # The row that says what the table cannot see. A direct arrival has no referrer, and until the
-    # site is behind the Cloudflare proxy NO visit has a country — a table that quietly dropped both
-    # would read as "almost no traffic" rather than "we cannot tell where this is from".
+    # zone's "Add visitor location headers" transform is on NO visit has a city — a table that
+    # quietly dropped both would read as "almost no traffic" rather than "we cannot tell where this
+    # is from".
     it "counts the views a property is missing from rather than dropping them" do
       view(referrer_host: "reddit.com")
       2.times { view(device: "mobile") }
@@ -185,7 +197,7 @@ RSpec.describe AnalyticsReport do
       sources = described_class.visit_sources(days: 7, now: now)
 
       expect(sources["referrer_host"]).to include(none: 2, total: 3)
-      expect(sources["country"]).to include(top: [], none: 3, total: 3)
+      expect(sources["city"]).to include(top: [], none: 3, total: 3)
     end
 
     it "shows the ten commonest and no more" do
@@ -206,10 +218,10 @@ RSpec.describe AnalyticsReport do
       expect(sources["referrer_host"][:total]).to eq(1)
     end
 
-    it "answers with three empty tables when nobody visited" do
+    it "answers with an empty table per property when nobody visited" do
       sources = described_class.visit_sources(days: 7, now: now)
 
-      expect(sources.keys).to eq(%w[referrer_host country device])
+      expect(sources.keys).to eq(%w[referrer_host country city device browser os])
       expect(sources.values).to all(eq(top: [], none: 0, total: 0))
     end
   end

@@ -560,7 +560,7 @@ RSpec.describe SuperAdmin::Traffic do
     end
   end
 
-  # Under the funnel: where step 1's visits actually came from. Three columns, each the top values of
+  # Under the funnel: where step 1's visits actually came from. Six columns, each the top values of
   # one coarse property on the landing views in the window.
   describe "where the visits came from" do
     def view(at: now - 1.day, **properties)
@@ -580,6 +580,37 @@ RSpec.describe SuperAdmin::Traffic do
       ])
       expect(visits[:countries]).to eq([ { code: "GB", count: 2 }, { code: "US", count: 1 } ])
       expect(visits[:devices]).to eq([ { device: "mobile", count: 2 }, { device: "desktop", count: 1 } ])
+    end
+
+    it "lists the cities, the browser families and the system families, commonest first" do
+      2.times { view(country: "GB", city: "London", browser: "safari", os: "ios") }
+      view(country: "GB", city: "Bristol", browser: "chrome", os: "android")
+
+      visits = result[:visits]
+
+      expect(visits[:cities]).to eq([ { city: "London", count: 2 }, { city: "Bristol", count: 1 } ])
+      expect(visits[:browsers]).to eq([ { browser: "safari", count: 2 }, { browser: "chrome", count: 1 } ])
+      expect(visits[:operating_systems])
+        .to eq([ { os: "ios", count: 2 }, { os: "android", count: 1 } ])
+    end
+
+    # The state of production until the zone's "Add visitor location headers" transform is on: every
+    # other column fills in and this one does not. It is a configuration fact rather than an absence
+    # of traffic, and the page's empty state for that column has to say which.
+    it "publishes an empty city list while the location header is not arriving" do
+      view(country: "GB", browser: "chrome", os: "macos")
+
+      visits = result[:visits]
+
+      expect(visits[:cities]).to be_empty
+      expect(visits[:countries]).to eq([ { code: "GB", count: 1 } ])
+      expect(funnel_step("landing_views")[:count]).to eq(1)
+    end
+
+    it "shows the ten commonest cities and no more" do
+      12.times { |index| view(country: "GB", city: "City#{('a'.ord + index).chr.upcase}town") }
+
+      expect(result[:visits][:cities].length).to eq(described_class::VISIT_ROWS_SHOWN)
     end
 
     # The missing rows are not bucketed here. Step 1 above is the total they are all shares of, so
@@ -614,8 +645,22 @@ RSpec.describe SuperAdmin::Traffic do
       expect(result[:visits][:referrers].length).to eq(described_class::VISIT_ROWS_SHOWN)
     end
 
-    it "publishes three empty lists when nobody visited" do
-      expect(result[:visits]).to eq(referrers: [], countries: [], devices: [], referred_count: 0)
+    it "publishes an empty list per dimension when nobody visited" do
+      expect(result[:visits]).to eq(
+        referrers: [], countries: [], cities: [], devices: [], browsers: [],
+        operating_systems: [], referred_count: 0
+      )
+    end
+
+    # One key per dimension, always, whatever the data. A missing key is a column the page cannot
+    # draw at all, which is a different failure from a column with nothing in it and looks like a
+    # broken deploy rather than a quiet window.
+    it "publishes a list for every dimension it names" do
+      view(referrer_host: "reddit.com", country: "GB", city: "London", device: "mobile",
+           browser: "safari", os: "ios")
+
+      expect(result[:visits].keys)
+        .to match_array(described_class::VISIT_DIMENSIONS.keys.map(&:to_sym) + [ :referred_count ])
     end
 
     # The figure the page's own sentence is built from, and the reason it is not the sum of the ten
@@ -710,7 +755,7 @@ RSpec.describe SuperAdmin::Traffic do
     # page for a minute if the key were not versioned. Asserted rather than trusted, because the
     # suffix reads as clutter to anyone who does not know what it is for.
     it "versions the key, so a deploy that changes the payload cannot serve the old shape" do
-      expect(described_class.cache_key("30d")).to eq("super_admin/traffic/v2/30d")
+      expect(described_class.cache_key("30d")).to eq("super_admin/traffic/v3/30d")
     end
 
     it "names nobody in the key: every operator sees the same numbers" do

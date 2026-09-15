@@ -86,23 +86,27 @@ consent banner.
 
 Allowlisted properties, and there will never be one that is not on this list: `position`, `path`,
 `ref`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `member_id`, `referrer_host`,
-`country`, `device`. No names, no phone numbers, no tokens, no calendar URLs, no free text. The list
-is defined twice, in `AnalyticsEvent::PROPERTY_KEYS` and in `apps/web/src/lib/analytics.ts`, and a
-web test reads the Ruby file and fails if the two ever drift apart.
+`country`, `city`, `device`, `browser`, `os`. No names, no phone numbers, no tokens, no calendar
+URLs, no free text. The list is defined twice, in `AnalyticsEvent::PROPERTY_KEYS` and in
+`apps/web/src/lib/analytics.ts`, and a web test reads the Ruby file and fails if the two ever drift
+apart.
 
-The last three are the coarse facts about a visit that the traffic page's "Where visits come from"
+The last six are the coarse facts about a visit that the traffic page's "Where visits come from"
 panel is drawn from, and each is deliberately too broad to narrow anybody down:
 
 | Property | Where it comes from | What it can be |
 | --- | --- | --- |
 | `referrer_host` | the browser, from `document.referrer` | the HOST only, lowercased. The path and the query are dropped before the event is sent, because that is where a search term or an email address would be. Omitted for a direct visit and for one of our own pages |
-| `country` | the server, from Cloudflare's `cf-ipcountry` header | two uppercase letters. Cloudflare's `XX` (unknown) and `T1` (Tor) are dropped. **Absent in production today**, because the domain is still DNS-only on Cloudflare and the header only appears once traffic is proxied. No GeoIP library is used and the IP is never stored, logged or forwarded |
+| `country` | the server, from Cloudflare's `cf-ipcountry` header | two uppercase letters. Cloudflare's `XX` (unknown) and `T1` (Tor) are dropped. Arrives on every visit since the domain was proxied on 14 September 2026. No GeoIP library is used and the IP is never stored, logged or forwarded |
+| `city` | the server, from Cloudflare's `cf-ipcity` header | the city NAME, as sent, capped at 200 characters and checked against a letters/spaces/hyphens/apostrophes/dots pattern. Only kept when a `country` was read too, because a city with no country is not the output of a working lookup. **Absent in production today**, because the header only arrives once the zone's Managed Transform "Add visitor location headers" is switched on. The finer location headers are NEVER read: not `cf-iplatitude`, `cf-iplongitude`, `cf-postal-code`, `cf-region`, `cf-metro-code` or `cf-timezone` |
 | `device` | the server, from the `sec-ch-ua-mobile` client hint, falling back to the user agent | one of `mobile`, `tablet`, `desktop`. The agent string is matched and discarded; it is never stored |
+| `browser` | the server, from the `sec-ch-ua` brand list, falling back to the user agent | one of `chrome`, `safari`, `firefox`, `edge`, `samsung`, `other`. A FAMILY and never a version. Samsung Internet and Edge are matched before Chrome because both announce "Chromium" too; Brave, Opera and Vivaldi count as Chrome, which is the engine that renders our pages |
+| `os` | the server, from `sec-ch-ua-platform`, falling back to the user agent | one of `ios`, `android`, `macos`, `windows`, `linux`, `other`. A FAMILY and never a version. An iPad in desktop mode reports itself a Macintosh in both the hint and the agent, so some iPads count as `macos` |
 
-`country` and `device` are set server-side in `apps/web/src/app/api/analytics/route.ts` and are NOT
-on the browser's own allowlist, so a value posted by hand is dropped on the way through rather than
-deleted afterwards. Rails checks all three again on arrival and drops one whose shape is wrong,
-keeping the event.
+`country`, `city`, `device`, `browser` and `os` are set server-side in
+`apps/web/src/app/api/analytics/route.ts` and are NOT on the browser's own allowlist, so a value
+posted by hand is dropped on the way through rather than deleted afterwards. Rails checks all six
+again on arrival and drops one whose shape is wrong, keeping the event.
 
 ## First-touch attribution, and why there is still one cookie
 
@@ -132,17 +136,18 @@ housemate's own feed.
 bin/rails "analytics:funnel[30]"     # every step, each as a percentage of the one before,
                                      # plus the number that matters
 bin/rails "analytics:sources[30]"    # houses named, grouped by ref and utm_source, then the
-                                     # landing views by referrer, country and device
+                                     # landing views by referrer, country, city, device,
+                                     # browser and operating system
 ```
 
 Quote the task name in zsh: brackets are globs. The argument is a number of days and defaults to 7.
 Rates print to one decimal, never rounded to a whole percent.
 
-`analytics:sources` prints four tables. The first is first touch, which is about the visits that
-became HOUSES. The three under it are about the visits themselves, each with a `(none)` row for the
-views the property is missing from: a direct arrival has no referrer, and no visit has a country
-until the site is behind the Cloudflare proxy. The super admin traffic page draws the same three in
-its "Where visits come from" panel.
+`analytics:sources` prints seven tables. The first is first touch, which is about the visits that
+became HOUSES. The six under it are about the visits themselves, each with a `(none)` row for the
+views the property is missing from: a direct arrival has no referrer, and no visit has a city until
+the zone's "Add visitor location headers" transform is switched on. The super admin traffic page
+draws the same six in its "Where visits come from" panel, as two rows of three.
 
 ## Retention
 

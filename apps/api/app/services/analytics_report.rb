@@ -21,9 +21,9 @@ module AnalyticsReport
   # Two housemates, not one: one is the person who set the house up.
   OPENS_REQUIRED = 2
 
-  # The three coarse facts a landing view carries about the visit, in the order they are worth
-  # reading: which site sent them, roughly where they were, and what they were holding.
-  VISIT_DIMENSIONS = %w[referrer_host country device].freeze
+  # The six coarse facts a landing view carries about the visit, in the order they are worth
+  # reading: which site sent them, roughly where they were, and what they were holding it on.
+  VISIT_DIMENSIONS = %w[referrer_host country city device browser os].freeze
 
   # Enough to see where traffic is actually coming from. A long tail of one-view referrers is not a
   # finding, and the (none) row and the total below each table say what the ten leave out.
@@ -105,15 +105,15 @@ module AnalyticsReport
   # would put Rota Monster at the top of its own referrer table; the other two properties ride on
   # every anonymous event, but a visit is the unit anybody asks this question in.
   #
-  # The MISSING count is published beside each table rather than dropped, because for two of the
-  # three it is the most important row on it. No referrer is a direct visit, which is usually the
-  # biggest single source a small site has; no country is every visit made today, because the domain
-  # is still DNS-only on Cloudflare and the header only arrives once traffic is proxied. A table that
-  # silently left those out would read as "we have almost no traffic" rather than "we cannot see
+  # The MISSING count is published beside each table rather than dropped, because for two of the six
+  # it is the most important row on it. No referrer is a direct visit, which is usually the biggest
+  # single source a small site has; no city is every visit made today, because Cloudflare only sends
+  # the city header once the zone's "Add visitor location headers" transform is switched on. A table
+  # that silently left those out would read as "we have almost no traffic" rather than "we cannot see
   # where this traffic is from".
   #
-  # One read, folded three ways in Ruby. This is a handful of rows per day and a rake task nobody
-  # runs in a loop; three GROUP BYs would be three round trips to say the same thing.
+  # One read, folded six ways in Ruby. This is a handful of rows per day and a rake task nobody runs
+  # in a loop; six GROUP BYs would be six round trips to say the same thing.
   def visit_sources(days:, now: Time.current)
     properties = AnalyticsEvent.named(AnalyticsEvent::LANDING_VIEW)
       .since(now - days.days)

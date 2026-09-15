@@ -78,8 +78,13 @@ export const BROWSER_PROPERTY_KEYS = [
  * the traffic page would be a chart of whatever a script felt like claiming. The route handler
  * sanitises an incoming body against the BROWSER list, which drops these on the floor, and then
  * merges in what it read off the headers itself.
+ *
+ * Five of them now, and the two added last are the ones that sound like tracking: a browser FAMILY
+ * and an OS FAMILY. Neither is a version, and that is the whole difference. "Chrome" and "macOS"
+ * each put a third of the internet in one bucket; "Chrome 141.0.7390.55 on macOS 15.6.1" is a
+ * fingerprint, which is exactly why the version is thrown away here rather than stored and ignored.
  */
-export const SERVER_PROPERTY_KEYS = ["country", "device"] as const;
+export const SERVER_PROPERTY_KEYS = ["country", "city", "device", "browser", "os"] as const;
 
 /**
  * Every property any event may carry, and there will never be one that is not on this list.
@@ -99,6 +104,30 @@ export type AnalyticsProperties = Partial<Record<PropertyKey, string | number | 
  */
 export const DEVICE_CLASSES = ["mobile", "tablet", "desktop"] as const;
 export type DeviceClass = (typeof DEVICE_CLASSES)[number];
+
+/**
+ * Which browser, to six buckets, and never which version of it.
+ *
+ * The same rule as DEVICE_CLASSES above and it matters more here, because the browser is where a
+ * fingerprint usually starts. A family is a fact about rendering that a layout decision can be made
+ * on; a build number is a near-unique string that would narrow a visitor down to a handful of people
+ * on the internet. The version is read past and dropped, never stored.
+ *
+ * `other` is the honest bucket rather than a dumping ground: every engine that is not one of the
+ * five gets counted rather than silently missed, and a column of "Other" growing is itself the
+ * signal that the list is short.
+ */
+export const BROWSER_FAMILIES = ["chrome", "safari", "firefox", "edge", "samsung", "other"] as const;
+export type BrowserFamily = (typeof BROWSER_FAMILIES)[number];
+
+/**
+ * Which operating system, to six buckets, and never which version of it.
+ *
+ * "macOS" is a hundred million machines and "macOS 15.6.1 on Intel" is a much smaller room. Only the
+ * family is kept, for the reason above.
+ */
+export const OS_FAMILIES = ["ios", "android", "macos", "windows", "linux", "other"] as const;
+export type OsFamily = (typeof OS_FAMILIES)[number];
 
 /** Matches `AnalyticsEvent::MAX_VALUE_LENGTH`. A campaign name is a label, never a payload. */
 export const MAX_PROPERTY_LENGTH = 200;
@@ -200,20 +229,44 @@ export function referrerHost(referrer: string, origin: string): string | undefin
 }
 
 /**
+ * A city name and nothing that is merely shaped like one.
+ *
+ * An optional leading apostrophe, then a letter, then letters, combining marks, spaces, hyphens,
+ * apostrophes and full stops. Wide enough for "Saint-Étienne", "St. Albans", "N'Djamena",
+ * "Ciudad Juárez" and the Dutch names that genuinely begin with one — 's-Hertogenbosch,
+ * 's-Gravenhage — and narrow enough that the column on the traffic page cannot grow a row that is
+ * really a sentence somebody chose. The apostrophe is optional and a letter is still required after
+ * it, so a bare "'" or "''" is not a city. No digits: no city Cloudflare names has one, and allowing
+ * them would admit the id-shaped junk this check exists for.
+ */
+const CITY = /^['’]?\p{L}[\p{L}\p{M} .'’-]*$/u;
+
+/**
  * What a server can tell about a visit from the request it already received, and nothing more.
  *
- * Two coarse, allowlisted values, both read off headers a browser cannot choose:
+ * Five coarse, allowlisted values, every one of them read off headers a browser cannot choose:
  *
- *   country  Cloudflare's `cf-ipcountry`, two letters. Absent while the domain is DNS-only on
- *            Cloudflare, which it is today, and simply omitted when it is — never guessed at, and
- *            never derived from the IP by us. "XX" and "T1" are Cloudflare's own words for unknown
- *            and Tor; neither is a country and both are dropped.
+ *   country  Cloudflare's `cf-ipcountry`, two letters. Sent for every visit now that the domain is
+ *            proxied there. "XX" and "T1" are Cloudflare's own words for unknown and Tor; neither is
+ *            a country and both are dropped.
+ *   city     Cloudflare's `cf-ipcity`, the name and nothing else. Only arrives once the zone's
+ *            "Add visitor location headers" transform is on, and is simply omitted until it is —
+ *            never guessed at, and never looked up from the IP by us.
  *   device   phone, tablet or computer, from the `sec-ch-ua-mobile` client hint, falling back to the
  *            user agent for the browsers that do not send hints.
+ *   browser  one of six families, from the `sec-ch-ua` brand list, falling back to the agent.
+ *   os       one of six families, from `sec-ch-ua-platform`, falling back to the agent.
  *
- * THE IP IS NEVER READ HERE, AND THE USER AGENT IS NEVER KEPT. The agent string is matched against
- * two patterns and goes out of scope on the next line; what is stored is one word from a closed set
- * of three. That is the whole difference between a device class and a fingerprint.
+ * THE IP IS NEVER READ HERE, AND THE USER AGENT IS NEVER KEPT. The agent string is matched against a
+ * handful of patterns and goes out of scope on the next line; what is stored is one word from a
+ * closed set each time. That is the whole difference between a device class and a fingerprint, and
+ * it is why no version number survives this function.
+ *
+ * The OTHER location headers Cloudflare can send are deliberately never read: not
+ * `cf-iplatitude`, not `cf-iplongitude`, not `cf-postal-code`, not `cf-region`, not
+ * `cf-metro-code`, not `cf-timezone`. A postcode is a street and a coordinate pair is a map pin;
+ * both are the thing the privacy page promises is not recorded, and the way to keep that promise is
+ * not to read them in the first place.
  */
 export function visitContext(headers: Headers): AnalyticsProperties {
   const context: AnalyticsProperties = {};
@@ -225,8 +278,30 @@ export function visitContext(headers: Headers): AnalyticsProperties {
     context.country = country;
   }
 
+  // Only alongside a country, never on its own. A city with no country did not come from a working
+  // location lookup: it is either a header somebody in front of us set by hand or Cloudflare noise,
+  // and a lone city name is also the one shape of this value that would be hard to read as coarse.
+  // With the country beside it, "Manchester, GB" is a bucket of half a million people.
+  if (context.country) {
+    // Checked at its full length and never shortened to fit. A 250-letter run is not a long city
+    // name, it is junk, and slicing it to the cap first would turn something to reject into
+    // something to store: 200 letters that pass the shape check and draw a row nobody can read.
+    //
+    // Rejected AT the cap rather than under it, which is the one length Rails cannot tell apart
+    // from a value its own shared cap shortened. Nothing real is anywhere near, so both sides
+    // agreeing on "shorter than the cap" costs nothing and keeps them saying the same thing.
+    const city = headers.get("cf-ipcity")?.trim();
+    if (city && city.length < MAX_PROPERTY_LENGTH && CITY.test(city)) context.city = city;
+  }
+
   const device = deviceClass(headers);
   if (device) context.device = device;
+
+  const browser = browserFamily(headers);
+  if (browser) context.browser = browser;
+
+  const os = osFamily(headers);
+  if (os) context.os = os;
 
   return context;
 }
@@ -255,6 +330,89 @@ function deviceClass(headers: Headers): DeviceClass | undefined {
   if (hint !== "?0" && !agent) return undefined;
 
   return "desktop";
+}
+
+/**
+ * Which browser, from the brand list first and the agent string second.
+ *
+ * `sec-ch-ua` is the modern answer and every Chromium browser sends it: a list like
+ * `"Chromium";v="141", "Not?A_Brand";v="8", "Google Chrome";v="141"`. The specific brands are asked
+ * about BEFORE the generic ones, because Edge and Samsung Internet both announce "Chromium" too and
+ * asking the other way round would file every one of them under Chrome.
+ *
+ * Brave, Opera and Vivaldi are counted as Chrome, and that is a known limit rather than an oversight.
+ * They announce "Chromium" and their own brand, and adding a bucket per Chromium skin would be a
+ * longer list that still missed the next one. What the column is for is "which engine renders our
+ * pages", and for those three the answer really is Chromium.
+ *
+ * Safari and Firefox send no brand list at all, which is what the agent fallback is for. Nothing is
+ * returned when there is neither a brand list nor an agent, for the same reason the device class
+ * omits itself: a scripted request with no headers must not quietly become a Chrome user.
+ */
+function browserFamily(headers: Headers): BrowserFamily | undefined {
+  const brands = headers.get("sec-ch-ua") ?? "";
+  if (brands) {
+    if (/samsung internet/i.test(brands)) return "samsung";
+    if (/microsoft edge/i.test(brands)) return "edge";
+    if (/google chrome|chromium/i.test(brands)) return "chrome";
+
+    // A brand list that named nothing we know. It is still a real browser and gets counted as one.
+    return "other";
+  }
+
+  const agent = headers.get("user-agent") ?? "";
+  if (!agent) return undefined;
+
+  // iOS order matters: every browser on iOS is Safari underneath and says "Safari" in its agent, so
+  // the ones that also say who they really are have to be asked about first.
+  if (/fxios|firefox/i.test(agent)) return "firefox";
+  if (/edgios|edga|edg\//i.test(agent)) return "edge";
+  if (/samsungbrowser/i.test(agent)) return "samsung";
+  if (/crios|chrome|chromium/i.test(agent)) return "chrome";
+  if (/safari/i.test(agent)) return "safari";
+
+  return "other";
+}
+
+/**
+ * Which operating system, from the platform hint first and the agent string second.
+ *
+ * `sec-ch-ua-platform` arrives quoted — `"macOS"` — and is the value to trust when it is there,
+ * because it is the browser answering the question directly rather than us inferring it from a
+ * string written to be lied about. Chrome OS is a platform the hint names and this list does not, so
+ * it lands in `other`; a seventh bucket for it can be added the day one appears.
+ *
+ * THE IPAD LIMIT, stated rather than worked around: an iPad in its default desktop mode reports
+ * itself as a Macintosh in both the hint and the agent, and the only signals that would separate the
+ * two — `navigator.maxTouchPoints`, a touch media query — exist in the page and not in the request.
+ * So some iPads are counted as macOS here, exactly as some are counted as a computer by the device
+ * class above, and for the same reason: guessing past what the request actually says is how a
+ * breakdown stops being evidence.
+ */
+function osFamily(headers: Headers): OsFamily | undefined {
+  const platform = headers.get("sec-ch-ua-platform")?.trim().replace(/^"|"$/g, "").toLowerCase();
+  if (platform && platform !== "unknown") {
+    if (platform === "android") return "android";
+    if (platform === "ios") return "ios";
+    if (platform === "macos") return "macos";
+    if (platform === "windows") return "windows";
+    if (platform === "linux") return "linux";
+
+    return "other";
+  }
+
+  const agent = headers.get("user-agent") ?? "";
+  if (!agent) return undefined;
+
+  // iPhone and iPad before Macintosh: an iPad in mobile mode says "iPad" and also carries "Mac OS
+  // X", so asking about the Mac first would file every one of them under macOS.
+  if (/iphone|ipad|ipod/i.test(agent)) return "ios";
+  if (/android/i.test(agent)) return "android";
+  if (/windows/i.test(agent)) return "windows";
+  if (/macintosh|mac os x/i.test(agent)) return "macos";
+  if (/linux|x11|cros/i.test(agent)) return "linux";
+
+  return "other";
 }
 
 /** A CTA press. `position` is required: an unattributed CTA click cannot be acted on. */

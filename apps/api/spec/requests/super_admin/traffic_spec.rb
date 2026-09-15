@@ -62,19 +62,26 @@ RSpec.describe "Super admin traffic" do
 
   it "publishes where the visits came from, under the funnel" do
     create(:analytics_event, name: "landing_view", occurred_at: 1.day.ago,
-                             properties: { "referrer_host" => "reddit.com", "device" => "mobile" })
+                             properties: {
+                               "referrer_host" => "reddit.com", "country" => "GB",
+                               "device" => "mobile", "browser" => "safari", "os" => "ios"
+                             })
 
     get "/api/super_admin/traffic", headers: operator_headers
 
     visits = response.parsed_body["visits"]
     expect(visits["referrers"]).to eq([ { "host" => "reddit.com", "count" => 1 } ])
+    expect(visits["countries"]).to eq([ { "code" => "GB", "count" => 1 } ])
     expect(visits["devices"]).to eq([ { "device" => "mobile", "count" => 1 } ])
+    expect(visits["browsers"]).to eq([ { "browser" => "safari", "count" => 1 } ])
+    expect(visits["operating_systems"]).to eq([ { "os" => "ios", "count" => 1 } ])
     # Counted over every matching row rather than summed off the ten above, which is what lets the
     # page say how many visits arrived from another site once there are more than ten hosts.
     expect(visits["referred_count"]).to eq(1)
-    # The header is not sent while the domain is DNS-only on Cloudflare, so this is the state in
-    # production today. Empty, and the page says why rather than drawing a blank chart.
-    expect(visits["countries"]).to eq([])
+    # The city header only arrives once the Cloudflare zone's "Add visitor location headers"
+    # transform is on, so this is the state in production today: empty while every other column
+    # fills in. The page says why rather than drawing a blank chart.
+    expect(visits["cities"]).to eq([])
   end
 
   it "reads across every house, which is the whole point of the surface" do
