@@ -16,7 +16,7 @@
   step 1's footnote and under the visits panel, `analytics:funnel` prints it beside the landing
   views, and both say that a visitor means a browser on a day. Codes are deleted the day after the
   day they were made, by `analytics:prune` and by a new `prune_daily_visitors` recurring entry, which
-  is also the first time the analytics pruner has been scheduled at all. (#PR_NUMBER)
+  is also the first time the analytics pruner has been scheduled at all. (#71)
 
 ### Changed
 
@@ -24,7 +24,7 @@
   It can tell whether two visits on the same day came from the same browser, and nothing more; the
   code behind that is kept for a day, is never stored next to a visit, and cannot be turned back
   into an address, which is still never recorded. The super admin visits panel lost the matching
-  claim for the same reason. (#PR_NUMBER)
+  claim for the same reason. (#71)
 
 ## 2026-09-14
 
