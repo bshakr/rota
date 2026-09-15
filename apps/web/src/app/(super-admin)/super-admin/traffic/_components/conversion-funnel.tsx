@@ -1,7 +1,7 @@
 import { type BarDatum, Bars } from "@/components/charts/bars";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { TrafficFunnelRow } from "@/lib/api/super-admin-traffic";
-import { TRAFFIC_STEP_LABELS, funnelRateNote } from "@/lib/hq-traffic";
+import { TRAFFIC_STEP_LABELS, VISITORS_CAVEAT, funnelRateNote, visitorsNote } from "@/lib/hq-traffic";
 
 /**
  * The plan's eight steps, as bars, each with what it counts and how it did
@@ -22,12 +22,22 @@ import { TRAFFIC_STEP_LABELS, funnelRateNote } from "@/lib/hq-traffic";
  *      is re-stamped on every settings save, so an established house lands there
  *      without ever having been in step 3's count. Shown and explained, never
  *      capped.
+ *   4. "VISITORS" ON STEP 1 MEANS BROWSER-DAYS. The figure beside the bar counts
+ *      views that were a browser's first that day, from a code thrown away at
+ *      midnight, so somebody who came back on another day is two. The caveat
+ *      under the chart says so, because "visitors" left alone reads as "people".
  *
  * Bar lengths are measured against the LONGEST step rather than against step 1,
  * which is the only honest choice when a later step can be bigger than an
  * earlier one.
  */
-export function ConversionFunnel({ funnel }: { funnel: readonly TrafficFunnelRow[] }) {
+export function ConversionFunnel({
+  funnel,
+  uniqueVisitors,
+}: {
+  funnel: readonly TrafficFunnelRow[];
+  uniqueVisitors: number;
+}) {
   const items: BarDatum[] = funnel.map((step, index) => {
     const above = index === 0 ? null : funnel[index - 1];
     const rate = funnelRateNote(
@@ -37,17 +47,22 @@ export function ConversionFunnel({ funnel }: { funnel: readonly TrafficFunnelRow
         : null,
     );
 
+    // Step 1 only, because it is the only bar that counts VISITS and therefore
+    // the only one where "and how many browsers was that?" is a question. It
+    // takes the slot the rate would have had, which step 1 has nothing above it
+    // to fill.
+    const visitors = index === 0 ? visitorsNote(step.count ?? 0, uniqueVisitors) : null;
+
     return {
       label: `${step.step}. ${TRAFFIC_STEP_LABELS[step.key]}`,
       value: step.count,
       unit: step.unit,
-      // Both, when there are both. Rails attaches a note to say what a step
-      // COUNTED, which is a different thing from how it converted, so a step
-      // that grows a note later must not lose it to the presence of a rate. The
-      // note is quoted rather than paraphrased, so the page and the payload
-      // cannot end up claiming different things about the same bar. Today only
-      // step 1 carries one, and it happens to be the step with no rate.
-      note: [rate, step.note].filter(Boolean).join(" · ") || undefined,
+      // All of them, when there are all of them. Rails attaches a note to say
+      // what a step COUNTED, which is a different thing from how it converted,
+      // so a step that grows a note later must not lose it to the presence of a
+      // rate. The note is quoted rather than paraphrased, so the page and the
+      // payload cannot end up claiming different things about the same bar.
+      note: [rate, visitors, step.note].filter(Boolean).join(" · ") || undefined,
     };
   });
 
@@ -68,6 +83,8 @@ export function ConversionFunnel({ funnel }: { funnel: readonly TrafficFunnelRow
           somebody who signed in last month lands below a step they were never counted in, and
           confirming a timezone is re-stamped every time a house saves its settings.
         </p>
+
+        <p className="text-muted-foreground mt-3 text-xs text-pretty">{VISITORS_CAVEAT}</p>
       </CardContent>
     </Card>
   );

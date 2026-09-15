@@ -19,6 +19,8 @@ import {
   medianHoursNote,
   parseRange,
   rangeHref,
+  VISITORS_CAVEAT,
+  visitorsNote,
   visitsCoverageNote,
   weekLabel,
   weekOfLabel,
@@ -300,5 +302,35 @@ describe("where the visits came from", () => {
 
   it("says nobody visited rather than dividing by an empty window", () => {
     expect(visitsCoverageNote(0, 0)).toBe("No visit was counted in this window.");
+  });
+
+  // The figure that needs a cookie everywhere else, and the one sentence on this
+  // page where a careless word would overstate what is actually known.
+  describe("how many browsers those visits came from", () => {
+    it("says the views, the visitors and the views each at one decimal", () => {
+      expect(visitorsNote(1420, 887)).toBe("1,420 views from 887 visitors (1.6 views each)");
+      expect(visitorsNote(1, 1)).toBe("1 view from 1 visitor (1.0 views each)");
+    });
+
+    // NOT COUNTED, not none. Every view from before the visitor code shipped, and
+    // every view on a deploy with no shared secret, carries no code at all. A
+    // confident "0 visitors" under 1,420 views would be a lie with a number on it.
+    it("says visitors are not counted rather than printing nought of them", () => {
+      expect(visitorsNote(1420, 0)).toBe("Visitors aren't counted in this window");
+      expect(visitorsNote(1420, 0)).not.toMatch(/\b0 visitors\b/);
+    });
+
+    it("says nothing at all when there were no views to divide", () => {
+      expect(visitorsNote(0, 0)).toBeNull();
+    });
+
+    // "Visitor" left alone reads as "person", and this figure is not people: it
+    // is browsers per day. The caveat that travels with it has to say both halves
+    // — that a second day counts twice, and that nothing here could tell.
+    it("carries a caveat saying a visitor is a browser on a day", () => {
+      expect(VISITORS_CAVEAT).toMatch(/browser on a day/);
+      expect(VISITORS_CAVEAT).toMatch(/counts twice/);
+      expect(VISITORS_CAVEAT).toMatch(/midnight/);
+    });
   });
 });

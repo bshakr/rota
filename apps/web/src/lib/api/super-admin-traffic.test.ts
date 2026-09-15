@@ -295,6 +295,34 @@ describe("parseTraffic", () => {
       expect(() => parseTraffic({ ...body, visits })).toThrow(/referred_count/);
     });
 
+    // The other ungrouped figure, and the fixture keeps the two apart for the
+    // same reason: they are separate counts over the same rows and nothing makes
+    // them equal, so a page that read one for the other would look right.
+    it("carries a visitor count that is its own number", () => {
+      const traffic = parseTraffic(payload());
+
+      expect(traffic.visits.unique_visitors).toBe(887);
+      expect(traffic.visits.unique_visitors).not.toBe(traffic.visits.referred_count);
+    });
+
+    it("refuses a payload whose visits carry no visitor count", () => {
+      const body = payload();
+      const visits: Record<string, unknown> = { ...body.visits };
+      delete visits.unique_visitors;
+
+      expect(() => parseTraffic({ ...body, visits })).toThrow(/unique_visitors/);
+    });
+
+    // Nought visitors is a REAL state — a window older than the visitor code, or
+    // a deploy with no shared secret — so the schema must take it. The words are
+    // hq-traffic.ts's problem; the shape must not stand in the way of them.
+    it("takes nought visitors beside a healthy view count", () => {
+      const body = payload();
+
+      expect(parseTraffic({ ...body, visits: { ...body.visits, unique_visitors: 0 } }).visits
+        .unique_visitors).toBe(0);
+    });
+
     // An empty column is a real state, not a broken payload: no visit carries a
     // city until Cloudflare's visitor location headers are switched on for the
     // zone, and on day one no visit carries anything at all. A schema that

@@ -266,6 +266,45 @@ export const OS_LABELS: Record<OsFamily, string> = {
  * event was sent. "Arrived from another site" is the only half of that anybody
  * can act on.
  */
+/**
+ * "1,420 views from 887 visitors (1.6 views each)" — the one thing step 1 cannot
+ * say about itself.
+ *
+ * VISITORS HERE MEANS BROWSER-DAYS, and the page says so beside this line rather
+ * than letting the word be read as "people". A landing view is counted as a
+ * visitor when it was the first one that browser made THAT DAY, decided from a
+ * code hashed with a salt that changes at midnight and never kept. So one
+ * browser coming back on three days is three, and one that reloaded thirty times
+ * this morning is one. That is also the whole reason the figure costs no cookie
+ * and no consent banner: nothing survives the night to match the two visits with.
+ *
+ * NULL when there were no views. The sentence would be "0 views from 0
+ * visitors", which says less than the zero-length bar above it already does.
+ *
+ * ZERO VISITORS AGAINST REAL VIEWS IS NOT ZERO, it is NOT COUNTED. Every view
+ * from before the visitor code shipped, and every view on a deploy with no
+ * shared secret, carries no code at all and cannot be counted as a browser. A
+ * confident "0 visitors" under 1,420 views would be a lie with a number on it,
+ * so that case gets words instead.
+ *
+ * One decimal on the ratio, like every other figure here (project rule): 1.6,
+ * never 2.
+ */
+export function visitorsNote(views: number, visitors: number): string | null {
+  if (views === 0) return null;
+  if (visitors === 0) return "Visitors aren't counted in this window";
+
+  const each = (views / visitors).toFixed(1);
+  const counted = `${formatCount(views)} ${plural(views, "view", "views")}`;
+  const browsers = `${formatCount(visitors)} ${plural(visitors, "visitor", "visitors")}`;
+
+  return `${counted} from ${browsers} (${each} views each)`;
+}
+
+/** What "visitor" means on this page, wherever the figure above it is printed. */
+export const VISITORS_CAVEAT =
+  "A visitor is a browser on a day, counted from a code that is thrown away at midnight, so somebody who came back on another day counts twice and nothing here can tell that they did.";
+
 export function visitsCoverageNote(referred: number, views: number): string {
   if (views === 0) return "No visit was counted in this window.";
 
