@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_14_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_15_080000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -92,6 +92,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_120000) do
     t.index ["calendar_connection_id", "starts_on"], name: "index_calendar_events_on_calendar_connection_id_and_starts_on"
     t.index ["calendar_connection_id"], name: "index_calendar_events_on_calendar_connection_id"
     t.check_constraint "kind::text = ANY (ARRAY['event'::character varying, 'away'::character varying]::text[])", name: "calendar_events_kind_known"
+  end
+
+  create_table "daily_visitors", force: :cascade do |t|
+    t.date "day", null: false
+    t.string "digest", limit: 64, null: false
+    t.index ["day", "digest"], name: "index_daily_visitors_on_day_and_digest", unique: true
   end
 
   create_table "group_admins", force: :cascade do |t|

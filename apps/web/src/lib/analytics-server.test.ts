@@ -47,6 +47,26 @@ describe("forwardAnalyticsEvent", () => {
     expect(JSON.parse(init.body)).toEqual({ name: "cta_click", properties: { position: "hero" } });
   });
 
+  // A header, never a property. The visitor code is what Rails answers "is this browser new today?"
+  // with and then throws away; the properties are what it keeps for a hundred and eighty days, and
+  // the two must not be able to end up in the same place by accident.
+  it("sends a visitor code in its own header and never in the body", async () => {
+    const code = "f".repeat(64);
+
+    await forwardAnalyticsEvent("landing_view", { path: "/" }, code);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers["X-Analytics-Visitor"]).toBe(code);
+    expect(JSON.parse(init.body)).toEqual({ name: "landing_view", properties: { path: "/" } });
+    expect(init.body).not.toContain(code);
+  });
+
+  it("sends no visitor header at all when there is no code", async () => {
+    await forwardAnalyticsEvent("landing_view", { path: "/" });
+
+    expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty("X-Analytics-Visitor");
+  });
+
   it("sanitises again on the way out, so nothing unlisted can reach Rails", async () => {
     await forwardAnalyticsEvent("landing_view", { utm_source: "reddit", phone: "+447400123003" } as never);
 

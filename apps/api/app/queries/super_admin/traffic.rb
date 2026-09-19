@@ -42,7 +42,7 @@ module SuperAdmin
     # confusing way to break a dashboard. Bump it whenever the payload changes — its shape OR its
     # values (a step that starts counting something different is the case worth naming, because the
     # old entry stays perfectly parseable and is simply wrong).
-    CACHE_KEY = "super_admin/traffic/v3".freeze
+    CACHE_KEY = "super_admin/traffic/v4".freeze
     CACHE_TTL = 60.seconds
 
     # The plan's eight steps, in order, as [ key, unit ].
@@ -108,6 +108,24 @@ module SuperAdmin
     # is counted over every matching row, so "how many arrived from another site" is a fact about the
     # window rather than a fact about the top of a list.
     REFERRED_DIMENSION = "referred".freeze
+
+    # The other ungrouped branch: how many BROWSERS those visits came from.
+    #
+    # A landing view carries `first_visit_today` when the web app was able to make a daily visitor
+    # code for it — a hash of the visit's address and agent with a salt that changes at midnight,
+    # which Rails answered "yes, new today" or "no, seen already" and then threw away (DailyVisitor).
+    # Counting the trues over a window therefore counts browser-days: one browser that came back on
+    # three days is three, and one that reloaded thirty times on one day is one.
+    #
+    # It is a COUNT of the flag rather than a DISTINCT over anything, because there is nothing here
+    # to be distinct over: no code is stored on a row, and the code that decided the flag cannot be
+    # recomputed a day later even in principle. That is the limit that makes the figure publishable
+    # at all, and it is the reason this page has no "returning visitors" beside it.
+    #
+    # Absent is not false. Every view before this shipped, and every view on a deploy with no shared
+    # secret, carries no flag at all, so this figure reads as 0 rather than as "every visit was a new
+    # browser" — which is why the page has to say "not counted" rather than draw a zero.
+    UNIQUE_VISITORS_DIMENSION = "unique_visitors".freeze
 
     # Every kind, from the model's own constant, so a fourth kind of text cannot silently fall out
     # of the stacked bars.
@@ -305,7 +323,17 @@ module SuperAdmin
       GROUP BY week_start
     SQL
 
-    # Where the visits in the window came from, six ways, in one round trip.
+    # The two branches that are one figure rather than a column, each with the condition that picks
+    # its rows out of the same landing views. Built from a hash for the reason the six above are: a
+    # branch copied by hand is a WHERE clause left pointing at the one it was copied from.
+    UNGROUPED_VISITS = {
+      REFERRED_DIMENSION => "analytics_events.properties ->> 'referrer_host' IS NOT NULL",
+      UNIQUE_VISITORS_DIMENSION =>
+        "analytics_events.properties ->> '#{AnalyticsEvent::FIRST_VISIT_TODAY}' = 'true'"
+    }.freeze
+
+    # Where the visits in the window came from, six ways, plus the two figures that are not a column,
+    # in one round trip.
     #
     # Landing views only. A `cta_click` fires on a page whose referrer is our own, and counting those
     # would put Rota Monster at the top of its own referrer table.
@@ -321,9 +349,9 @@ module SuperAdmin
     # copied by hand are six places for a property name to be mistyped or a WHERE clause to be left
     # pointing at the one above, and both of those publish a column of the wrong thing under the
     # right heading, which is the one kind of wrong a dashboard cannot be read out of. Every value
-    # interpolated below is a key of a frozen constant in this file: no caller chooses one and no
-    # request reaches one, the same standing the LIMIT has. Everything that DOES come from outside is
-    # still bound by name.
+    # interpolated below is a key or a value of a frozen constant in this file: no caller chooses one
+    # and no request reaches one, the same standing the LIMIT has. Everything that DOES come from
+    # outside is still bound by name.
     VISITS_SQL = (
       VISIT_DIMENSIONS.map do |dimension, spec|
         <<~SQL
@@ -341,18 +369,20 @@ module SuperAdmin
             LIMIT #{VISIT_ROWS_SHOWN}
           )
         SQL
-      end << <<~SQL
-        (
-          SELECT '#{REFERRED_DIMENSION}' AS dimension,
-                 NULL::text AS value,
-                 COUNT(*) AS count
-          FROM analytics_events
-          WHERE analytics_events.name = 'landing_view'
-            AND analytics_events.occurred_at >= :starts_at
-            AND analytics_events.occurred_at <= :ends_at
-            AND analytics_events.properties ->> 'referrer_host' IS NOT NULL
-        )
-      SQL
+      end + UNGROUPED_VISITS.map do |dimension, condition|
+        <<~SQL
+          (
+            SELECT '#{dimension}' AS dimension,
+                   NULL::text AS value,
+                   COUNT(*) AS count
+            FROM analytics_events
+            WHERE analytics_events.name = 'landing_view'
+              AND analytics_events.occurred_at >= :starts_at
+              AND analytics_events.occurred_at <= :ends_at
+              AND #{condition}
+          )
+        SQL
+      end
     ).join("UNION ALL\n").freeze
 
     # The two weekly counts that are plain counts, in one round trip. `members_last_seen` is
@@ -550,7 +580,9 @@ module SuperAdmin
     #
     # `referred_count` is the ungrouped total described at REFERRED_DIMENSION: the page needs it to
     # say how many visits arrived from another site, and summing the ten visible rows would have
-    # answered a different question from the eleventh host onwards.
+    # answered a different question from the eleventh host onwards. `unique_visitors` is the second
+    # ungrouped figure, described at UNIQUE_VISITORS_DIMENSION: how many BROWSERS those visits came
+    # from, which is the only question step 1 cannot answer on its own.
     def visits
       rows = each_row(VISITS_SQL, "SuperAdmin::Traffic visits").group_by { |row| row["dimension"] }
 
@@ -563,10 +595,12 @@ module SuperAdmin
         [ dimension.to_sym, list ]
       end
 
-      # One row, always, because the branch is a bare COUNT(*) with no GROUP BY. Summed rather than
-      # indexed so that a branch returning nothing at all reads as zero instead of raising.
+      # One row each, always, because both branches are a bare COUNT(*) with no GROUP BY. Summed
+      # rather than indexed so that a branch returning nothing at all reads as zero instead of
+      # raising.
       lists.merge(
-        referred_count: rows.fetch(REFERRED_DIMENSION, []).sum { |row| row["count"].to_i }
+        referred_count: rows.fetch(REFERRED_DIMENSION, []).sum { |row| row["count"].to_i },
+        unique_visitors: rows.fetch(UNIQUE_VISITORS_DIMENSION, []).sum { |row| row["count"].to_i }
       )
     end
 

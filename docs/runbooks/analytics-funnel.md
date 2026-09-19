@@ -84,12 +84,18 @@ analytics path. The anonymous events carry only their properties; the house even
 steps rather than one person's journey. That is a deliberate limit, and it is why the site needs no
 consent banner.
 
+One property is the exception worth reading carefully, and it is the exception that proves the rule:
+`first_visit_today`. See **Counting browsers, not just visits** below. It says whether the browser
+behind a landing view had already been here that day, and there is nothing on the row, or in the
+table, to say which other row it was.
+
 Allowlisted properties, and there will never be one that is not on this list: `position`, `path`,
 `ref`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `member_id`, `referrer_host`,
 `country`, `city`, `device`, `browser`, `os`. No names, no phone numbers, no tokens, no calendar
-URLs, no free text. The list is defined twice, in `AnalyticsEvent::PROPERTY_KEYS` and in
+URLs, no free text. The list is defined twice, in `AnalyticsEvent::SENT_PROPERTY_KEYS` and in
 `apps/web/src/lib/analytics.ts`, and a web test reads the Ruby file and fails if the two ever drift
-apart.
+apart. `AnalyticsEvent::PROPERTY_KEYS` is that list plus `first_visit_today`, which no sender may
+set.
 
 The last six are the coarse facts about a visit that the traffic page's "Where visits come from"
 panel is drawn from, and each is deliberately too broad to narrow anybody down:
@@ -107,6 +113,59 @@ panel is drawn from, and each is deliberately too broad to narrow anybody down:
 `apps/web/src/app/api/analytics/route.ts` and are NOT on the browser's own allowlist, so a value
 posted by hand is dropped on the way through rather than deleted afterwards. Rails checks all six
 again on arrival and drops one whose shape is wrong, keeping the event.
+
+## Counting browsers, not just visits
+
+"1,420 views" and "1,420 views from 887 browsers" are different findings, and only the second says
+whether a link worked. This is counted the Plausible and Fathom way: no cookie, nothing written to
+the visitor's device, and therefore still no consent banner.
+
+**The daily visitor code.** `apps/web/src/app/api/analytics/route.ts` (`visitorDigest`) computes, for
+a `landing_view` only:
+
+```
+sha256( hmac_sha256(ANALYTICS_SHARED_SECRET, "visitor-salt:" + YYYY-MM-DD in UTC) + "|" + ip + "|" + user agent )
+```
+
+The inner HMAC is the day's SALT. It is derived per request, never stored, and a new one exists every
+UTC day, so a code from yesterday cannot be recomputed today by anybody, us included. The address and
+the agent are both already read by that handler (the address for the rate limiter's bucket, the agent
+for the device, browser and system families) and neither is stored, logged or forwarded.
+
+No `ANALYTICS_SHARED_SECRET` and no code: the events still flow, and the deploy counts visits without
+counting browsers. No address on the request and no code either, because a shared "unknown" code
+would count every such visit as one browser.
+
+**How it travels.** In the `X-Analytics-Visitor` header on the existing server-to-server forward
+(`apps/web/src/lib/analytics-server.ts`), **never in the properties body**. A property is a thing
+that gets written into a row and kept for 180 days; a header is a thing the controller reads, answers
+a question with and drops.
+
+**What Rails does with it.** `Internal::AnalyticsEventsController` checks the shape (64 lowercase hex
+characters, anything else ignored) and calls `DailyVisitor.claim`, which is an `insert_all` with
+`unique_by: [day, digest]` against the `daily_visitors` table: ON CONFLICT DO NOTHING, so the insert
+itself IS the question. A row taken means `first_visit_today: true` on the landing view, a conflict
+means `false`, and no code at all means the property is simply absent.
+
+**`first_visit_today` is off `AnalyticsEvent::SENT_PROPERTY_KEYS`**, which is the list the endpoint
+permits a body against, and on `PROPERTY_KEYS`, which is what a row may contain. Anybody who could
+post it could add a thousand visitors to the traffic page without sending a thousand visits.
+
+**Absent, true and false are three different facts.** Absent is a visit nobody counted as a browser
+(every row written before 15 September 2026, and every row on a deploy with no shared secret); false
+is a browser that had already been here today. The traffic page reads 0 visitors beside a healthy
+view count as "not counted", never as "nobody came".
+
+**What it is, precisely: browser-days.** One browser back on three days counts three. One that
+reloaded thirty times this morning counts one. There is no cross-day figure and there cannot be one,
+which is why this product publishes no "returning visitors" anywhere.
+
+**Retention.** A `daily_visitors` row is kept for the day it belongs to and the day after, then
+deleted: `DailyVisitor.prune`, run by `analytics:prune` and by the `prune_daily_visitors` entry in
+`config/recurring.yml` (daily, 2:40am UTC). The privacy page promises a day in words, so that
+schedule entry is part of the feature rather than housekeeping — and it is an entry of its own
+rather than a second statement beside the event sweep, because two statements in one command share
+a fate.
 
 ## First-touch attribution, and why there is still one cookie
 
@@ -143,6 +202,10 @@ bin/rails "analytics:sources[30]"    # houses named, grouped by ref and utm_sour
 Quote the task name in zsh: brackets are globs. The argument is a number of days and defaults to 7.
 Rates print to one decimal, never rounded to a whole percent.
 
+`analytics:funnel` prints the browsers beside the landing views, with the views each to one decimal.
+A window with no counted browsers prints "no visitor counted in this window" rather than a zero: see
+**Counting browsers, not just visits** above for why 0 and "not counted" are different answers.
+
 `analytics:sources` prints seven tables. The first is first touch, which is about the visits that
 became HOUSES. The six under it are about the visits themselves, each with a `(none)` row for the
 views the property is missing from: a direct arrival has no referrer, and no visit has a city until
@@ -162,8 +225,18 @@ own events are kept for as long as the
 house is, and go with it: the foreign key cascades, so a deleted house's funnel rows can never
 outlive it and be miscounted as anonymous traffic.
 
-There is no scheduler entry for this yet. Run it by hand, or add it to the Solid Queue recurring
-schedule when anonymous volume makes it worth it.
+The same task also empties `daily_visitors` of everything before yesterday. That half takes no
+argument: a visitor code means nothing after the day it was made, because the salt behind it has
+changed, so how long to keep one is not a choice to make at a command line. `DailyVisitor::RETENTION`
+is the rule.
+
+`config/recurring.yml` runs the same two deletions as separate entries: `prune_daily_visitors`
+(`DailyVisitor.prune`) daily at 2:40am UTC, and `prune_anonymous_events`
+(`AnalyticsEvent.prune_anonymous`) at 2:45am. Scheduled rather than left to be run by hand because
+the privacy page tells a visitor their daily code is deleted, and a promise with a rake task behind
+it is not a promise. Separate rather than one command because the codes are the half that carries
+the promise and the events are the half that can get slow, and two statements in one command share
+a fate.
 
 ## Switching it on
 
@@ -176,3 +249,7 @@ ANALYTICS_SHARED_SECRET=      # openssl rand -hex 32
 With it unset the Next handler forwards nothing and the Rails endpoint answers 404 to everybody, so
 there is no open write path into the events table. The six house events are written in-process and
 are unaffected. Nothing here is required to boot, in any environment.
+
+The same variable is the seed the daily visitor code's salt is derived from, so unsetting it also
+stops browsers being counted. Deliberately not a second variable: a deploy that can forward events
+counts browsers, and one that cannot does neither.

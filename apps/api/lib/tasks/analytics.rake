@@ -24,6 +24,24 @@ namespace :analytics do
     puts "  The first four steps count VISITS; the rest count HOUSES, first_member_link_opened"
     puts "  included (it fires per housemate, so the step counts houses with at least one open)."
 
+    # Beside step 1, because "how many visits" and "how many browsers" are different findings and
+    # only the second one says whether a link worked. Views per visitor to ONE DECIMAL: a figure
+    # never renders coarser than it was computed (project rule).
+    views = report[:steps].first[:count]
+    visitors = report[:unique_visitors]
+    puts
+    if visitors.zero?
+      # Nought visitors against real views is not "nobody came", it is "nobody was counted": a
+      # window older than the visitor code, or a deploy with no ANALYTICS_SHARED_SECRET. Printing
+      # "0 visitors" under a healthy view count would be a lie with a number on it.
+      puts "  #{'landing_view'.ljust(width)}  #{views.to_s.rjust(6)}   no visitor counted in this window"
+      puts "  (a visit is counted as a browser only when the daily visitor code reached it)"
+    else
+      each = format("%.1f", views.to_f / visitors)
+      puts "  #{'browsers'.ljust(width)}  #{visitors.to_s.rjust(6)}   #{each} views each"
+      puts "  A browser counts once a day: three days of one browser is three, thirty reloads is one."
+    end
+
     side = report[:calendar_connected]
     side_suffix = side[:conversion].nil? ? "" : "   #{format('%.1f', side[:conversion])}% of houses named"
     puts
@@ -97,12 +115,22 @@ namespace :analytics do
     puts "  transform is switched on: the header is not sent before that."
   end
 
-  desc "Delete anonymous events older than N days (default 180). A house's own events are kept."
+  desc "Delete anonymous events older than N days (default 180) and every expired visitor code. A house's own events are kept."
   task :prune, [ :days ] => :environment do |_task, args|
     days = Integer(args[:days] || 180)
     deleted = AnalyticsEvent.prune_anonymous(older_than: days.days)
 
     puts "Pruned #{deleted} anonymous #{'event'.pluralize(deleted)} older than #{days} days."
     puts "Events belonging to a house were not touched; they go when the house does."
+
+    # The second table, and it takes no argument. A visitor code is only meaningful on the day it
+    # was made — the salt behind it changes at midnight — so "how long to keep one" is not a choice
+    # anybody should be making at the command line. DailyVisitor::RETENTION is the rule, and the
+    # privacy page promises it in words.
+    codes = DailyVisitor.prune
+
+    puts
+    puts "Pruned #{codes} daily visitor #{'code'.pluralize(codes)}: everything before yesterday."
+    puts "A code means nothing after the day it was made, because the salt behind it has changed."
   end
 end

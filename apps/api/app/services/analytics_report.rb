@@ -3,7 +3,8 @@
 # Three questions, and only three, because the point of this wave was to stop guessing before any
 # money is spent on traffic rather than to build a dashboard:
 #
-#   funnel      how many reached each step, and what fraction of the step before it
+#   funnel      how many reached each step, what fraction of the step before it, and how many
+#               BROWSERS the first step's visits came from
 #   activation  THE number: houses with a text delivered AND two housemates who opened, within seven
 #               days of being named
 #   sources     which campaigns the named houses came from, and where the visits came from
@@ -53,6 +54,16 @@ module AnalyticsReport
       days: days,
       since: since,
       steps: steps,
+      # Beside step 1, never instead of it. A landing view carries `first_visit_today` when the web
+      # app could make a daily visitor code for it, so counting the trues counts BROWSER-DAYS: one
+      # browser back on three days is three, and one that reloaded thirty times today is one.
+      # Absent is not false — every view before this shipped, and every view on a deploy with no
+      # shared secret, carries no flag at all — so an old window reads 0 here rather than claiming
+      # every visit was a new browser. The printer says which.
+      unique_visitors: AnalyticsEvent.named(AnalyticsEvent::LANDING_VIEW)
+        .since(since)
+        .where("properties ->> ? = 'true'", AnalyticsEvent::FIRST_VISIT_TODAY)
+        .count,
       # A side branch off house_named rather than a step between two others, so it is reported
       # against house_named and kept out of the sequence.
       calendar_connected: {

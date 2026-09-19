@@ -14,6 +14,8 @@ import {
   DEVICE_LABELS,
   OS_LABELS,
   VISIT_COLUMNS,
+  VISITORS_CAVEAT,
+  visitorsNote,
   visitsCoverageNote,
 } from "@/lib/hq-traffic";
 
@@ -33,6 +35,11 @@ import {
  * its own line at md and up. Six columns in one row would be six cramped tables
  * and no grouping at all; below md they stack into one column, as they did when
  * there were three.
+ *
+ * THE VISITOR FIGURE LEADS THE LINE UNDER THE PANEL, not a column of its own.
+ * It is not a breakdown of anything — there is nothing to break it down BY,
+ * because no code is kept against a visit — so it belongs in the sentence that
+ * already names its denominator in words.
  *
  * COUNTS ONLY, no shares. A share needs a denominator, and every column here has
  * a different one: the visits that carried a referrer, the visits that carried a
@@ -97,6 +104,16 @@ export function VisitsPanel({ visits, views }: { visits: TrafficVisits; views: n
   // would keep appearing to, quietly, from the eleventh host onwards.
   const referred = visits.referred_count;
 
+  // Leads the sentence under the columns, because it is the figure the whole
+  // panel is a breakdown OF: how many browsers those visits came from. Null when
+  // there were no visits at all, where the coverage line already says so.
+  //
+  // The STANDALONE form, and it says "visits" rather than "views". Nothing above
+  // it on this panel has printed the count, and every heading, column and
+  // sentence here is about visits: calling the same number views in one clause
+  // and visits in the next is how a reader concludes they are two numbers.
+  const visitors = visitorsNote(views, visits.unique_visitors);
+
   return (
     <Card>
       <CardHeader>
@@ -146,9 +163,23 @@ export function VisitsPanel({ visits, views }: { visits: TrafficVisits; views: n
         </div>
 
         <p className="text-muted-foreground mt-6 text-xs text-pretty">
-          {visitsCoverageNote(referred, views)} Nothing here is stored against a visitor: there is
-          no cookie, no identifier and no address in a row, so two visits from one person cannot be
-          told apart from two visits from two.
+          {visitors ? `${visitors}. ` : ""}
+          {visitsCoverageNote(referred, views)}
+        </p>
+
+        {/* The claim this panel used to make was that two visits from one person
+            could not be told apart from two visits from two. That stopped being
+            true the day the figure above it shipped, and a privacy sentence left
+            standing after the code moved under it is worse than none: what IS
+            still true is the interesting half, and it is what the caveat says.
+
+            The caveat only appears when there is a figure for it to qualify. On
+            a day with no traffic there is no "visitors" on the page, and a
+            paragraph explaining a word nothing used is noise. */}
+        <p className="text-muted-foreground mt-3 text-xs text-pretty">
+          {visitors ? `${VISITORS_CAVEAT} ` : ""}
+          Nothing in a row here is stored against a visitor: no cookie, no identifier and no
+          address, and the code the browsers are counted from is never written beside a visit.
         </p>
       </CardContent>
     </Card>

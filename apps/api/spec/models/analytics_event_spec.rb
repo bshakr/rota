@@ -95,6 +95,34 @@ RSpec.describe AnalyticsEvent do
     end
   end
 
+  # The one property no sender may set: whether the browser behind this landing view had been here
+  # yet today. It is decided by the controller from the daily visitor code, and it is counted in SQL
+  # as `properties ->> 'first_visit_today' = 'true'` — which a STRING "true" would satisfy as
+  # happily as the boolean does, and which is why only the boolean gets in.
+  describe "first_visit_today" do
+    def properties_for(**props)
+      described_class.record(described_class::LANDING_VIEW, **props)
+      described_class.last.properties
+    end
+
+    it "is off the list a sender's properties are permitted against" do
+      expect(described_class::SENT_PROPERTY_KEYS).not_to include(described_class::FIRST_VISIT_TODAY)
+      expect(described_class::PROPERTY_KEYS).to include(described_class::FIRST_VISIT_TODAY)
+    end
+
+    it "keeps both booleans, because absent, true and false are three different facts" do
+      expect(properties_for(first_visit_today: true)).to eq("first_visit_today" => true)
+      expect(properties_for(first_visit_today: false)).to eq("first_visit_today" => false)
+      expect(properties_for(path: "/")).to eq("path" => "/")
+    end
+
+    it "drops anything that is only shaped like a boolean" do
+      expect(properties_for(first_visit_today: "true")).to eq({})
+      expect(properties_for(first_visit_today: 1)).to eq({})
+      expect(properties_for(first_visit_today: "yes")).to eq({})
+    end
+  end
+
   # The six coarse facts about a visit, drawn by the traffic page's "Where visits come from" panel.
   # Each has a SHAPE as well as a length, and a value of the wrong shape costs the event that
   # property rather than the event: a chart an operator reads must not be able to grow a bar labelled

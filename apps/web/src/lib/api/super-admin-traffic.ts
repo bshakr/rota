@@ -233,6 +233,28 @@ const visitsSchema = z.object({
   browsers: z.array(z.object({ browser: z.enum(BROWSER_FAMILIES), count })).max(10),
   operating_systems: z.array(z.object({ os: z.enum(OS_FAMILIES), count })).max(10),
   referred_count: count,
+  /**
+   * How many BROWSERS those visits came from: the landing views in the window
+   * that were the first one that browser made that day.
+   *
+   * Counted without a cookie and without anything kept that could name anybody.
+   * Each landing view arrives with a code hashed from the visit's address and
+   * browser string together with a salt that CHANGES AT MIDNIGHT UTC; Rails
+   * answers "new today?" from it and throws it away. Nothing joinable is stored,
+   * which is why this is the only visitor figure the payload has and why there
+   * is no "returning visitors" beside it — the code that would match a browser
+   * across two days cannot be recomputed by anybody, us included.
+   *
+   * So it is BROWSER-DAYS over the window. One browser back on three days counts
+   * three; one that reloaded thirty times today counts one. The page has to say
+   * so rather than let "visitors" be read as "people".
+   *
+   * 0 IS AMBIGUOUS AND THE PAGE MUST TREAT IT AS SUCH. A view that carried no
+   * code has no flag at all, so a window from before this shipped, or a deploy
+   * with no shared secret, publishes 0 here beside a healthy view count. That is
+   * "not counted", not "nobody came".
+   */
+  unique_visitors: count,
 });
 
 const failuresSchema = z.object({

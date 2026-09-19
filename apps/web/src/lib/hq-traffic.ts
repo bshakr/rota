@@ -247,6 +247,79 @@ export const OS_LABELS: Record<OsFamily, string> = {
 };
 
 /**
+ * How many BROWSERS those visits came from: the one thing step 1 cannot say
+ * about itself.
+ *
+ * TWO FORMS, and which one to use is decided by whether the count is already on
+ * the screen. `visitorsNote` stands on its own and prints the count;
+ * `visitorsClause` attaches to a count somebody has already read. Printing
+ * "1,420" twenty pixels under a bar labelled "1,420 views" is how a reader
+ * starts wondering which of the two numbers is the real one.
+ *
+ * THEY ALSO DISAGREE ABOUT ONE WORD, on purpose. The funnel's first bar counts
+ * VIEWS — that is its unit, printed on the bar — so its clause says "views
+ * each". The visits panel is a breakdown of VISITS from its heading down, so its
+ * sentence says visits and drops the noun from the ratio rather than calling one
+ * number two things in a row. One word per surface, and never both on one.
+ *
+ * VISITORS MEANS BROWSER-DAYS in both, which is why VISITORS_CAVEAT travels with
+ * the figure. A landing view counts as a visitor when it was the first one that
+ * browser made THAT DAY, decided from a code hashed with a salt that changes at
+ * midnight and never kept. One browser back on three days is three; one that
+ * reloaded thirty times this morning is one. That is also the whole reason the
+ * figure costs no cookie and no consent banner: nothing survives the night to
+ * match two visits with.
+ *
+ * NULL when nothing was counted at all. The sentence would be "0 visits from 0
+ * visitors", which says less than the zero-length bar already does.
+ *
+ * ZERO VISITORS AGAINST REAL VISITS IS NOT ZERO, it is NOT COUNTED. Every visit
+ * from before the visitor code shipped, and every visit on a deploy with no
+ * shared secret, carries no code at all and cannot be counted as a browser. A
+ * confident "0 visitors" under 1,420 visits would be a lie with a number on it,
+ * so that case gets words instead.
+ *
+ * One decimal on the ratio, like every other figure here (project rule): 1.6,
+ * never 2.
+ */
+const VISITORS_NOT_COUNTED = "Visitors aren't counted in this window";
+
+function browsers(visitors: number): string {
+  return `${formatCount(visitors)} ${plural(visitors, "visitor", "visitors")}`;
+}
+
+/** "1,420 visits from 887 visitors (1.6 each)" — where no count is on screen yet. */
+export function visitorsNote(visits: number, visitors: number): string | null {
+  if (visits === 0) return null;
+  if (visitors === 0) return VISITORS_NOT_COUNTED;
+
+  const each = (visits / visitors).toFixed(1);
+  const counted = `${formatCount(visits)} ${plural(visits, "visit", "visits")}`;
+
+  return `${counted} from ${browsers(visitors)} (${each} each)`;
+}
+
+/** "from 887 visitors (1.6 views each)" — where the count is already on the bar. */
+export function visitorsClause(views: number, visitors: number): string | null {
+  if (views === 0) return null;
+  if (visitors === 0) return VISITORS_NOT_COUNTED;
+
+  return `from ${browsers(visitors)} (${(views / visitors).toFixed(1)} views each)`;
+}
+
+/**
+ * What "visitor" means, printed ONCE on the page, under the visits panel and
+ * beside the figure it explains.
+ *
+ * It used to sit under the funnel card as well, which put two copies of the same
+ * paragraph four hundred pixels apart and, on a day with no traffic, put both of
+ * them under no figure at all. A caveat with nothing to qualify is not caution,
+ * it is noise, and the second copy taught a reader that the page repeats itself.
+ */
+export const VISITORS_CAVEAT =
+  "A visitor is a browser on a day, counted from a code that is thrown away at midnight, so somebody who came back on another day counts twice and nothing here can tell that they did.";
+
+/**
  * The line under the six columns: how much of step 1 they could account for.
  *
  * Every column leaves out the visits its property was missing from, so the rows

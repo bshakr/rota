@@ -17,6 +17,9 @@ import { sanitiseProperties } from "./analytics";
  * no-op and Rails answers 404 to anyone who tries the endpoint, so an unconfigured deploy has no
  * open write path into the events table rather than an unauthenticated one. That is the state in
  * CI, in tests and in local development.
+ *
+ * One optional extra travels with a landing view: the daily visitor code, in `X-Analytics-Visitor`.
+ * It rides in a header rather than in the properties on purpose — see `requestInit`.
  */
 const EVENTS_PATH = "/internal/analytics/events";
 const TIMEOUT_MS = 2_000;
@@ -30,10 +33,27 @@ export function analyticsConfigured(): boolean {
   return secret() !== undefined;
 }
 
-function requestInit(event: AnalyticsEvent, properties: AnalyticsProperties, token: string): RequestInit {
+function requestInit(
+  event: AnalyticsEvent,
+  properties: AnalyticsProperties,
+  token: string,
+  visitorDigest: string | undefined,
+): RequestInit {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Analytics-Secret": token,
+  };
+
+  // A HEADER, never a property, and this is the only place it is ever written. The properties are
+  // what Rails stores in a row; the visitor code is what Rails ANSWERS A QUESTION with and then
+  // throws away, and the two must not be able to end up in the same place by accident. Putting it
+  // in the body would mean one forgotten allowlist entry away from a per-visitor identifier sitting
+  // in `analytics_events.properties` for a hundred and eighty days.
+  if (visitorDigest) headers["X-Analytics-Visitor"] = visitorDigest;
+
   return {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Analytics-Secret": token },
+    headers,
     body: JSON.stringify({ name: event, properties: sanitiseProperties(properties) }),
     // Telemetry about a request, never part of one. Next must not cache or dedupe it.
     cache: "no-store",
@@ -48,12 +68,16 @@ function requestInit(event: AnalyticsEvent, properties: AnalyticsProperties, tok
 export async function forwardAnalyticsEvent(
   event: AnalyticsEvent,
   properties: AnalyticsProperties = {},
+  visitorDigest?: string,
 ): Promise<boolean> {
   const token = secret();
   if (!token) return false;
 
   try {
-    const response = await fetch(`${apiBaseUrl()}${EVENTS_PATH}`, requestInit(event, properties, token));
+    const response = await fetch(
+      `${apiBaseUrl()}${EVENTS_PATH}`,
+      requestInit(event, properties, token, visitorDigest),
+    );
     return response.ok;
   } catch {
     return false;

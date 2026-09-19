@@ -648,7 +648,7 @@ RSpec.describe SuperAdmin::Traffic do
     it "publishes an empty list per dimension when nobody visited" do
       expect(result[:visits]).to eq(
         referrers: [], countries: [], cities: [], devices: [], browsers: [],
-        operating_systems: [], referred_count: 0
+        operating_systems: [], referred_count: 0, unique_visitors: 0
       )
     end
 
@@ -660,7 +660,8 @@ RSpec.describe SuperAdmin::Traffic do
            browser: "safari", os: "ios")
 
       expect(result[:visits].keys)
-        .to match_array(described_class::VISIT_DIMENSIONS.keys.map(&:to_sym) + [ :referred_count ])
+        .to match_array(described_class::VISIT_DIMENSIONS.keys.map(&:to_sym) +
+                        %i[referred_count unique_visitors])
     end
 
     # The figure the page's own sentence is built from, and the reason it is not the sum of the ten
@@ -676,6 +677,39 @@ RSpec.describe SuperAdmin::Traffic do
       expect(visits[:referrers].sum { |row| row[:count] }).to eq(10)
       expect(visits[:referred_count]).to eq(12)
       expect(funnel_step("landing_views")[:count]).to eq(15)
+    end
+
+    # How many BROWSERS those visits came from, which is the one question step 1 cannot answer about
+    # itself. The flag is set by Rails from the daily visitor code and is a fact about the browser's
+    # first view of that DAY, so this counts browser-days: three days of one browser is three.
+    it "counts the visits that were a browser's first that day" do
+      view(first_visit_today: true)
+      view(first_visit_today: false)
+      view(first_visit_today: false)
+      view(first_visit_today: true)
+
+      expect(result[:visits][:unique_visitors]).to eq(2)
+      expect(funnel_step("landing_views")[:count]).to eq(4)
+    end
+
+    # ABSENT IS NOT FALSE, and it is not true either. Every view before this shipped, and every view
+    # on a deploy with no shared secret, carries no flag at all — so an old window reads as nought
+    # visitors rather than as "every visit was a new browser", and the page has to say "not counted"
+    # rather than draw a confident zero.
+    it "counts no visitor at all for views that carried no visitor code" do
+      3.times { view(device: "mobile") }
+
+      expect(result[:visits][:unique_visitors]).to be_zero
+      expect(funnel_step("landing_views")[:count]).to eq(3)
+    end
+
+    it "counts a visitor only inside the window, and only on a landing view" do
+      view(at: now - 31.days, first_visit_today: true)
+      create(:analytics_event, name: "cta_click", occurred_at: now - 1.day,
+                               properties: { "first_visit_today" => true })
+      view(first_visit_today: true)
+
+      expect(result[:visits][:unique_visitors]).to eq(1)
     end
 
     it "counts a referrer only inside the window, and only on a landing view" do
@@ -755,7 +789,7 @@ RSpec.describe SuperAdmin::Traffic do
     # page for a minute if the key were not versioned. Asserted rather than trusted, because the
     # suffix reads as clutter to anyone who does not know what it is for.
     it "versions the key, so a deploy that changes the payload cannot serve the old shape" do
-      expect(described_class.cache_key("30d")).to eq("super_admin/traffic/v3/30d")
+      expect(described_class.cache_key("30d")).to eq("super_admin/traffic/v4/30d")
     end
 
     it "names nobody in the key: every operator sees the same numbers" do
