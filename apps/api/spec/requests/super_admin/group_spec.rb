@@ -131,7 +131,7 @@ RSpec.describe "GET /api/super_admin/groups/:id" do
 
   describe "rotas" do
     it "says whether each one is running, and what it is set to send" do
-      rota = create(:rota, group: group, name: "Bins", reminder_offsets: [ 3, 0 ], send_hour: 8,
+      rota = create(:rota, group: group, name: "Bins", reminder_days: [ 3, 0 ], send_hour: 8,
         interval_count: 2, interval_unit: "week", starts_on: Date.new(2026, 9, 7))
       create(:rota_position, rota: rota, member: create(:member, group: group), position: 0)
       create(:rota, group: group, name: "Zed draft")
@@ -140,7 +140,10 @@ RSpec.describe "GET /api/super_admin/groups/:id" do
         {
           "id" => rota.id, "name" => "Bins", "active" => true, "draft" => false, "roster_size" => 1,
           "starts_on" => "2026-09-07", "interval_count" => 2, "interval_unit" => "week",
-          "send_hour" => 8, "reminder_offsets" => [ 3, 0 ]
+          "send_hour" => 8, "reminder_offsets" => [ 3, 0 ],
+          "reminders" => rota.reminders.map do |reminder|
+            { "id" => reminder.id, "days_before" => reminder.days_before, "message_template" => reminder.message_template }
+          end
         },
         a_hash_including("name" => "Zed draft", "draft" => true, "roster_size" => 0)
       ])

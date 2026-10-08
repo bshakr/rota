@@ -1,7 +1,7 @@
 # Sends one text: the row is already in the database, `pending`, before this job exists.
 #
 # That ordering is the whole idempotency story. The reminder sweep (BLO-1049) *claims* a reminder by
-# inserting the row — the partial unique index on (shift_id, days_before) makes a second claim a
+# inserting the row — the partial unique index on (shift_id, rota_reminder_id) makes a second claim a
 # constraint violation — and only then enqueues this.
 #
 # Within the job, a second layer of claiming defends the money. Sending is three steps that cannot
@@ -65,11 +65,12 @@ class SendSmsJob < ApplicationJob
 
     body = nil
     return skip_uncontactable(message) unless message.member.contactable?
+    return skip_removed_reminder(message) if message.reminder? && message.rota_reminder.nil?
 
     body = if message.member_login?
       "Your Rota Monster personal link: #{Rails.configuration.x.sms.app_url}/s/#{message.member.access_token}\nKeep this link private. If you didn't request it, ignore this text."
     else
-      Sms::Renderer.for_shift(message.shift, member: message.member)
+      Sms::Renderer.for_shift(message.shift, template: message_template(message), member: message.member)
     end
     delivery = Sms.deliver(to: message.member.phone_e164, body: body)
 
@@ -150,6 +151,16 @@ class SendSmsJob < ApplicationJob
     message.update!(status: :failed, error_code: SmsMessage::NOT_CONTACTABLE)
   end
 
+  # The admin deleted the reminder after the sweep claimed it. Its text is gone with it, and sending
+  # another reminder's text in its place would be a message nobody wrote for this moment.
+  def skip_removed_reminder(message)
+    message.update!(status: :failed, error_code: SmsMessage::REMINDER_REMOVED)
+  end
+
+  def message_template(message)
+    message.reminder? ? message.rota_reminder.message_template : message.shift.rota.cover_notice_template
+  end
+
   # The house was paused between the sweep claiming this reminder and this job running (BLO-1675).
   # The sweep skips suspended houses, but a reminder already in the queue when the operator pulled
   # the lever would otherwise go out after it — and "suspend" that still texts people is not a
@@ -162,7 +173,7 @@ class SendSmsJob < ApplicationJob
   # an unsent text rather than as a carrier failure.
   #
   # Nothing re-enqueues it on resume, and that is correct rather than a gap: the reminder stays
-  # claimed, so the sweep will not raise a second one for the same (shift, offset), and its send
+  # claimed, so the sweep will not raise a second one for the same (shift, reminder), and its send
   # moment is now in the past, where ReminderSweep's 24-hour staleness guard would have buried it
   # anyway. Resuming a house texts nobody about the days it was paused.
   def skip_paused_house(message)

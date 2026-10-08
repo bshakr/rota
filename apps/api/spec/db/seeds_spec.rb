@@ -40,7 +40,7 @@ RSpec.describe "db/seeds.rb" do
     kitchen = group.rotas.find_by!(name: "Kitchen deep clean")
 
     expect(kitchen.members.map(&:name)).to eq(%w[Ciara Bass Eliza Raph])
-    expect(kitchen.reminder_offsets).to eq([ 3, 0 ])
+    expect(kitchen.reminders.map(&:days_before)).to eq([ 3, 0 ])
   end
 
   # A rota's roster is its own ordered subset of the group, so the demo had better show one.

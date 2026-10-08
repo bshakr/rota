@@ -13,7 +13,7 @@ RSpec.describe ReminderSweep do
   # the group's clock rather than the server's.
   let(:group) { create(:group, timezone: "Europe/London") }
   let(:rota) do
-    create(:rota, group: group, send_hour: 9, reminder_offsets: [ 3, 0 ])
+    create(:rota, group: group, send_hour: 9, reminder_days: [ 3, 0 ])
   end
 
   def sweep
@@ -138,7 +138,7 @@ RSpec.describe ReminderSweep do
       # Its send moment is five days in the past, so it must stay buried rather than blurt out
       # "7 days to go!" about a shift that is nearly here.
       travel_to(Time.utc(2026, 7, 14, 12, 0)) do
-        far = create(:rota, group: group, send_hour: 9, reminder_offsets: [ 7 ])
+        far = create(:rota, group: group, send_hour: 9, reminder_days: [ 7 ])
         shift = create(:shift, rota: far, due_on: group.today + 2)
 
         expect { described_class.new(far).call }.not_to have_enqueued_job(SendSmsJob)
@@ -161,7 +161,7 @@ RSpec.describe ReminderSweep do
 
     it "swallows the unique-index violation when two sweeps race" do
       # Concurrency the pre-check cannot see: two sweeps each read an empty set of claimed reminders
-      # before either commits. The partial unique index on (shift_id, days_before) is the real
+      # before either commits. The partial unique index on (shift_id, rota_reminder_id) is the real
       # backstop — the loser's INSERT is rejected, and the sweep must treat that as a no-op, not an
       # error. Stubbing the claimed-set to empty reproduces that window against the real index.
       travel_to(Time.utc(2026, 7, 14, 8, 0)) do
@@ -179,7 +179,7 @@ RSpec.describe ReminderSweep do
 
   describe "daylight saving time" do
     # A rota that texts at 1am — the awkward hour that a DST change either skips or repeats.
-    let(:rota) { create(:rota, group: group, send_hour: 1, reminder_offsets: [ 0 ]) }
+    let(:rota) { create(:rota, group: group, send_hour: 1, reminder_days: [ 0 ]) }
 
     it "does not double-send across a repeated local hour (clocks fall back)" do
       # 25 Oct 2026: 02:00 BST falls back to 01:00 GMT, so 01:00 local happens twice — once at
@@ -187,7 +187,7 @@ RSpec.describe ReminderSweep do
       # instant, so the FIRST sweep at 00:30 UTC already sends. The second sweep at 01:30 UTC is the
       # genuine repeat of 01:00 local: it must recompute the SAME instant and find the reminder
       # claimed. Asserting the first fires and the second is a no-op proves the two instants agree —
-      # not merely that the timezone-independent (shift_id, days_before) index deduped a double-send
+      # not merely that the timezone-independent (shift_id, rota_reminder_id) index deduped a double-send
       # that was structurally impossible anyway.
       shift = create(:shift, rota: rota, due_on: Date.new(2026, 10, 25))
 
@@ -261,11 +261,11 @@ RSpec.describe ReminderSweep do
     end
   end
 
-  describe "never for a past shift" do
+  describe "before-shift reminders are never sent for a past shift" do
     it "does not send a day-of reminder for a shift that is already in the past" do
       # due yesterday, send hour 23: the moment is only 8 hours ago, so the staleness guard alone
       # would let it through. It is the "shift in the past" rule that stops it.
-      past_rota = create(:rota, group: group, send_hour: 23, reminder_offsets: [ 0 ])
+      past_rota = create(:rota, group: group, send_hour: 23, reminder_days: [ 0 ])
 
       travel_to(Time.utc(2026, 7, 14, 6, 0)) do # 07:00 BST on the 14th
         shift = create(:shift, rota: past_rota, due_on: group.today - 1)
@@ -273,6 +273,114 @@ RSpec.describe ReminderSweep do
         expect { described_class.new(past_rota).call }.not_to have_enqueued_job(SendSmsJob)
         expect(reminder_for(shift, 0)).to be_nil
       end
+    end
+  end
+
+  describe "a reminder after the shift" do
+    let(:after_rota) { create(:rota, group: group, send_hour: 9, reminder_days: [ -1 ]) }
+    let!(:shift) { create(:shift, rota: after_rota, due_on: Date.new(2026, 7, 14)) }
+
+    def sweep_after
+      described_class.new(after_rota).call
+    end
+
+    it "is sent the next day at the send hour, to whoever did the shift" do
+      travel_to(Time.utc(2026, 7, 15, 7, 59)) do # 08:59 BST on the 15th
+        expect { sweep_after }.not_to have_enqueued_job(SendSmsJob)
+      end
+
+      travel_to(Time.utc(2026, 7, 15, 8, 0)) do
+        expect { sweep_after }.to have_enqueued_job(SendSmsJob)
+      end
+
+      expect(reminder_for(shift, -1)).to have_attributes(
+        rota_reminder_id: after_rota.reminders.sole.id, member_id: shift.responsible_member.id
+      )
+    end
+
+    it "heals an outage for 24 hours and no longer" do
+      travel_to(Time.utc(2026, 7, 16, 8, 1)) { sweep_after }
+      expect(reminder_for(shift, -1)).to be_nil
+
+      travel_to(Time.utc(2026, 7, 16, 8, 0)) { sweep_after }
+      expect(reminder_for(shift, -1)).to be_present
+    end
+
+    it "does not back-fire for older shifts when it is added today" do
+      older = create(:shift, rota: rota, due_on: Date.new(2026, 7, 13))
+      yesterday = create(:shift, rota: rota, due_on: Date.new(2026, 7, 14))
+
+      travel_to(Time.utc(2026, 7, 15, 11, 0)) do # 12:00 BST: the 14th's moment is 3 hours old
+        rota.replace_reminders([ { days_before: -1, message_template: "Thanks {{name}}" } ])
+        rota.save!
+
+        expect { sweep }.to have_enqueued_job(SendSmsJob).exactly(1).times
+      end
+
+      expect(reminder_for(yesterday, -1)).to be_present
+      expect(reminder_for(older, -1)).to be_nil
+    end
+
+    it "skips a recipient who has opted out since, like any other reminder" do
+      shift.responsible_member.update!(sms_opted_out_at: Time.utc(2026, 7, 14, 20, 0))
+
+      travel_to(Time.utc(2026, 7, 15, 8, 0)) do
+        expect { sweep_after }.not_to have_enqueued_job(SendSmsJob)
+      end
+    end
+  end
+
+  describe "a reminder's identity" do
+    let!(:shift) { create(:shift, rota: rota, due_on: Date.new(2026, 7, 17)) }
+    let(:three_day) { rota.reminders.find { |reminder| reminder.days_before == 3 } }
+
+    it "sends both reminders at one timing, each claiming its own row" do
+      second = create(:rota_reminder, rota: rota, days_before: 3, message_template: "Also {{name}}")
+      rota.reminders.reset
+
+      travel_to(Time.utc(2026, 7, 14, 8, 0)) do
+        expect { sweep }.to have_enqueued_job(SendSmsJob).exactly(2).times
+        expect { sweep }.not_to have_enqueued_job(SendSmsJob)
+      end
+
+      expect(shift.sms_messages.reminder.pluck(:rota_reminder_id)).to contain_exactly(three_day.id, second.id)
+    end
+
+    it "does not text a shift again when a reminder that already texted it moves to a later timing" do
+      travel_to(Time.utc(2026, 7, 14, 8, 0)) { sweep }
+
+      travel_to(Time.utc(2026, 7, 15, 8, 0)) do
+        three_day.update!(days_before: 2)
+        rota.reminders.reset
+
+        expect { sweep }.not_to have_enqueued_job(SendSmsJob)
+      end
+    end
+
+    it "sends a newly added reminder at a timing no reminder has texted this shift at" do
+      travel_to(Time.utc(2026, 7, 14, 8, 0)) { sweep }
+
+      travel_to(Time.utc(2026, 7, 15, 8, 0)) do
+        create(:rota_reminder, rota: rota, days_before: 2)
+        rota.reminders.reset
+
+        expect { sweep }.to have_enqueued_job(SendSmsJob).exactly(1).times
+      end
+    end
+
+    # The row of a deleted reminder (or one written by the previous release mid-deploy) has no
+    # reminder id; it still stands for that timing on that shift.
+    it "does not text a shift twice when a reminder is deleted and recreated at the same timing" do
+      travel_to(Time.utc(2026, 7, 14, 8, 0)) { sweep }
+
+      travel_to(Time.utc(2026, 7, 14, 10, 0)) do
+        rota.replace_reminders([ { days_before: 3, message_template: "Recreated {{name}}" } ])
+        rota.save!
+
+        expect { sweep }.not_to have_enqueued_job(SendSmsJob)
+      end
+
+      expect(reminder_for(shift, 3).rota_reminder_id).to be_nil
     end
   end
 
@@ -305,7 +413,7 @@ RSpec.describe ReminderSweep do
 
   describe "a rota with no reminders configured" do
     it "does nothing" do
-      quiet = create(:rota, group: group, reminder_offsets: [])
+      quiet = create(:rota, group: group, reminder_days: [])
       shift = create(:shift, rota: quiet, due_on: Date.new(2026, 7, 17))
 
       travel_to(Time.utc(2026, 7, 17, 8, 0)) do

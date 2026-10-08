@@ -1,5 +1,5 @@
 module Sms
-  # Turns a rota's message template into the text a member actually receives.
+  # Turns a reminder's message template into the text a member actually receives.
   #
   # Two callers, one code path: SendSmsJob renders the real thing, and the rota editor renders a
   # live preview against a real member. A preview that went through different code would be a
@@ -22,19 +22,22 @@ module Sms
     # GSM-7 segment past the first costs money. The body is clamped to this so a runaway template or
     # a pathologically long member name cannot bill for thirty segments or fail the send — and the
     # clamp is applied to the message text only, never the magic link, which must always survive
-    # intact. Rota also caps the template at save (Rota::MESSAGE_TEMPLATE_MAX) so the admin sees the
+    # intact. Rota also caps the template at save (RotaReminder::MESSAGE_TEMPLATE_MAX) so the admin sees the
     # limit rather than silent truncation; this is the belt to that suspenders.
     MAX_BODY_LENGTH = 1600
 
-    def self.render(rota:, member:, due_on:)
-      new(rota: rota, member: member, due_on: due_on).body
+    # `today` defaults to the group's; the preview passes the day a reminder would go out, so
+    # {{days_until}} reads as it will in the real text.
+    def self.render(rota:, template:, member:, due_on:, today: nil)
+      new(rota: rota, template: template, member: member, due_on: due_on, today: today).body
     end
 
     # Reminders resolve the recipient at send time, which is why a handover needs no special
     # reminder logic: hand Alice's shift to Bob and every remaining reminder goes to him. Pass
     # `member:` to render for somebody else, which is what an admin previewing a template wants.
-    def self.for_shift(shift, member: nil)
-      render(rota: shift.rota, member: member || shift.responsible_member, due_on: shift.due_on)
+    def self.for_shift(shift, template:, member: nil)
+      render(rota: shift.rota, template: template, member: member || shift.responsible_member,
+        due_on: shift.due_on)
     end
 
     def self.unknown_placeholders(template)
@@ -49,10 +52,12 @@ module Sms
       template.to_s.gsub(PLACEHOLDER_PATTERN, "").match?(/[{}]/)
     end
 
-    def initialize(rota:, member:, due_on:)
+    def initialize(rota:, template:, member:, due_on:, today: nil)
       @rota = rota
+      @template = template
       @member = member
       @due_on = due_on
+      @today = today
     end
 
     # The magic link is appended rather than placed, and is not a placeholder. It is how the member
@@ -70,7 +75,7 @@ module Sms
     attr_reader :rota, :member, :due_on
 
     def filled_template
-      template = rota.message_template.to_s
+      template = @template.to_s
       raise MalformedTemplate, template if self.class.stray_braces?(template)
 
       unknown = self.class.unknown_placeholders(template)
@@ -91,7 +96,7 @@ module Sms
     # Counted from today in the *group's* zone. At 23:30 UTC a Sydney house is already tomorrow, and
     # a reminder that says "in 2 days" about a shift that is tomorrow is worse than no reminder.
     def days_until
-      days = (due_on - rota.group.time_zone.today).to_i
+      days = (due_on - (@today || rota.group.time_zone.today)).to_i
 
       case days
       when 0 then "today"
