@@ -110,7 +110,10 @@ export function groupPayload(): unknown {
         interval_count: 1,
         interval_unit: "week",
         send_hour: 18,
-        reminder_offsets: [1, 0],
+        reminders: [
+          { id: 530, days_before: 1, message_template: "{{name}}, your turn." },
+          { id: 531, days_before: 0, message_template: "{{name}}, your turn." },
+        ],
       },
       {
         id: 42,
@@ -122,7 +125,9 @@ export function groupPayload(): unknown {
         interval_count: 2,
         interval_unit: "week",
         send_hour: 9,
-        reminder_offsets: [0],
+        reminders: [
+          { id: 540, days_before: 0, message_template: "{{name}}, your turn." },
+        ],
       },
       {
         id: 43,
@@ -134,7 +139,11 @@ export function groupPayload(): unknown {
         interval_count: 1,
         interval_unit: "month",
         send_hour: 8,
-        reminder_offsets: [2, 0],
+        reminders: [
+          { id: 550, days_before: 2, message_template: "{{name}}, your turn." },
+          { id: 551, days_before: 0, message_template: "{{name}}, your turn." },
+          { id: 552, days_before: -1, message_template: "{{name}}, thanks for doing it." },
+        ],
       },
     ],
     // Not modelled by the schema on purpose — the page draws its log from the
@@ -163,12 +172,14 @@ export function groupPayload(): unknown {
           {
             id: 41,
             name: "Bins",
-            message_template: "{{name}}, bins tonight.",
             starts_on: "2026-05-04",
             interval_count: 1,
             interval_unit: "week",
             send_hour: 18,
-            reminder_offsets: [1, 0],
+            reminders: [
+              { id: 500, days_before: 1, message_template: "{{name}}, bins tonight." },
+              { id: 501, days_before: 0, message_template: "{{name}}, bins tonight." },
+            ],
             active: true,
             draft: false,
             positions: [
@@ -182,12 +193,13 @@ export function groupPayload(): unknown {
           {
             id: 42,
             name: "Hallway sweep",
-            message_template: "{{name}}, hallway this week.",
             starts_on: "2026-05-09",
             interval_count: 2,
             interval_unit: "week",
             send_hour: 9,
-            reminder_offsets: [0],
+            reminders: [
+              { id: 510, days_before: 0, message_template: "{{name}}, hallway this week." },
+            ],
             active: false,
             draft: false,
             positions: [
@@ -200,12 +212,14 @@ export function groupPayload(): unknown {
           {
             id: 43,
             name: "Recycling run",
-            message_template: "{{name}}, recycling goes out tomorrow.",
             starts_on: "2026-09-07",
             interval_count: 1,
             interval_unit: "month",
             send_hour: 8,
-            reminder_offsets: [2, 0],
+            reminders: [
+              { id: 520, days_before: 2, message_template: "{{name}}, recycling goes out tomorrow." },
+              { id: 521, days_before: 0, message_template: "{{name}}, recycling goes out tomorrow." },
+            ],
             active: true,
             draft: true,
             positions: [],

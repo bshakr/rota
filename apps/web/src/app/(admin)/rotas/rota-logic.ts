@@ -16,18 +16,111 @@ import { TIME_ZONE } from "@/lib/date";
 // ---------------------------------------------------------------------------
 
 /**
- * A reminder offset is a number of days before a shift. Offset `0` is the day
- * itself and MUST read "on the day" — never "0 days before", which is the bug the
- * ticket calls out by name.
+ * A reminder's timing is one signed number, `days_before`: positive is before the
+ * shift, 0 is the day itself, negative is after. The label never shows a minus
+ * sign and never says "0 days before".
  */
-export function reminderOffsetLabel(days: number): string {
-  if (days === 0) return "on the day";
-  return `${days} ${days === 1 ? "day" : "days"} before`;
+export function reminderTimingLabel(daysBefore: number): string {
+  if (daysBefore === 0) return "On the day";
+  const n = Math.abs(daysBefore);
+  return `${n} ${n === 1 ? "day" : "days"} ${daysBefore > 0 ? "before" : "after"}`;
 }
 
-/** Longest lead first, day-of last — the order a reminder timeline reads in. */
-export function sortOffsetsDesc(offsets: number[]): number[] {
-  return [...offsets].sort((a, b) => b - a);
+/** "3 days before, on the day, 1 day after": longest lead first, the order they go out in. */
+export function remindersInWords(daysBefore: number[]): string {
+  if (daysBefore.length === 0) return "No reminders";
+  return [...daysBefore]
+    .sort((a, b) => b - a)
+    .map((d, i) => {
+      const label = reminderTimingLabel(d);
+      return i === 0 ? label : label.charAt(0).toLowerCase() + label.slice(1);
+    })
+    .join(", ");
+}
+
+export const MAX_REMINDERS = 10;
+export const MAX_DAYS_BEFORE = 365;
+export const MAX_DAYS_AFTER = 14;
+
+export type TimingDirection = "before" | "on" | "after";
+
+export interface ReminderTiming {
+  amount: number;
+  direction: TimingDirection;
+}
+
+export function timingFromDaysBefore(daysBefore: number): ReminderTiming {
+  if (daysBefore === 0) return { amount: 0, direction: "on" };
+  return { amount: Math.abs(daysBefore), direction: daysBefore > 0 ? "before" : "after" };
+}
+
+export function daysBeforeFromTiming({ amount, direction }: ReminderTiming): number {
+  if (direction === "on") return 0;
+  return direction === "before" ? amount : -amount;
+}
+
+/** The new `days_before` when the direction select changes. */
+export function withTimingDirection(daysBefore: number, direction: TimingDirection): number {
+  if (direction === "on") return 0;
+  const amount = Math.max(1, Math.abs(daysBefore));
+  const limit = direction === "after" ? MAX_DAYS_AFTER : MAX_DAYS_BEFORE;
+  return daysBeforeFromTiming({ amount: Math.min(amount, limit), direction });
+}
+
+/**
+ * A reminder as the form holds it. The API id lives under `reminder_id` because
+ * react-hook-form's field arrays own the `id` key; losing it would make every save
+ * replace the reminders and break "never texted twice by the same reminder".
+ */
+export interface ReminderRow {
+  reminder_id?: number;
+  days_before: number;
+  message_template: string;
+}
+
+export interface ReminderParam {
+  id?: number;
+  days_before: number;
+  message_template: string;
+}
+
+export function reminderRows(
+  reminders: { id: number; days_before: number; message_template: string }[],
+): ReminderRow[] {
+  return reminders.map(({ id, days_before, message_template }) => ({
+    reminder_id: id,
+    days_before,
+    message_template,
+  }));
+}
+
+export function reminderParams(rows: ReminderRow[]): ReminderParam[] {
+  return rows.map(({ reminder_id, days_before, message_template }) =>
+    reminder_id === undefined
+      ? { days_before, message_template }
+      : { id: reminder_id, days_before, message_template },
+  );
+}
+
+const TOP_LEVEL_FIELDS = new Set([
+  "name",
+  "starts_on",
+  "interval_count",
+  "interval_unit",
+  "send_hour",
+  "active",
+  "reminders",
+]);
+const REMINDER_FIELD = /^reminders\[(\d+)\]\.(days_before|message_template)$/;
+
+/**
+ * Where an API validation key belongs in the form: `reminders[1].message_template`
+ * lands on row 1's textarea. Keys with no matching field give null.
+ */
+export function formErrorPath(key: string): string | null {
+  if (TOP_LEVEL_FIELDS.has(key)) return key;
+  const match = REMINDER_FIELD.exec(key);
+  return match ? `reminders.${match[1]}.${match[2]}` : null;
 }
 
 /** "Every day" / "Every 2 weeks" — the recurrence in plain words, for cards and headers. */

@@ -24,7 +24,6 @@ import {
   memberRotasNote,
   notesCounter,
   parseGroupsFilters,
-  reminderOffsetsInWords,
   rosterNote,
   rotaCountsNote,
   rotaStateLabel,
@@ -219,15 +218,6 @@ describe("a rota, in words", () => {
     expect(scheduleInWords({ starts_on: "2026-01-31", interval_count: 3, interval_unit: "month" })).toBe(
       "Every 3 months, from Sat 31 Jan",
     );
-  });
-
-  // Offset 0 is "on the day" and never "0 days before" — the house's own rota
-  // screens already decided that, and this reuses their helper rather than
-  // spelling a rota differently from the screen its admin is looking at.
-  it("lists the reminders longest lead first", () => {
-    expect(reminderOffsetsInWords([0, 2])).toBe("2 days before, on the day");
-    expect(reminderOffsetsInWords([1])).toBe("1 day before");
-    expect(reminderOffsetsInWords([])).toBe("No reminders");
   });
 
   it("renders the send hour on a 24-hour clock", () => {

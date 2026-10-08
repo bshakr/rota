@@ -153,6 +153,12 @@ describe("groupDetailSchema", () => {
     expect(detail.report.spend).toBeNull();
   });
 
+  it("reads reminders after the shift, whose days_before is negative", () => {
+    const detail = parsed();
+
+    expect(detail.rotas[2].reminders.map((r) => r.days_before)).toEqual([2, 0, -1]);
+  });
+
   // The production bug this schema had: `users.name` carries no NOT NULL and an
   // AuthKit token has no `name` claim unless the WorkOS JWT template adds one, so
   // Rails serves null — and a non-null `z.string()` turned one such row into a
