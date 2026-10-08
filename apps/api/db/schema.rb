@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_15_080000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_08_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -163,13 +163,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_080000) do
     t.check_constraint "\"position\" >= 0", name: "rota_positions_position_non_negative"
   end
 
+  create_table "rota_reminders", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "days_before", null: false
+    t.text "message_template", null: false
+    t.bigint "rota_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["rota_id"], name: "index_rota_reminders_on_rota_id"
+    t.check_constraint "days_before >= '-14'::integer", name: "rota_reminders_days_before_floor"
+  end
+
   create_table "rotas", force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.datetime "created_at", null: false
     t.bigint "group_id", null: false
     t.integer "interval_count", null: false
     t.string "interval_unit", null: false
-    t.text "message_template", null: false
+    t.text "message_template"
     t.string "name", null: false
     t.integer "reminder_offsets", default: [], null: false, array: true
     t.integer "send_hour", default: 9, null: false
@@ -216,6 +226,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_080000) do
     t.decimal "price", precision: 10, scale: 5
     t.datetime "price_fetched_at"
     t.string "price_unit", limit: 3
+    t.bigint "rota_reminder_id"
     t.datetime "sent_at"
     t.bigint "shift_id"
     t.string "status", default: "pending", null: false
@@ -225,10 +236,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_080000) do
     t.index ["created_at"], name: "index_sms_messages_on_login_time", where: "((kind)::text = 'member_login'::text)"
     t.index ["member_id", "status", "created_at", "id"], name: "index_sms_messages_on_delivery_log", order: { created_at: :desc, id: :desc }
     t.index ["member_id"], name: "index_sms_messages_on_member_id"
-    t.index ["shift_id", "days_before"], name: "index_sms_messages_on_reminder_idempotency", unique: true, where: "((kind)::text = 'reminder'::text)"
+    t.index ["rota_reminder_id"], name: "index_sms_messages_on_rota_reminder_id"
+    t.index ["shift_id", "rota_reminder_id"], name: "index_sms_messages_on_reminder_idempotency", unique: true, where: "(((kind)::text = 'reminder'::text) AND (rota_reminder_id IS NOT NULL))"
     t.index ["shift_id"], name: "index_sms_messages_on_shift_id"
     t.index ["twilio_sid"], name: "index_sms_messages_on_twilio_sid", unique: true
-    t.check_constraint "days_before IS NULL OR days_before >= 0", name: "sms_messages_days_before_non_negative"
     t.check_constraint "kind::text <> 'reminder'::text OR days_before IS NOT NULL", name: "sms_messages_reminder_has_days_before"
     t.check_constraint "kind::text = 'member_login'::text AND shift_id IS NULL AND days_before IS NULL OR kind::text <> 'member_login'::text AND shift_id IS NOT NULL", name: "sms_messages_shift_for_kind"
     t.check_constraint "kind::text = ANY (ARRAY['reminder'::character varying, 'cover_notice'::character varying, 'member_login'::character varying]::text[])", name: "sms_messages_kind_known"
@@ -257,11 +268,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_080000) do
   add_foreign_key "members", "groups"
   add_foreign_key "rota_positions", "members"
   add_foreign_key "rota_positions", "rotas"
+  add_foreign_key "rota_reminders", "rotas", on_delete: :cascade
   add_foreign_key "rotas", "groups"
   add_foreign_key "shifts", "members", column: "assigned_member_id"
   add_foreign_key "shifts", "members", column: "covering_member_id"
   add_foreign_key "shifts", "rotas"
   add_foreign_key "sign_ins", "users"
   add_foreign_key "sms_messages", "members"
+  add_foreign_key "sms_messages", "rota_reminders", on_delete: :nullify
   add_foreign_key "sms_messages", "shifts"
 end

@@ -6,12 +6,13 @@ import { buildMagicLink, memberStatus, rotaNamesByMemberId, toMemberRows } from 
 
 function rota(partial: Partial<Rota> & Pick<Rota, "id" | "name">): Rota {
   return {
-    message_template: "It's your turn, {{name}}.",
     starts_on: "2026-07-01",
     interval_count: 1,
     interval_unit: "week",
     send_hour: 9,
-    reminder_offsets: [0],
+    reminders: [
+      { id: 560, days_before: 0, message_template: "It's your turn, {{name}}." },
+    ],
     active: true,
     draft: false,
     positions: [],

@@ -23,6 +23,7 @@ import { DeactivateRotaButton } from "./_components/deactivate-rota-button";
 import {
   dayStringToDisplayDate,
   projectShifts,
+  remindersInWords,
   scheduleLabel,
   sendHourLabel,
   todayDayString,
@@ -90,6 +91,7 @@ function RotaCard({ rota, today }: { rota: Rota; today: string }) {
         <CardDescription>
           {scheduleLabel(rota.interval_count, rota.interval_unit)} · reminders at{" "}
           {sendHourLabel(rota.send_hour)}
+          <span className="block">{remindersInWords(rota.reminders.map((r) => r.days_before))}</span>
         </CardDescription>
         <CardAction>
           {rota.draft ? (

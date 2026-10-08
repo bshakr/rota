@@ -232,18 +232,28 @@ export interface RotaPositionEntry {
 }
 
 /**
- * A rota: a named job, its schedule, its message, and its ordered roster. `draft`
+ * One text a rota sends per shift. `days_before` is signed: positive is before the
+ * shift day, 0 is on the day, negative is after (-1 is the next day).
+ */
+export interface RotaReminder {
+  id: number;
+  days_before: number;
+  message_template: string;
+}
+
+/**
+ * A rota: a named job, its schedule, its reminders, and its ordered roster. `draft`
  * is derived from the roster (a rota with no positions), never stored.
  */
 export interface Rota {
   id: number;
   name: string;
-  message_template: string;
   starts_on: string;
   interval_count: number;
   interval_unit: IntervalUnit;
   send_hour: number;
-  reminder_offsets: number[];
+  /** Ordered days_before descending, then id. */
+  reminders: RotaReminder[];
   active: boolean;
   draft: boolean;
   positions: RotaPositionEntry[];
@@ -299,15 +309,22 @@ export interface RotaPreviewResponse {
   due_on: string;
 }
 
+export interface RotaReminderParams {
+  /** Present to update that reminder; absent to create one. */
+  id?: number;
+  days_before: number;
+  message_template: string;
+}
+
 export interface RotaWriteParams {
   name?: string;
-  message_template?: string;
   starts_on?: string;
   interval_count?: number;
   interval_unit?: IntervalUnit;
   send_hour?: number;
   active?: boolean;
-  reminder_offsets?: number[];
+  /** The full list: reminders left out are deleted. Omit the key to leave them alone. */
+  reminders?: RotaReminderParams[];
 }
 
 export interface RotaPreviewParams {
@@ -315,6 +332,8 @@ export interface RotaPreviewParams {
   message_template?: string;
   /** Render as a specific member; defaults to the first on the roster. */
   member_id?: number;
+  /** So `{{days_until}}` reads as it would for this reminder. Defaults to 0. */
+  days_before?: number;
 }
 
 // ---------------------------------------------------------------------------

@@ -32,17 +32,29 @@ describe("reminderTiming", () => {
     expect(reminderTiming(3)).toBe("3 days before");
   });
 
+  it("reads a negative offset as a text after the shift", () => {
+    expect(reminderTiming(-1)).toBe("1 day after");
+    expect(reminderTiming(-2)).toBe("2 days after");
+  });
+
   it("is null for a cover notice, which carries no offset", () => {
     expect(reminderTiming(null)).toBeNull();
   });
 });
 
 describe("explainError", () => {
-  it("translates the three send-side sentinels into plain sentences", () => {
+  it("translates the send-side sentinels into plain sentences", () => {
     expect(explainError("not_contactable").summary).toMatch(/inactive|opted out/i);
     expect(explainError("not_contactable").detail).toBe("Send-side error");
     expect(explainError("invalid_template").summary).toMatch(/template/i);
     expect(explainError("internal_error").summary).toMatch(/our side|unexpected/i);
+  });
+
+  it("explains a text cancelled because its reminder was deleted", () => {
+    expect(explainError("reminder_removed")).toEqual({
+      summary: "The reminder was deleted from the rota before this text went out, so nothing was sent.",
+      detail: "Send-side error",
+    });
   });
 
   it("translates the common Twilio codes, keeping the raw code as the quiet detail", () => {

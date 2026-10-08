@@ -86,7 +86,7 @@ module SuperAdmin
 
     # Api::RotasController#index, including its preload and its order.
     def rotas
-      group.rotas.includes(rota_positions: :member).order(:name)
+      group.rotas.includes(:reminders, rota_positions: :member).order(:name)
     end
 
     # Api::MembersController#index. Every member, not just the active ones: the "won't get texts"

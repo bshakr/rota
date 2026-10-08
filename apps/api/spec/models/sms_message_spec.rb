@@ -31,11 +31,23 @@ RSpec.describe SmsMessage do
       expect(message.errors[:days_before]).to be_present
     end
 
-    it "rejects a negative days_before" do
-      message = build(:sms_message, kind: "reminder", days_before: -1)
+    it "accepts a negative days_before, which is a reminder after the shift" do
+      expect(build(:sms_message, kind: "reminder", days_before: -1)).to be_valid
+    end
+
+    it "rejects a days_before that is not a whole number" do
+      message = build(:sms_message, kind: "reminder", days_before: "soon")
 
       expect(message).not_to be_valid
       expect(message.errors[:days_before]).to be_present
+    end
+
+    it "refuses a reminder on a cover notice" do
+      shift = create(:shift)
+      message = build(:sms_message, :cover_notice, shift: shift, rota_reminder: shift.rota.reminders.first)
+
+      expect(message).not_to be_valid
+      expect(message.errors[:rota_reminder]).to be_present
     end
 
     it "accepts a day-of reminder, which is simply an offset of zero" do
@@ -74,13 +86,17 @@ RSpec.describe SmsMessage do
   describe "the reminder idempotency index (enforced by Postgres, not by the model)" do
     # A plain INSERT. No model, no validations, no callbacks — exactly what a second sweep
     # running in another process would issue.
-    def insert_reminder_directly(shift:, member:, days_before:)
-      sql = SmsMessage.sanitize_sql_array([ <<~SQL, shift.id, member.id, days_before ])
-        INSERT INTO sms_messages (kind, shift_id, member_id, days_before, status, created_at, updated_at)
-        VALUES ('reminder', ?, ?, ?, 'pending', NOW(), NOW())
+    def insert_reminder_directly(shift:, member:, days_before:, reminder: reminder_at(shift, days_before))
+      sql = SmsMessage.sanitize_sql_array([ <<~SQL, shift.id, member.id, days_before, reminder&.id ])
+        INSERT INTO sms_messages (kind, shift_id, member_id, days_before, rota_reminder_id, status, created_at, updated_at)
+        VALUES ('reminder', ?, ?, ?, ?, 'pending', NOW(), NOW())
       SQL
 
       SmsMessage.connection.execute(sql)
+    end
+
+    def reminder_at(shift, days_before)
+      shift.rota.reminders.find { |reminder| reminder.days_before == days_before }
     end
 
     let(:shift) { create(:shift) }
@@ -93,11 +109,11 @@ RSpec.describe SmsMessage do
       SQL
 
       expect(definition).to include("UNIQUE INDEX")
-      expect(definition).to include("(shift_id, days_before)")
-      expect(definition).to match(/WHERE .*kind.* = 'reminder'/)
+      expect(definition).to include("(shift_id, rota_reminder_id)")
+      expect(definition).to match(/WHERE .*kind.* = 'reminder'.* AND \(?rota_reminder_id IS NOT NULL/)
     end
 
-    it "refuses a second reminder for the same shift and offset" do
+    it "refuses a second row for the same shift and reminder" do
       insert_reminder_directly(shift: shift, member: member, days_before: 3)
 
       expect {
@@ -124,6 +140,15 @@ RSpec.describe SmsMessage do
       insert_reminder_directly(shift: shift, member: member, days_before: 0)
 
       expect(SmsMessage.where(shift: shift, kind: "reminder").count).to eq(2)
+    end
+
+    it "allows two reminders at the same timing, each with its own text, for one shift" do
+      second = create(:rota_reminder, rota: shift.rota, days_before: 3, message_template: "Again {{name}}")
+
+      insert_reminder_directly(shift: shift, member: member, days_before: 3)
+      insert_reminder_directly(shift: shift, member: member, days_before: 3, reminder: second)
+
+      expect(SmsMessage.where(shift: shift, kind: "reminder", days_before: 3).count).to eq(2)
     end
 
     it "does not constrain cover notices, which a shift may collect any number of" do

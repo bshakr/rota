@@ -13,11 +13,13 @@ RSpec.describe Rota do
       expect(rota.errors[:name]).to be_present
     end
 
-    it "requires a message template" do
-      rota = build(:rota, message_template: "")
+    it "requires each reminder to have a message template, reported against its position" do
+      rota = build(:rota, reminders: [
+        build(:rota_reminder, days_before: 3), build(:rota_reminder, days_before: 0, message_template: "")
+      ])
 
       expect(rota).not_to be_valid
-      expect(rota.errors[:message_template]).to be_present
+      expect(rota.errors[:"reminders[1].message_template"]).to be_present
     end
 
     it "requires an anchor date to count the series from" do
@@ -25,60 +27,6 @@ RSpec.describe Rota do
 
       expect(rota).not_to be_valid
       expect(rota.errors[:starts_on]).to be_present
-    end
-  end
-
-  # A template is only ever wrong at one moment that costs nothing to fix: the moment it is typed.
-  # A text cannot be recalled, so an unknown placeholder is rejected at save, never discovered at
-  # send. Sms::Renderer owns the vocabulary.
-  describe "the message template's placeholders" do
-    it "accepts every placeholder the renderer knows" do
-      known = Sms::Renderer::PLACEHOLDERS.map { |placeholder| "{{#{placeholder}}}" }.join(" ")
-
-      expect(build(:rota, message_template: known)).to be_valid
-    end
-
-    it "accepts a template with no placeholders at all" do
-      expect(build(:rota, message_template: "Bins out please")).to be_valid
-    end
-
-    it "rejects a typo rather than texting it out verbatim" do
-      rota = build(:rota, message_template: "Hi {{nmae}}!")
-
-      expect(rota).not_to be_valid
-      expect(rota.errors[:message_template].first).to include("{{nmae}}")
-    end
-
-    it "names every unknown placeholder, so the admin fixes them in one pass" do
-      rota = build(:rota, message_template: "{{name}} {{nmae}} {{when}}")
-
-      expect(rota).not_to be_valid
-      expect(rota.errors[:message_template].first).to include("{{nmae}}", "{{when}}")
-    end
-
-    it "lists the known placeholders in the error, so the admin does not have to guess" do
-      rota = build(:rota, message_template: "{{nmae}}")
-
-      expect(rota).not_to be_valid
-      expect(rota.errors[:message_template].first).to include("{{name}}", "{{days_until}}")
-    end
-
-    it "rejects an unbalanced brace rather than letting it reach a text" do
-      rota = build(:rota, message_template: "Hi {{name}")
-
-      expect(rota).not_to be_valid
-      expect(rota.errors[:message_template].first).to include("unbalanced or stray brace")
-    end
-
-    it "rejects a template longer than the segment budget" do
-      rota = build(:rota, message_template: "x" * (Rota::MESSAGE_TEMPLATE_MAX + 1))
-
-      expect(rota).not_to be_valid
-      expect(rota.errors[:message_template]).to be_present
-    end
-
-    it "accepts a template at the maximum length" do
-      expect(build(:rota, message_template: "x" * Rota::MESSAGE_TEMPLATE_MAX)).to be_valid
     end
   end
 
@@ -128,45 +76,67 @@ RSpec.describe Rota do
     end
   end
 
-  describe "reminder offsets" do
-    it "stores them sorted descending, furthest-out reminder first" do
-      expect(create(:rota, reminder_offsets: [ 0, 7, 3 ]).reminder_offsets).to eq([ 7, 3, 0 ])
+  describe "reminders" do
+    def rota_with(*timings)
+      build(:rota, reminders: timings.map { |days| build(:rota_reminder, days_before: days) })
     end
 
-    it "accepts them already sorted" do
-      expect(create(:rota, reminder_offsets: [ 3, 0 ]).reminder_offsets).to eq([ 3, 0 ])
+    it "reads them furthest-out first, and in creation order within one timing" do
+      rota = create(:rota, reminder_days: [ 0, 7, -1, 3, 3 ])
+
+      expect(rota.reminders.reload.map(&:days_before)).to eq([ 7, 3, 3, 0, -1 ])
+      expect(rota.reminders.select { |reminder| reminder.days_before == 3 }.map(&:id)).to eq(
+        rota.reminders.select { |reminder| reminder.days_before == 3 }.map(&:id).sort
+      )
     end
 
-    it "collapses a repeated offset rather than sending the same text twice" do
-      expect(create(:rota, reminder_offsets: [ 3, 3, 0 ]).reminder_offsets).to eq([ 3, 0 ])
+    it "allows the same timing twice, so two different texts can go out on one day" do
+      expect(rota_with(3, 3)).to be_valid
     end
 
-    it "accepts an empty list, meaning the rota sends no reminders" do
-      expect(create(:rota, reminder_offsets: []).reminder_offsets).to eq([])
+    it "accepts none, meaning the rota sends no reminders" do
+      expect(create(:rota, reminder_days: []).reminders).to be_empty
     end
 
-    it "accepts a day-of reminder, which is simply an offset of zero" do
-      expect(create(:rota, reminder_offsets: [ 0 ]).reminder_offsets).to eq([ 0 ])
+    it "accepts a day-of reminder, which is a timing of zero" do
+      expect(rota_with(0)).to be_valid
     end
 
-    it "rejects a negative offset, which would fall after the shift" do
-      rota = build(:rota, reminder_offsets: [ 3, -1 ])
+    it "accepts a reminder after the shift, down to two weeks after" do
+      expect(rota_with(-1)).to be_valid
+      expect(rota_with(-14)).to be_valid
+    end
+
+    it "rejects a timing more than two weeks after the shift, against its position" do
+      rota = rota_with(3, -15)
 
       expect(rota).not_to be_valid
-      expect(rota.errors[:reminder_offsets]).to be_present
+      expect(rota.errors[:"reminders[1].days_before"]).to be_present
     end
 
-    # The dangerous one. Postgres casts "soon" to 0 — a day-of reminder the admin never asked for
-    # and cannot see they created. The raw value is the only place that difference survives.
-    it "rejects an offset that is not a number, rather than silently reading it as day-of" do
-      rota = build(:rota, reminder_offsets: [ "3", "soon" ])
+    it "rejects a timing more than a year before the shift" do
+      expect(rota_with(366)).not_to be_valid
+      expect(rota_with(365)).to be_valid
+    end
+
+    # Postgres casts "soon" to 0: a day-of reminder the admin never asked for.
+    it "rejects a timing that is not a number, rather than silently reading it as day-of" do
+      rota = rota_with(3, "soon")
 
       expect(rota).not_to be_valid
-      expect(rota.errors[:reminder_offsets]).to be_present
+      expect(rota.errors[:"reminders[1].days_before"]).to be_present
     end
 
-    it "accepts numeric offsets that arrive as strings, as they do over JSON" do
-      expect(create(:rota, reminder_offsets: [ "3", "0" ]).reminder_offsets).to eq([ 3, 0 ])
+    it "accepts timings that arrive as strings, as they do over JSON" do
+      expect(rota_with("3", "0")).to be_valid
+    end
+
+    it "allows ten and refuses an eleventh" do
+      expect(rota_with(*Array.new(10, 0))).to be_valid
+
+      rota = rota_with(*Array.new(11, 0))
+      expect(rota).not_to be_valid
+      expect(rota.errors[:reminders]).to be_present
     end
   end
 
@@ -175,38 +145,111 @@ RSpec.describe Rota do
   # Without care that rejects every rota ever saved, and the rota editor cannot save a single
   # edit — while a suite that only ever builds fresh records stays perfectly green.
   describe "editing a rota that is already in the database" do
-    let(:rota) { create(:rota, reminder_offsets: [ 3, 0 ]) }
+    let(:rota) { create(:rota, reminder_days: [ 3, 0 ]) }
+    let(:reloaded) { described_class.find(rota.id) }
+    let(:three_day) { rota.reminders.find { |reminder| reminder.days_before == 3 } }
+    let(:day_of) { rota.reminders.find { |reminder| reminder.days_before == 0 } }
 
     it "is valid when read back" do
-      expect(described_class.find(rota.id)).to be_valid
+      expect(reloaded).to be_valid
     end
 
     it "can be renamed" do
-      reloaded = described_class.find(rota.id)
-
       expect(reloaded.update(name: "Kitchen deep clean")).to be(true)
       expect(reloaded.reload.name).to eq("Kitchen deep clean")
     end
 
-    it "keeps its offsets through an edit that does not touch them" do
-      reloaded = described_class.find(rota.id)
+    it "keeps its reminders through an edit that does not touch them" do
       reloaded.update!(send_hour: 18)
 
-      expect(reloaded.reload.reminder_offsets).to eq([ 3, 0 ])
+      expect(reloaded.reminders.reload.map(&:id)).to eq([ three_day.id, day_of.id ])
     end
 
-    it "can have its offsets changed" do
-      reloaded = described_class.find(rota.id)
-      reloaded.update!(reminder_offsets: [ 0, 7 ])
+    it "replaces the whole list: updates by id, creates without one, destroys what is left out" do
+      reloaded.replace_reminders([
+        { id: three_day.id, days_before: 7, message_template: "Week out {{name}}" },
+        { days_before: -1, message_template: "Thanks {{name}}" }
+      ])
+      reloaded.save!
 
-      expect(reloaded.reload.reminder_offsets).to eq([ 7, 0 ])
+      reminders = reloaded.reminders.reload
+      expect(reminders.map(&:days_before)).to eq([ 7, -1 ])
+      expect(reminders.first).to have_attributes(id: three_day.id, message_template: "Week out {{name}}")
+      expect(RotaReminder.exists?(day_of.id)).to be(false)
     end
 
-    it "still rejects junk offsets on an edit" do
-      reloaded = described_class.find(rota.id)
+    it "removes every reminder for an empty list" do
+      reloaded.replace_reminders([])
+      reloaded.save!
 
-      expect(reloaded.update(reminder_offsets: [ "soon" ])).to be(false)
-      expect(reloaded.errors[:reminder_offsets]).to be_present
+      expect(reloaded.reminders.reload).to be_empty
+    end
+
+    it "refuses a reminder id that belongs to another rota, and changes nothing" do
+      foreign = create(:rota).reminders.first
+      reloaded.replace_reminders([
+        { id: day_of.id, days_before: 0, message_template: "Today" },
+        { id: foreign.id, days_before: 1, message_template: "Stolen" }
+      ])
+
+      expect(reloaded.save).to be(false)
+      expect(reloaded.errors[:"reminders[1].id"]).to be_present
+      expect(foreign.reload.message_template).not_to eq("Stolen")
+      expect(RotaReminder.where(rota: rota).count).to eq(2)
+    end
+
+    it "reports errors by submitted position when updated, new and omitted reminders are mixed" do
+      reloaded.replace_reminders([
+        { days_before: 1, message_template: "New {{name}}" },
+        { id: day_of.id, days_before: 0, message_template: "Hi {{nmae}}" },
+        { days_before: "soon", message_template: "Also new" }
+      ])
+
+      expect(reloaded.save).to be(false)
+      expect(reloaded.errors.attribute_names).to contain_exactly(
+        :"reminders[1].message_template", :"reminders[2].days_before"
+      )
+      expect(RotaReminder.exists?(three_day.id)).to be(true)
+    end
+
+    it "still rejects a junk timing on an edit" do
+      reloaded.replace_reminders([ { id: three_day.id, days_before: "soon", message_template: "x" } ])
+
+      expect(reloaded.save).to be(false)
+      expect(reloaded.errors[:"reminders[0].days_before"]).to be_present
+    end
+
+    # The previous release reads these columns; a rollback must find something it can send.
+    it "mirrors the non-negative timings and the first reminder's text into the legacy columns" do
+      reloaded.replace_reminders([
+        { days_before: -1, message_template: "Thanks {{name}}" },
+        { days_before: 2, message_template: "Soon {{name}}" },
+        { days_before: 0, message_template: "Today {{name}}" }
+      ])
+      reloaded.save!
+
+      expect(reloaded.reload).to have_attributes(reminder_offsets: [ 2, 0 ], message_template: "Soon {{name}}")
+    end
+  end
+
+  describe "#cover_notice_template" do
+    it "is the text of the furthest-out reminder before or on the shift's day" do
+      rota = create(:rota, reminders: [
+        build(:rota_reminder, days_before: -2, message_template: "Thanks"),
+        build(:rota_reminder, days_before: 1, message_template: "Tomorrow")
+      ])
+
+      expect(rota.cover_notice_template).to eq("Tomorrow")
+    end
+
+    it "falls back to a fixed text when the rota sends no reminders" do
+      expect(create(:rota, reminder_days: []).cover_notice_template).to eq(Rota::COVER_NOTICE_FALLBACK)
+    end
+
+    it "falls back to the fixed text rather than an after-shift text when every reminder is after the shift" do
+      rota = create(:rota, reminders: [ build(:rota_reminder, days_before: -1, message_template: "Thanks {{name}}") ])
+
+      expect(rota.cover_notice_template).to eq(Rota::COVER_NOTICE_FALLBACK)
     end
   end
 

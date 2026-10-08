@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-10-08
+
+### Added
+
+- **Several reminders per rota, each with its own message**, including reminders that go out after
+  the shift day, such as a follow-up the next morning. A rota can have up to ten, each set to some
+  days before, on the day, or up to 14 days after, all at the rota's send hour. Reminders now live
+  in a `rota_reminders` table with a signed `days_before`, and a text is claimed once per shift per
+  reminder rather than once per shift per offset, so two reminders on the same day both send.
+  Existing rotas are converted in the migration with their current message, so members see no
+  change. Cover notices use the earliest reminder that is not after the shift, else a fixed text.
+  The old `reminder_offsets` and `message_template` columns stay for one release and are kept in
+  step; [BLO-1949](https://linear.app/bloombase/issue/BLO-1949) drops them. Decision record:
+  `docs/adr/0001-reminders-are-records-with-their-own-message-and-signed-timing.md`. (#72)
+
 ## 2026-09-15
 
 ### Added

@@ -32,24 +32,28 @@ ciara, bass, eliza, raph = [
 end
 
 kitchen = group.rotas.find_or_create_by!(name: "Kitchen deep clean") do |rota|
-  rota.message_template =
-    "Hi {{name}} 🌷 you're up for {{rota}} on {{date}} ({{days_until}}). Can't make it? Tap to hand it on."
   rota.starts_on = Date.current.next_occurring(:saturday)
   rota.interval_count = 1
   rota.interval_unit = "week"
   rota.send_hour = 9
   # Three days' warning, then a nudge on the day.
-  rota.reminder_offsets = [ 3, 0 ]
+  template = "Hi {{name}} 🌷 you're up for {{rota}} on {{date}} ({{days_until}}). Can't make it? Tap to hand it on."
+  rota.replace_reminders([
+    { days_before: 3, message_template: template },
+    { days_before: 0, message_template: template }
+  ])
 end
 
 bins = group.rotas.find_or_create_by!(name: "Bins out") do |rota|
-  rota.message_template = "{{name}}, it's your turn for {{rota}} tomorrow ({{date}}). Black bin and recycling."
   rota.starts_on = Date.current.next_occurring(:tuesday)
   rota.interval_count = 2
   rota.interval_unit = "week"
   rota.send_hour = 18
   # One evening's warning is all anyone needs to move a bin.
-  rota.reminder_offsets = [ 1 ]
+  rota.replace_reminders([
+    { days_before: 1,
+      message_template: "{{name}}, it's your turn for {{rota}} tomorrow ({{date}}). Black bin and recycling." }
+  ])
 end
 
 # A new position goes after whatever the rota already holds. On a fresh database that is running

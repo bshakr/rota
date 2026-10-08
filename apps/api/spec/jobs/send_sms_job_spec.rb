@@ -40,7 +40,7 @@ RSpec.describe SendSmsJob do
 
       described_class.perform_now(sms_message.id)
 
-      expect(sms_message.reload.body).to eq(Sms::Renderer.for_shift(shift))
+      expect(sms_message.reload.body).to eq(Sms::Renderer.for_shift(shift, template: sms_message.rota_reminder.message_template))
       expect(sms_message.body).to include("Hi Alice!", "/s/#{member.access_token}")
     end
 
@@ -139,14 +139,14 @@ RSpec.describe SendSmsJob do
   end
 
   # Nothing re-enqueues the skipped row on resume, and that is the right answer rather than a gap:
-  # the reminder is still CLAIMED, so the sweep raises no second one for the same (shift, offset),
+  # the reminder is still CLAIMED, so the sweep raises no second one for the same (shift, reminder),
   # and its send moment is by then far enough in the past that ReminderSweep's 24-hour staleness
   # guard would have buried it anyway. Resuming a house texts nobody about the days it was paused.
   describe "and then resumed, two days later" do
     include ActiveJob::TestHelper
 
     it "leaves the sweep nothing to re-claim, and sends no backlog" do
-      rota = create(:rota, group: group, send_hour: 9, reminder_offsets: [ 0 ])
+      rota = create(:rota, group: group, send_hour: 9, reminder_days: [ 0 ])
       shift = create(:shift, rota: rota, assigned_member: member, due_on: Date.new(2026, 7, 15))
       stub_twilio_send
 
@@ -291,7 +291,7 @@ RSpec.describe SendSmsJob do
 
   describe "a template that should never have been saved" do
     it "fails the row rather than texting a literal placeholder" do
-      rota.update_column(:message_template, "Hi {{nmae}}")
+      sms_message.rota_reminder.update_column(:message_template, "Hi {{nmae}}")
 
       described_class.perform_now(sms_message.id)
 
@@ -354,7 +354,7 @@ RSpec.describe SendSmsJob do
     # A template that cannot be rendered should have been refused when the rota was saved. Reaching
     # send time means the model validation has a hole in it, and its own source says so.
     it "reports a template that reached send time, under its own source" do
-      rota.update_column(:message_template, "Hi {{nmae}}")
+      sms_message.rota_reminder.update_column(:message_template, "Hi {{nmae}}")
 
       described_class.perform_now(sms_message.id)
 
@@ -386,6 +386,100 @@ RSpec.describe SendSmsJob do
       described_class.perform_now(sms_message.id)
 
       expect(sms_message.reload).to have_attributes(status: "failed", error_code: SmsMessage::INTERNAL_ERROR)
+    end
+  end
+
+  describe "which text a reminder sends" do
+    it "sends the text of the reminder that claimed the row, even beside another at the same timing" do
+      stub_twilio_send
+      rota = create(:rota, group: group, reminders: [
+        build(:rota_reminder, days_before: 3, message_template: "First {{name}}"),
+        build(:rota_reminder, days_before: 3, message_template: "Second {{name}}")
+      ])
+      shift = create(:shift, rota: rota, assigned_member: member, due_on: 3.days.from_now.to_date)
+      first, second = rota.reminders.sort_by(&:id).map do |reminder|
+        create(:sms_message, shift: shift, member: member, days_before: 3, rota_reminder: reminder)
+      end
+
+      described_class.perform_now(first.id)
+      described_class.perform_now(second.id)
+
+      expect(first.reload.body).to start_with("First Alice")
+      expect(second.reload.body).to start_with("Second Alice")
+    end
+
+    it "sends nothing when the reminder was deleted after the row was claimed, never another reminder's text" do
+      reminder = sms_message.rota_reminder
+      reminder.destroy!
+
+      described_class.perform_now(sms_message.id)
+
+      expect(sms_message.reload).to have_attributes(
+        status: "failed", error_code: SmsMessage::REMINDER_REMOVED, rota_reminder_id: nil
+      )
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).not_to have_been_made
+    end
+
+    # The previous release claims texts by timing alone, so mid-deploy a pending row can arrive
+    # with no reminder id. Deleting a reminder cancels its own rows, so this is never a deleted one.
+    describe "a pending reminder row with no reminder id" do
+      def legacy_row(rota, days_before)
+        shift = create(:shift, rota: rota, assigned_member: member, due_on: 3.days.from_now.to_date)
+        create(:sms_message, shift: shift, member: member, days_before: days_before, rota_reminder: nil)
+      end
+
+      it "sends the text of the rota's reminder at the same timing, the oldest if there are two" do
+        stub_twilio_send
+        rota = create(:rota, group: group, reminders: [
+          build(:rota_reminder, days_before: 3, message_template: "First {{name}}"),
+          build(:rota_reminder, days_before: 3, message_template: "Second {{name}}"),
+          build(:rota_reminder, days_before: 0, message_template: "Today {{name}}")
+        ])
+        row = legacy_row(rota, 3)
+
+        described_class.perform_now(row.id)
+
+        expect(row.reload).to have_attributes(status: "sent", rota_reminder_id: nil)
+        expect(row.body).to start_with("First Alice")
+      end
+
+      it "falls back to the rota's old single template when no reminder has that timing" do
+        stub_twilio_send
+        rota = create(:rota, group: group, reminders: [ build(:rota_reminder, days_before: 0, message_template: "Today {{name}}") ])
+        rota.update_column(:message_template, "Legacy {{name}}")
+        row = legacy_row(rota, 3)
+
+        described_class.perform_now(row.id)
+
+        expect(row.reload).to have_attributes(status: "sent")
+        expect(row.body).to start_with("Legacy Alice")
+      end
+
+      it "sends nothing when the rota has neither" do
+        rota = create(:rota, group: group, reminder_days: [])
+        rota.update_column(:message_template, nil)
+        row = legacy_row(rota, 3)
+
+        described_class.perform_now(row.id)
+
+        expect(row.reload).to have_attributes(status: "failed", error_code: SmsMessage::REMINDER_REMOVED)
+        expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).not_to have_been_made
+      end
+    end
+
+    it "gives a cover notice the text of the furthest-out reminder before the shift" do
+      stub_twilio_send
+      rota = create(:rota, group: group, reminders: [
+        build(:rota_reminder, days_before: -1, message_template: "Thanks {{name}}"),
+        build(:rota_reminder, days_before: 0, message_template: "Today {{name}}"),
+        build(:rota_reminder, days_before: 2, message_template: "Soon {{name}}")
+      ])
+      shift = create(:shift, rota: rota, assigned_member: member, due_on: 3.days.from_now.to_date)
+      notice = create(:sms_message, :cover_notice, shift: shift, member: member)
+
+      described_class.perform_now(notice.id)
+
+      expect(notice.reload.body).to start_with("Soon Alice")
     end
   end
 end

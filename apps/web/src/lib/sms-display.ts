@@ -113,14 +113,16 @@ export function kindDisplay(kind: SmsKind | string): string {
 
 /**
  * A reminder is identified by how many days before the shift it was meant to
- * land. 0 is "on the day". `null` only ever appears on a cover notice (which
- * carries no offset), so this returns null and the caller shows nothing.
+ * land. 0 is "on the day" and a negative number is after it. `null` only ever
+ * appears on a cover notice (which carries no offset), so this returns null and
+ * the caller shows nothing.
  */
 export function reminderTiming(daysBefore: number | null): string | null {
   if (daysBefore === null) return null;
   if (daysBefore === 0) return "on the day";
-  if (daysBefore === 1) return "1 day before";
-  return `${daysBefore} days before`;
+  const days = Math.abs(daysBefore);
+  const side = daysBefore > 0 ? "before" : "after";
+  return `${days} ${days === 1 ? "day" : "days"} ${side}`;
 }
 
 export interface ErrorExplanation {
@@ -138,6 +140,8 @@ const SENTINELS: Record<string, string> = {
     "The member was inactive or had opted out when the reminder ran, so nothing was sent.",
   invalid_template:
     "The rota's message template had an unknown placeholder or a stray brace, so the text could not be built.",
+  reminder_removed:
+    "The reminder was deleted from the rota before this text went out, so nothing was sent.",
   internal_error:
     "Something failed unexpectedly on our side while sending. That is us, not the carrier, so it is worth retrying.",
 };

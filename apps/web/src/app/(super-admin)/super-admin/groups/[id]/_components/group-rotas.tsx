@@ -1,10 +1,10 @@
+import { remindersInWords } from "@/app/(admin)/rotas/rota-logic";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { GroupRota } from "@/lib/api/super-admin-groups";
 import { GROUP_SECTION } from "@/lib/hq-group-report";
 import {
   ROTAS_SILENT_NOTE,
-  reminderOffsetsInWords,
   rosterNote,
   rotaStateLabel,
   scheduleInWords,
@@ -90,7 +90,7 @@ function RotaRow({ rota, suspended }: { rota: GroupRota; suspended: boolean }) {
         {scheduleInWords(rota)} · {sendHourInWords(rota.send_hour)}
       </p>
       <p className="text-muted-foreground text-xs text-pretty">
-        {rosterNote(rota.roster_size)} · {reminderOffsetsInWords(rota.reminder_offsets)}
+        {rosterNote(rota.roster_size)} · {remindersInWords(rota.reminders.map((r) => r.days_before))}
       </p>
     </li>
   );

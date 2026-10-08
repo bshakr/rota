@@ -4,17 +4,8 @@ import * as React from "react";
 import { type Control, useWatch } from "react-hook-form";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { apiErrorMessage } from "@/lib/api/errors";
-import type { Member } from "@/lib/api/types";
 
 import { previewMessageAction } from "../actions";
 import type { RotaFormValues } from "./rota-details-form";
@@ -23,47 +14,49 @@ const DEBOUNCE_MS = 400;
 
 type PreviewState =
   | { status: "loading" }
-  | { status: "ok"; text: string; recipient: string }
+  | { status: "ok"; text: string }
   | { status: "error"; message: string };
 
 /**
- * The live message preview. It renders the IN-PROGRESS template through the real
- * backend renderer (`previewRotaMessage`), so what the admin reads here is byte
- * for byte what a member will be texted — including the magic link the backend
- * appends. An unknown placeholder comes back as `validation_failed` and is shown
- * immediately, right here, rather than being discovered at save.
+ * The live preview for one reminder. It renders the IN-PROGRESS template through
+ * the real backend renderer (`previewRotaMessage`), with this reminder's
+ * `days_before`, so what the admin reads here is byte for byte what a member will
+ * be texted, magic link included. An unknown placeholder comes back as
+ * `validation_failed` and is shown right here rather than at save.
  */
 export function MessagePreview({
   rotaId,
-  members,
+  memberId,
+  recipientName,
   control,
+  index,
 }: {
   rotaId: number;
-  members: Member[];
+  memberId: number;
+  recipientName: string;
   control: Control<RotaFormValues>;
+  index: number;
 }) {
-  const template = useWatch({ control, name: "message_template" });
-  const [memberId, setMemberId] = React.useState<number | undefined>(members[0]?.id);
+  const template = useWatch({ control, name: `reminders.${index}.message_template` });
+  const daysBefore = useWatch({ control, name: `reminders.${index}.days_before` });
   const [state, setState] = React.useState<PreviewState>({ status: "loading" });
+  // An amount still being typed is NaN: keep showing the last preview until it is whole.
+  const previewDaysBefore = Number.isInteger(daysBefore) ? daysBefore : null;
 
   React.useEffect(() => {
-    if (members.length === 0) return;
-
+    if (previewDaysBefore === null) return;
     let active = true;
     const timer = setTimeout(async () => {
       setState({ status: "loading" });
       const result = await previewMessageAction(rotaId, {
         message_template: template,
         member_id: memberId,
+        days_before: previewDaysBefore,
       });
       if (!active) return;
 
       if (result.ok) {
-        setState({
-          status: "ok",
-          text: result.data.preview,
-          recipient: result.data.member.name,
-        });
+        setState({ status: "ok", text: result.data.preview });
       } else {
         setState({
           status: "error",
@@ -76,42 +69,11 @@ export function MessagePreview({
       active = false;
       clearTimeout(timer);
     };
-  }, [rotaId, template, memberId, members.length]);
-
-  if (members.length === 0) {
-    return (
-      <div className="border-border text-muted-foreground rounded-2xl border border-dashed px-4 py-3 text-sm">
-        Add someone to your house to preview the message against a real recipient.
-      </div>
-    );
-  }
+  }, [rotaId, template, memberId, previewDaysBefore]);
 
   return (
     <div className="bg-muted space-y-3 rounded-2xl p-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm font-medium">Live preview</p>
-        <div className="flex items-center gap-2">
-          <Label htmlFor="preview-member" className="text-xs text-muted-foreground">
-            As
-          </Label>
-          <Select
-            value={memberId !== undefined ? String(memberId) : undefined}
-            onValueChange={(value) => setMemberId(Number(value))}
-          >
-            <SelectTrigger id="preview-member" size="sm" className="w-40">
-              <SelectValue placeholder="Pick a member" />
-            </SelectTrigger>
-            <SelectContent>
-              {members.map((member) => (
-                <SelectItem key={member.id} value={String(member.id)}>
-                  {member.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
+      <p className="text-sm font-medium">Live preview</p>
       {state.status === "loading" ? (
         <div className="space-y-2">
           <Skeleton className="h-4 w-full" />
@@ -134,7 +96,7 @@ export function MessagePreview({
             {state.text}
           </div>
           <p className="text-xs text-muted-foreground">
-            Exactly what {state.recipient} would receive, magic link included.
+            Exactly what {recipientName} would receive, magic link included.
           </p>
         </>
       ) : null}
