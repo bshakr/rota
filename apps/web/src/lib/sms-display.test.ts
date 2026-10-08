@@ -43,7 +43,7 @@ describe("reminderTiming", () => {
 });
 
 describe("explainError", () => {
-  it("translates the three send-side sentinels into plain sentences", () => {
+  it("translates the send-side sentinels into plain sentences", () => {
     expect(explainError("not_contactable").summary).toMatch(/inactive|opted out/i);
     expect(explainError("not_contactable").detail).toBe("Send-side error");
     expect(explainError("invalid_template").summary).toMatch(/template/i);
