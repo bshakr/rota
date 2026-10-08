@@ -143,6 +143,29 @@ RSpec.describe "Api::Rotas" do
       expect(rota.reminders.reload).to be_empty
     end
 
+    it "refuses a null list rather than reading it as empty" do
+      patch_rota(reminders: nil)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body["fields"]).to have_key("reminders")
+      expect(rota.reminders.reload.map(&:id)).to eq([ three_day.id, day_of.id ])
+    end
+
+    # A second admin's save that committed after this request read the list but before it wrote.
+    it "replaces the list as it stands once the rota is locked, never merging into a stale read" do
+      nine = create(:rota, group: group, reminder_days: (1..9).to_a)
+      allow_any_instance_of(Api::RotasController).to receive(:find_rota).and_wrap_original do |original|
+        original.call.tap { |found| create(:rota_reminder, rota: Rota.find(found.id), days_before: 20) }
+      end
+      submitted = nine.reminders.map { |reminder| reminder.slice(:id, :days_before, :message_template) }
+
+      patch "/api/rotas/#{nine.id}", params: { reminders: submitted + [ { days_before: 0, message_template: "New" } ] },
+        headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(nine.reminders.reload.map(&:days_before)).to eq([ 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 ])
+    end
+
     it "refuses a reminder id from another house's rota, and changes nothing" do
       foreign = create(:rota).reminders.first
 

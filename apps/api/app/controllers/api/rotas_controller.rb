@@ -19,6 +19,8 @@ module Api
     end
 
     def create
+      return render_reminders_not_a_list if reminders_not_a_list?
+
       # "First" is the absence of any other rota, asked before this one exists. No bookkeeping column.
       first_rota = !group_scope(:rotas).exists?
       rota = group_scope(:rotas).build(rota_params)
@@ -36,17 +38,30 @@ module Api
     # the rota, not a single shift. The admin sees what confirming would drop, and only a second
     # request carrying the confirmation goes through with it.
     def update
-      rota = find_rota
-      rota.assign_attributes(rota_params)
-      assign_reminders(rota)
-      schedule_change = (rota.changed & SCHEDULE_ATTRIBUTES).any?
+      return render_reminders_not_a_list if reminders_not_a_list?
 
-      if schedule_change && !confirmed?
-        # Computed against the shifts as they stand now, before the write — afterwards the dates have
-        # moved and the covers it names are attached to a series that no longer exists.
-        warning = RotaRegenerator.new(rota).schedule_change_warning
-        rota.restore_attributes # leave absolutely nothing changed in memory either
-        rota.reminders.reset
+      rota = find_rota
+      warning = nil
+      schedule_change = false
+      # The lock re-reads the rota and its reminders, so a save that committed meanwhile is replaced
+      # by this list rather than merged with it.
+      rota.with_lock do
+        rota.assign_attributes(rota_params)
+        assign_reminders(rota)
+        schedule_change = (rota.changed & SCHEDULE_ATTRIBUTES).any?
+
+        if schedule_change && !confirmed?
+          # Computed against the shifts as they stand now, before the write — afterwards the dates have
+          # moved and the covers it names are attached to a series that no longer exists.
+          warning = RotaRegenerator.new(rota).schedule_change_warning
+          rota.restore_attributes # leave absolutely nothing changed in memory either
+          rota.reminders.reset
+        else
+          rota.save!
+        end
+      end
+
+      if warning
         return render_problem(
           "confirmation_required",
           :unprocessable_content,
@@ -55,7 +70,6 @@ module Api
         )
       end
 
-      rota.save!
       rota.reminders.reload
       # Only a confirmed schedule change regenerates. A plain edit (name, template, offsets) leaves
       # the shifts alone — none of it changes a date or an assignment.
@@ -117,6 +131,16 @@ module Api
       elsif params.key?(:reminder_offsets) || params.key?(:message_template)
         rota.replace_reminders(legacy_reminder_params(rota))
       end
+    end
+
+    # Absent leaves the reminders alone and [] removes them all, so a null has no safe reading.
+    def reminders_not_a_list?
+      params.key?(:reminders) && !params[:reminders].is_a?(Array)
+    end
+
+    def render_reminders_not_a_list
+      render_problem("validation_failed", :unprocessable_content,
+        message: "Reminders must be a list.", fields: { reminders: [ "must be a list" ] })
     end
 
     def reminder_params
