@@ -223,7 +223,8 @@ const redactedSmsSchema = z.object({
    */
   status: z.string(),
   error_code: z.string().nullable(),
-  days_before: z.number().int().nonnegative().nullable(),
+  /** Negative for a text sent after the shift. */
+  days_before: z.number().int().nullable(),
   body: z.string().nullable(),
   twilio_sid: z.string().nullable(),
   sent_at: timestamp.nullable(),
