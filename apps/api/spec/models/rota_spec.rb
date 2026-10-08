@@ -245,6 +245,12 @@ RSpec.describe Rota do
     it "falls back to a fixed text when the rota sends no reminders" do
       expect(create(:rota, reminder_days: []).cover_notice_template).to eq(Rota::COVER_NOTICE_FALLBACK)
     end
+
+    it "falls back to the fixed text rather than an after-shift text when every reminder is after the shift" do
+      rota = create(:rota, reminders: [ build(:rota_reminder, days_before: -1, message_template: "Thanks {{name}}") ])
+
+      expect(rota.cover_notice_template).to eq(Rota::COVER_NOTICE_FALLBACK)
+    end
   end
 
   # Draft is derived from the roster, never stored: there is no way for a flag and a roster to

@@ -34,10 +34,10 @@ class Rota < ApplicationRecord
   end
 
   # A cover notice reuses the text of the furthest-out reminder before the shift: it says whose turn
-  # it is and when, which is what a cover needs to hear. After-shift texts ("thanks!") would not.
+  # it is and when, which is what a cover needs to hear. After-shift texts ("thanks!") would not, so
+  # a rota with none before the shift uses the fixed text.
   def cover_notice_template
-    before = reminders.find { |reminder| reminder.days_before >= 0 }
-    (before || reminders.first)&.message_template || COVER_NOTICE_FALLBACK
+    reminders.find { |reminder| reminder.days_before >= 0 }&.message_template || COVER_NOTICE_FALLBACK
   end
 
   # Replaces the whole list. An item with an id updates that reminder, one without is created, and
