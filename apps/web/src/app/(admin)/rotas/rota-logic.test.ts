@@ -131,6 +131,10 @@ describe("formErrorPath", () => {
     expect(formErrorPath("reminders[0].days_before")).toBe("reminders.0.days_before");
   });
 
+  it("maps a stale reminder id onto its row", () => {
+    expect(formErrorPath("reminders[1].id")).toBe("reminders.1.reminder_id");
+  });
+
   it("keeps the list-level reminders key", () => {
     expect(formErrorPath("reminders")).toBe("reminders");
   });

@@ -111,16 +111,19 @@ const TOP_LEVEL_FIELDS = new Set([
   "active",
   "reminders",
 ]);
-const REMINDER_FIELD = /^reminders\[(\d+)\]\.(days_before|message_template)$/;
+const REMINDER_FIELD = /^reminders\[(\d+)\]\.(id|days_before|message_template)$/;
 
 /**
  * Where an API validation key belongs in the form: `reminders[1].message_template`
- * lands on row 1's textarea. Keys with no matching field give null.
+ * lands on row 1's textarea, and `reminders[1].id` (a reminder deleted elsewhere)
+ * on row 1 as a whole. Keys with no matching field give null.
  */
 export function formErrorPath(key: string): string | null {
   if (TOP_LEVEL_FIELDS.has(key)) return key;
   const match = REMINDER_FIELD.exec(key);
-  return match ? `reminders.${match[1]}.${match[2]}` : null;
+  if (!match) return null;
+  const field = match[2] === "id" ? "reminder_id" : match[2];
+  return `reminders.${match[1]}.${field}`;
 }
 
 /** "Every day" / "Every 2 weeks" — the recurrence in plain words, for cards and headers. */

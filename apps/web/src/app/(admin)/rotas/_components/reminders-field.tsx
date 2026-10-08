@@ -185,6 +185,13 @@ function ReminderRow({
         </Button>
       </div>
 
+      {rowErrors?.reminder_id ? (
+        <FieldError>
+          This reminder has been deleted since you opened the page. Reload to see the current
+          list.
+        </FieldError>
+      ) : null}
+
       <Field data-invalid={Boolean(rowErrors?.days_before)}>
         <FieldLabel htmlFor={timingId}>When</FieldLabel>
         <Controller
