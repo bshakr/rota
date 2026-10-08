@@ -321,6 +321,20 @@ RSpec.describe ReminderSweep do
       expect(reminder_for(older, -1)).to be_nil
     end
 
+    # Troll springs forward two hours, so the moment is under 24 hours old while its shift is
+    # three calendar days back.
+    it "still heals across a two-hour clock change" do
+      troll = create(:group, timezone: "Antarctica/Troll")
+      troll_rota = create(:rota, group: troll, send_hour: 23, reminder_days: [ -1 ])
+      friday = create(:shift, rota: troll_rota, due_on: Date.new(2026, 3, 27))
+
+      travel_to(Time.utc(2026, 3, 29, 22, 15)) do # 00:15 Monday in Troll, 23h15m after the moment
+        expect { described_class.new(troll_rota).call }.to have_enqueued_job(SendSmsJob)
+      end
+
+      expect(reminder_for(friday, -1)).to be_present
+    end
+
     it "skips a recipient who has opted out since, like any other reminder" do
       shift.responsible_member.update!(sms_opted_out_at: Time.utc(2026, 7, 14, 20, 0))
 

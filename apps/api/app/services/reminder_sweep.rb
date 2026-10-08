@@ -61,7 +61,8 @@ class ReminderSweep
 
   # Only shifts whose reminders could plausibly be live right now. A reminder for timing d fires at
   # `due_on - d`, and a moment more than a day old is stale, so the window is the furthest timings
-  # either side plus a day of slack for send_hour and timezone.
+  # either side plus a day of slack for send_hour and timezone, and a second day behind because 24
+  # hours can span three calendar days across a clock change. #due? decides.
   #
   # A before or day-of reminder (d >= 0) is never sent once the shift's own day is over (see #call):
   # for the day-of reminder that is sooner than staleness, deliberately, because "it's your turn
@@ -70,7 +71,7 @@ class ReminderSweep
   def candidate_shifts(today, reminders)
     timings = reminders.map(&:days_before)
     rota.shifts
-      .where(due_on: (today + timings.min - 1)..(today + timings.max + 1))
+      .where(due_on: (today + timings.min - 2)..(today + timings.max + 1))
       .includes(:assigned_member, :covering_member)
       .to_a
   end
