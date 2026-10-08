@@ -12,10 +12,10 @@ RSpec.describe RotaReminder do
     expect(reminder.errors[:message_template]).to be_present
   end
 
-  it "is refused by the database outside two weeks after to a year before" do
+  it "is refused by the database more than two weeks after the shift" do
     reminder = create(:rota_reminder)
 
-    expect { reminder.update_column(:days_before, -15) }.to raise_error(ActiveRecord::StatementInvalid, /days_before_in_range/)
+    expect { reminder.update_column(:days_before, -15) }.to raise_error(ActiveRecord::StatementInvalid, /days_before_floor/)
   end
 
   it "leaves the texts it sent in the log when deleted" do

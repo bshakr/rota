@@ -30,8 +30,10 @@ class CreateRotaReminders < ActiveRecord::Migration[8.1]
       t.text :message_template, null: false
       t.timestamps
     end
-    add_check_constraint :rota_reminders, "days_before BETWEEN -14 AND 365",
-      name: "rota_reminders_days_before_in_range"
+    # Floor only: the previous API never capped offsets, so a legacy one above the app's 365 must
+    # still backfill. RotaReminder validates the full range on every save.
+    add_check_constraint :rota_reminders, "days_before >= -14",
+      name: "rota_reminders_days_before_floor"
 
     execute BACKFILL_REMINDERS
 

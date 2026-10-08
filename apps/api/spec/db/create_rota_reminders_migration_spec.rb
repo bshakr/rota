@@ -68,4 +68,13 @@ RSpec.describe CreateRotaReminders do
     expect(text.reload.rota_reminder).to eq(mine.reminders.reload.sole)
     expect(theirs.reminders.reload.sole.sms_messages).to be_empty
   end
+  # The previous API capped offsets only in the web form, so a rota may hold one above the app's
+  # 365. The backfill must carry it rather than fail the deploy.
+  it "backfills an offset above the app's limit instead of refusing the deploy" do
+    rota = legacy_rota(offsets: [ 400, 0 ], template: "Hi")
+
+    connection.execute(described_class::BACKFILL_REMINDERS)
+
+    expect(rota.reminders.reload.map(&:days_before)).to eq([ 400, 0 ])
+  end
 end

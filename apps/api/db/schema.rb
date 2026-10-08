@@ -170,7 +170,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_120000) do
     t.bigint "rota_id", null: false
     t.datetime "updated_at", null: false
     t.index ["rota_id"], name: "index_rota_reminders_on_rota_id"
-    t.check_constraint "days_before >= '-14'::integer AND days_before <= 365", name: "rota_reminders_days_before_in_range"
+    t.check_constraint "days_before >= '-14'::integer", name: "rota_reminders_days_before_floor"
   end
 
   create_table "rotas", force: :cascade do |t|

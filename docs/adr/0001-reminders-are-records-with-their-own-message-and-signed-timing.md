@@ -19,7 +19,7 @@ Keying idempotency on `days_before` also means that once a reminder has its own 
 ## Decision
 
 - Reminders are rows in a new `rota_reminders` table: `rota_id`, `days_before`, `message_template`. A rota has 0 to 10 of them.
-- `days_before` is one signed integer: positive is N days before the shift day, `0` is on the day, negative is N days after (`-1` is the next day). A check constraint holds it to -14..365. The `days_before >= 0` check on `sms_messages` is dropped; reminder rows still carry `days_before`, copied from the reminder, for the SMS log.
+- `days_before` is one signed integer: positive is N days before the shift day, `0` is on the day, negative is N days after (`-1` is the next day). The model holds it to -14..365; the database checks only the floor, because the previous API never capped offsets and a legacy one above 365 must still backfill. The `days_before >= 0` check on `sms_messages` is dropped; reminder rows still carry `days_before`, copied from the reminder, for the SMS log.
 - A reminder's identity is `(shift, reminder)`: `sms_messages.rota_reminder_id` replaces `days_before` in the partial unique index. Editing a reminder keeps its identity, so a shift it already texted is not texted again by it. Removing a reminder and adding a new one creates a new identity.
 - The same timing may appear more than once on a rota.
 - The send time stays the rota-level `send_hour`, in the group's time zone, for every reminder.
