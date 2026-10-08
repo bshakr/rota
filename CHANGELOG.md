@@ -13,7 +13,7 @@
   change. Cover notices use the earliest reminder that is not after the shift, else a fixed text.
   The old `reminder_offsets` and `message_template` columns stay for one release and are kept in
   step; [BLO-1949](https://linear.app/bloombase/issue/BLO-1949) drops them. Decision record:
-  `docs/adr/0001-reminders-are-records-with-their-own-message-and-signed-timing.md`. (#PR)
+  `docs/adr/0001-reminders-are-records-with-their-own-message-and-signed-timing.md`. (#72)
 
 ## 2026-09-15
 
