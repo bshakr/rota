@@ -12,7 +12,7 @@ class Rota < ApplicationRecord
   has_many :shifts, dependent: :destroy
   # Validated by #reminders_must_be_valid instead, so errors carry the submitted index.
   has_many :reminders, -> { order(days_before: :desc, id: :asc) },
-    class_name: "RotaReminder", inverse_of: :rota, autosave: true, validate: false
+    class_name: "RotaReminder", inverse_of: :rota, autosave: true, validate: false, dependent: :destroy
 
   scope :active, -> { where(active: true) }
 

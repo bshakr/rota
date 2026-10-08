@@ -420,6 +420,53 @@ RSpec.describe SendSmsJob do
       expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).not_to have_been_made
     end
 
+    # The previous release claims texts by timing alone, so mid-deploy a pending row can arrive
+    # with no reminder id. Deleting a reminder cancels its own rows, so this is never a deleted one.
+    describe "a pending reminder row with no reminder id" do
+      def legacy_row(rota, days_before)
+        shift = create(:shift, rota: rota, assigned_member: member, due_on: 3.days.from_now.to_date)
+        create(:sms_message, shift: shift, member: member, days_before: days_before, rota_reminder: nil)
+      end
+
+      it "sends the text of the rota's reminder at the same timing, the oldest if there are two" do
+        stub_twilio_send
+        rota = create(:rota, group: group, reminders: [
+          build(:rota_reminder, days_before: 3, message_template: "First {{name}}"),
+          build(:rota_reminder, days_before: 3, message_template: "Second {{name}}"),
+          build(:rota_reminder, days_before: 0, message_template: "Today {{name}}")
+        ])
+        row = legacy_row(rota, 3)
+
+        described_class.perform_now(row.id)
+
+        expect(row.reload).to have_attributes(status: "sent", rota_reminder_id: nil)
+        expect(row.body).to start_with("First Alice")
+      end
+
+      it "falls back to the rota's old single template when no reminder has that timing" do
+        stub_twilio_send
+        rota = create(:rota, group: group, reminders: [ build(:rota_reminder, days_before: 0, message_template: "Today {{name}}") ])
+        rota.update_column(:message_template, "Legacy {{name}}")
+        row = legacy_row(rota, 3)
+
+        described_class.perform_now(row.id)
+
+        expect(row.reload).to have_attributes(status: "sent")
+        expect(row.body).to start_with("Legacy Alice")
+      end
+
+      it "sends nothing when the rota has neither" do
+        rota = create(:rota, group: group, reminder_days: [])
+        rota.update_column(:message_template, nil)
+        row = legacy_row(rota, 3)
+
+        described_class.perform_now(row.id)
+
+        expect(row.reload).to have_attributes(status: "failed", error_code: SmsMessage::REMINDER_REMOVED)
+        expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).not_to have_been_made
+      end
+    end
+
     it "gives a cover notice the text of the furthest-out reminder before the shift" do
       stub_twilio_send
       rota = create(:rota, group: group, reminders: [

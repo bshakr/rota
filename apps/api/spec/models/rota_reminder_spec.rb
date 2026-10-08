@@ -26,6 +26,31 @@ RSpec.describe RotaReminder do
     expect(message.reload).to have_attributes(rota_reminder_id: nil, days_before: 3)
   end
 
+  it "cancels the texts it claimed but has not sent, and leaves sent and in-flight ones alone" do
+    rota = create(:rota, reminder_days: [ 3 ])
+    reminder = rota.reminders.sole
+    pending, sending, sent = [ {}, { status: "sending" }, { status: "sent" } ].each_with_index.map do |attributes, i|
+      create(:sms_message, shift: create(:shift, rota: rota, due_on: Date.current + i), days_before: 3, **attributes)
+    end
+
+    reminder.destroy!
+
+    expect(pending.reload).to have_attributes(status: "failed", error_code: SmsMessage::REMINDER_REMOVED, rota_reminder_id: nil)
+    expect(sending.reload).to have_attributes(status: "sending", error_code: nil)
+    expect(sent.reload).to have_attributes(status: "sent", error_code: nil)
+  end
+
+  it "cancels its unsent texts when removed from the rota's list" do
+    rota = create(:rota, reminder_days: [ 3, 0 ])
+    pending = create(:sms_message, shift: create(:shift, rota: rota), days_before: 3)
+    kept = rota.reminders.find { |reminder| reminder.days_before.zero? }
+
+    rota.reload.replace_reminders([ { id: kept.id, days_before: 0, message_template: kept.message_template } ])
+    rota.save!
+
+    expect(pending.reload).to have_attributes(status: "failed", error_code: SmsMessage::REMINDER_REMOVED)
+  end
+
   it "goes with its rota" do
     rota = create(:rota)
 

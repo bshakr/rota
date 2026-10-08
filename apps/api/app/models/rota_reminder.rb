@@ -8,6 +8,9 @@ class RotaReminder < ApplicationRecord
   MESSAGE_TEMPLATE_MAX = 1000
 
   belongs_to :rota, inverse_of: :reminders
+  # Declared before the nullify, which would otherwise unlink the rows first. Cancelling in the same
+  # transaction is what lets SendSmsJob read a pending row with no reminder as a pre-reminder one.
+  before_destroy :cancel_unsent_texts
   has_many :sms_messages, dependent: :nullify
 
   # numericality reads the raw value, so "soon" is refused rather than cast to a day-of reminder.
@@ -16,6 +19,11 @@ class RotaReminder < ApplicationRecord
   validate :message_template_placeholders_must_be_known
 
   private
+
+  # Only pending rows: a `sending` one may already be with the carrier.
+  def cancel_unsent_texts
+    sms_messages.pending.update_all(status: "failed", error_code: SmsMessage::REMINDER_REMOVED, updated_at: Time.current)
+  end
 
   # A typo caught at send time is a text somebody already received; caught here it costs nothing.
   def message_template_placeholders_must_be_known

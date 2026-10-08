@@ -65,12 +65,14 @@ class SendSmsJob < ApplicationJob
 
     body = nil
     return skip_uncontactable(message) unless message.member.contactable?
-    return skip_removed_reminder(message) if message.reminder? && message.rota_reminder.nil?
+
+    template = message_template(message) unless message.member_login?
+    return skip_removed_reminder(message) if message.reminder? && template.nil?
 
     body = if message.member_login?
       "Your Rota Monster personal link: #{Rails.configuration.x.sms.app_url}/s/#{message.member.access_token}\nKeep this link private. If you didn't request it, ignore this text."
     else
-      Sms::Renderer.for_shift(message.shift, template: message_template(message), member: message.member)
+      Sms::Renderer.for_shift(message.shift, template: template, member: message.member)
     end
     delivery = Sms.deliver(to: message.member.phone_e164, body: body)
 
@@ -157,8 +159,21 @@ class SendSmsJob < ApplicationJob
     message.update!(status: :failed, error_code: SmsMessage::REMINDER_REMOVED)
   end
 
+  # Nil when the reminder was deleted after this run claimed the row.
   def message_template(message)
-    message.reminder? ? message.rota_reminder.message_template : message.shift.rota.cover_notice_template
+    return message.shift.rota.cover_notice_template unless message.reminder?
+    return message.rota_reminder&.message_template if message.rota_reminder_id
+
+    legacy_reminder_template(message)
+  end
+
+  # A row the previous release claimed mid-deploy, by timing alone: the rota's reminder at that
+  # timing (the oldest, if two share it), else the rota's old single template. Never another
+  # timing's reminder.
+  def legacy_reminder_template(message)
+    rota = message.shift.rota
+    at_timing = rota.reminders.select { |reminder| reminder.days_before == message.days_before }
+    at_timing.min_by(&:id)&.message_template || rota.message_template
   end
 
   # The house was paused between the sweep claiming this reminder and this job running (BLO-1675).
