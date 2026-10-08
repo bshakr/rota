@@ -5,8 +5,8 @@ module Sms
   # live preview against a real member. A preview that went through different code would be a
   # preview of nothing.
   class Renderer
-    # The whole vocabulary. Anything else in a template is a typo, and Rota refuses to save it —
-    # see Rota#message_template_placeholders_must_be_known. This constant is the single place the
+    # The whole vocabulary. Anything else in a template is a typo, and RotaReminder refuses to save
+    # it — see RotaReminder#message_template_placeholders_must_be_known. This constant is the single place the
     # vocabulary is defined; the validation, the renderer and the admin UI's hint all read it.
     PLACEHOLDERS = %w[name rota date days_until].freeze
 
