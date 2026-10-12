@@ -271,8 +271,11 @@ trim_logs() {
   for name in api web postgres; do
     file=$ROTA_ROOT/log/$name.log
     [[ -f $file && $(stat -f %z "$file") -gt $LOG_MAX_BYTES ]] || continue
-    gzip -c "$file" >"$file.1.gz" && : >"$file"
-    log "trimmed $file to $file.1.gz"
+    if gzip -c "$file" >"$file.1.gz" && : >"$file"; then
+      log "trimmed $file to $file.1.gz"
+    else
+      log "could not trim $file"
+    fi
   done
 }
 
@@ -317,6 +320,7 @@ main() {
     if ! shlock -f "$lock" -p $$; then
       log "another deploy holds $lock"
       fail_ping=0
+      [[ $mode == rollback ]] && { log "rollback not run; retry in a minute"; exit 75; }
       exit 0
     fi
   fi
@@ -343,6 +347,7 @@ main() {
 
   deployed=""
   [[ -r $ROTA_ROOT/current/REVISION ]] && deployed=$(<"$ROTA_ROOT/current/REVISION")
+  step="trim logs"
   [[ $DRY_RUN == 1 ]] || trim_logs
 
   if [[ $sha == "$deployed" ]]; then
