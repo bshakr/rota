@@ -81,7 +81,17 @@ class NewSignupAlertJob < ApplicationJob
     user = User.find_by(id: user_id)
     return if user.nil?
 
-    Sms.deliver(to: phone, body: body_for(user))
+    # Claimed before sending, so a job run twice texts once. A process killed mid-send loses the
+    # alert rather than doubling it.
+    return unless claim(user)
+
+    begin
+      Sms.deliver(to: phone, body: body_for(user))
+    rescue Sms::TransientFailure
+      # retry_on runs the job again, which must find the alert unclaimed.
+      user.update_columns(signup_alert_sent_at: nil)
+      raise
+    end
   rescue Sms::TransientFailure, Sms::PermanentFailure
     # Both of these already have somewhere to be (retry_on's backoff and discard_on's report), and
     # the catch-all below would swallow them on the way there, turning a wobble that would have
@@ -106,6 +116,10 @@ class NewSignupAlertJob < ApplicationJob
   end
 
   private
+
+  def claim(user)
+    User.where(id: user.id, signup_alert_sent_at: nil).update_all(signup_alert_sent_at: Time.current) == 1
+  end
 
   # Everything the operator gets: who signed up, how to reach them, what they called their house,
   # and how many admins that makes. Each of the three variable fields has a stand-in for the state
