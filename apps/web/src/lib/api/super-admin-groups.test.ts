@@ -153,6 +153,22 @@ describe("groupDetailSchema", () => {
     expect(detail.report.spend).toBeNull();
   });
 
+  it("reads reminders after the shift, whose days_before is negative", () => {
+    const detail = parsed();
+
+    expect(detail.rotas[2].reminders.map((r) => r.days_before)).toEqual([2, 0, -1]);
+  });
+
+  it("reads a failed text sent after the shift, whose days_before is negative", () => {
+    const payload = groupPayload() as {
+      report: { warnings_input: { failed_sms: Record<string, unknown>[] } };
+    };
+    const failed = payload.report.warnings_input.failed_sms;
+    failed[0] = { ...failed[0], days_before: -1 };
+
+    expect(parsed(payload).report.warnings_input.failed_sms[0].days_before).toBe(-1);
+  });
+
   // The production bug this schema had: `users.name` carries no NOT NULL and an
   // AuthKit token has no `name` claim unless the WorkOS JWT template adds one, so
   // Rails serves null — and a non-null `z.string()` turned one such row into a
@@ -282,6 +298,13 @@ describe("groupSmsMessagesSchema", () => {
 
   it("reads an empty log", () => {
     expect(groupSmsMessagesSchema.parse(emptySmsLogPayload()).sms_messages).toEqual([]);
+  });
+
+  it("reads a text sent after the shift, whose days_before is negative", () => {
+    const body = groupSmsLogPayload() as { sms_messages: Record<string, unknown>[] };
+    const after = { sms_messages: [{ ...body.sms_messages[0], days_before: -1 }] };
+
+    expect(groupSmsMessagesSchema.parse(after).sms_messages[0].days_before).toBe(-1);
   });
 
   // `status` is a bare string on purpose: a carrier state Rails learns to write

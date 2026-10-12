@@ -37,9 +37,9 @@ class Group < ApplicationRecord
   validate :timezone_must_be_recognised
 
   # The operator's note about the house. A bound rather than free text without one, for the same
-  # reason Rota#message_template has one: a column with no ceiling is a column somebody eventually
-  # pastes a log file into, and this one is rendered in full on the group page. Generous enough for
-  # a paragraph of context and a support thread's worth of dates.
+  # reason RotaReminder::MESSAGE_TEMPLATE_MAX exists: a column with no ceiling is a column somebody
+  # eventually pastes a log file into, and this one is rendered in full on the group page. Generous
+  # enough for a paragraph of context and a support thread's worth of dates.
   NOTES_MAX = 2_000
   validates :notes, length: { maximum: NOTES_MAX }, allow_nil: true
 

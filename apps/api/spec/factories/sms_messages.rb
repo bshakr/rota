@@ -4,6 +4,10 @@ FactoryBot.define do
     member { shift.responsible_member }
     kind { "reminder" }
     days_before { 3 }
+    # The rota's reminder at that timing, as the sweep would have claimed it.
+    rota_reminder do
+      shift.rota.reminders.find { |reminder| reminder.days_before == days_before } if shift && kind.to_s == "reminder"
+    end
     status { "pending" }
 
     # A cover notice carries no offset: it is not one of the shift's scheduled reminders.

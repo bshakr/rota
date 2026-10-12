@@ -10,7 +10,7 @@ module Api
     SCHEDULE_ATTRIBUTES = %w[starts_on interval_count interval_unit].freeze
 
     def index
-      rotas = group_scope(:rotas).includes(rota_positions: :member).order(:name)
+      rotas = group_scope(:rotas).includes(:reminders, rota_positions: :member).order(:name)
       render json: { rotas: RotaSerializer.many(rotas) }
     end
 
@@ -19,9 +19,14 @@ module Api
     end
 
     def create
+      return render_reminders_not_a_list if reminders_not_a_list?
+
       # "First" is the absence of any other rota, asked before this one exists. No bookkeeping column.
       first_rota = !group_scope(:rotas).exists?
-      rota = group_scope(:rotas).create!(rota_params)
+      rota = group_scope(:rotas).build(rota_params)
+      assign_reminders(rota)
+      rota.save!
+      rota.reminders.reload
       # A rota with no roster is a draft, so this is a no-op today; running it anyway means a rota
       # created with a roster in one call still gets its window, by the same path an edit would use.
       ShiftGenerator.new(rota).call
@@ -33,15 +38,30 @@ module Api
     # the rota, not a single shift. The admin sees what confirming would drop, and only a second
     # request carrying the confirmation goes through with it.
     def update
-      rota = find_rota
-      rota.assign_attributes(rota_params)
-      schedule_change = (rota.changed & SCHEDULE_ATTRIBUTES).any?
+      return render_reminders_not_a_list if reminders_not_a_list?
 
-      if schedule_change && !confirmed?
-        # Computed against the shifts as they stand now, before the write — afterwards the dates have
-        # moved and the covers it names are attached to a series that no longer exists.
-        warning = RotaRegenerator.new(rota).schedule_change_warning
-        rota.restore_attributes # leave absolutely nothing changed in memory either
+      rota = find_rota
+      warning = nil
+      schedule_change = false
+      # The lock re-reads the rota and its reminders, so a save that committed meanwhile is replaced
+      # by this list rather than merged with it.
+      rota.with_lock do
+        rota.assign_attributes(rota_params)
+        assign_reminders(rota)
+        schedule_change = (rota.changed & SCHEDULE_ATTRIBUTES).any?
+
+        if schedule_change && !confirmed?
+          # Computed against the shifts as they stand now, before the write — afterwards the dates have
+          # moved and the covers it names are attached to a series that no longer exists.
+          warning = RotaRegenerator.new(rota).schedule_change_warning
+          rota.restore_attributes # leave absolutely nothing changed in memory either
+          rota.reminders.reset
+        else
+          rota.save!
+        end
+      end
+
+      if warning
         return render_problem(
           "confirmation_required",
           :unprocessable_content,
@@ -50,7 +70,7 @@ module Api
         )
       end
 
-      rota.save!
+      rota.reminders.reload
       # Only a confirmed schedule change regenerates. A plain edit (name, template, offsets) leaves
       # the shifts alone — none of it changes a date or an assignment.
       regeneration = RotaRegenerator.new(rota).schedule_changed if schedule_change
@@ -77,14 +97,16 @@ module Api
       return render_problem("no_member_to_preview", :unprocessable_content,
         message: "Add a member to the group before previewing a message.") if member.nil?
 
-      candidate = candidate_rota(rota)
-      template_errors = candidate.errors[:message_template]
-      return render_problem("validation_failed", :unprocessable_content,
-        message: template_errors.to_sentence, fields: { message_template: template_errors }) if template_errors.any?
+      reminder = candidate_reminder(rota)
+      unless reminder.valid?
+        return render_problem("validation_failed", :unprocessable_content,
+          message: reminder.errors.full_messages.to_sentence, fields: reminder.errors.messages)
+      end
 
       due_on = preview_due_on(rota)
       render json: {
-        preview: Sms::Renderer.render(rota: candidate, member: member, due_on: due_on),
+        preview: Sms::Renderer.render(rota: rota, template: reminder.message_template, member: member,
+          due_on: due_on, today: due_on - reminder.days_before),
         member: MemberSerializer.one(member),
         due_on: due_on
       }
@@ -93,12 +115,47 @@ module Api
     private
 
     def find_rota
-      group_scope(:rotas).includes(rota_positions: :member).find(params[:id])
+      group_scope(:rotas).includes(:reminders, rota_positions: :member).find(params[:id])
     end
 
     def rota_params
-      params.permit(:name, :message_template, :starts_on, :interval_count, :interval_unit,
-        :send_hour, :active, reminder_offsets: [])
+      params.permit(:name, :starts_on, :interval_count, :interval_unit, :send_hour, :active)
+    end
+
+    # `reminders` is the full list (see Rota#replace_reminders); without the key nothing changes.
+    # The previous web build sends `reminder_offsets` and one `message_template` instead: each offset
+    # reuses the existing reminder at that timing, so a stale tab cannot re-text a shift.
+    def assign_reminders(rota)
+      if params.key?(:reminders)
+        rota.replace_reminders(reminder_params)
+      elsif params.key?(:reminder_offsets) || params.key?(:message_template)
+        rota.replace_reminders(legacy_reminder_params(rota))
+      end
+    end
+
+    # Absent leaves the reminders alone and [] removes them all, so a null has no safe reading.
+    def reminders_not_a_list?
+      params.key?(:reminders) && !params[:reminders].is_a?(Array)
+    end
+
+    def render_reminders_not_a_list
+      render_problem("validation_failed", :unprocessable_content,
+        message: "Reminders must be a list.", fields: { reminders: [ "must be a list" ] })
+    end
+
+    def reminder_params
+      Array(params.permit(reminders: [ :id, :days_before, :message_template ])[:reminders])
+    end
+
+    def legacy_reminder_params(rota)
+      template = params[:message_template].presence || rota.reminders.first&.message_template
+      offsets = params.key?(:reminder_offsets) ? Array(params[:reminder_offsets]) : rota.reminders.map(&:days_before)
+      unused = rota.reminders.to_a
+      offsets.uniq.map do |days_before|
+        match = unused.find { |reminder| reminder.days_before.to_s == days_before.to_s }
+        unused.delete(match)
+        { id: match&.id, days_before: days_before, message_template: template }
+      end
     end
 
     def confirmed?
@@ -121,15 +178,11 @@ module Api
       rota.members.first || group_scope(:members).active.first
     end
 
-    # The rota to render. When the request carries a candidate template, render a detached copy that
-    # holds it — validated first, so a typo becomes a clean 422 rather than a raised renderer error —
-    # so the preview reflects the unsaved edit without touching the stored rota.
-    def candidate_rota(rota)
-      return rota unless params.key?(:message_template)
-
-      copy = Rota.new(rota.attributes.merge("message_template" => params[:message_template]))
-      copy.validate
-      copy
+    # An unsaved reminder holding what the editor is typing (or the rota's first reminder's text),
+    # validated as a save would be so a typo is a clean 422 rather than a raised renderer error.
+    def candidate_reminder(rota)
+      template = params.key?(:message_template) ? params[:message_template] : rota.reminders.first&.message_template
+      RotaReminder.new(rota: rota, message_template: template, days_before: params[:days_before].presence || 0)
     end
 
     # A representative date, so `{{date}}` and `{{days_until}}` read like a real reminder: the next

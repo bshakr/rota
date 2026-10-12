@@ -50,7 +50,7 @@ module SuperAdmin
         group: GroupSerializer.one(group, stats: stats, now: now),
         admins: AdminSerializer.many(group.group_admins.includes(:user).order(:id)),
         members: MemberSerializer.many(group.members.includes(:rotas).order(:name)),
-        rotas: RotaSerializer.many(group.rotas.includes(:rota_positions).order(:name)),
+        rotas: RotaSerializer.many(group.rotas.includes(:reminders, :rota_positions).order(:name)),
         recent_sms_messages: SmsMessageSerializer.many(recent_sms_messages(group)),
         # The operator's view of this one house (BLO-1679): the warnings its own admins are looking
         # at, the next fortnight of turns, twelve weeks of usage, and who is in it. A key on this

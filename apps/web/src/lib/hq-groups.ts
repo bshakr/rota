@@ -1,9 +1,7 @@
 import {
   dayStringToDisplayDate,
-  reminderOffsetLabel,
   scheduleLabel,
   sendHourLabel,
-  sortOffsetsDesc,
 } from "@/app/(admin)/rotas/rota-logic";
 
 import type { IntervalUnit } from "./api/types";
@@ -334,19 +332,6 @@ export interface RotaSchedule {
 export function scheduleInWords(rota: RotaSchedule): string {
   const recurrence = scheduleLabel(rota.interval_count, rota.interval_unit);
   return `${recurrence}, from ${formatShiftDate(dayStringToDisplayDate(rota.starts_on))}`;
-}
-
-/**
- * "2 days before, on the day" — longest lead first, which is the order the
- * reminders actually go out in.
- *
- * Offset 0 is "on the day" and never "0 days before"; that spelling belongs to
- * `reminderOffsetLabel`, which the house's own rota screens use, and is reused
- * rather than repeated. No offsets at all is a real state and says so.
- */
-export function reminderOffsetsInWords(offsets: number[]): string {
-  if (offsets.length === 0) return "No reminders";
-  return sortOffsetsDesc(offsets).map(reminderOffsetLabel).join(", ");
 }
 
 /** "texts at 09:00" — the hour in the HOUSE's timezone, which is why the row says so. */

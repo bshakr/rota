@@ -27,12 +27,13 @@ function rota(overrides: Partial<Rota> = {}): Rota {
   return {
     id: 1,
     name: "Bins",
-    message_template: "Your turn: {{rota}}",
     starts_on: "2026-07-01",
     interval_count: 1,
     interval_unit: "week",
     send_hour: 9,
-    reminder_offsets: [0],
+    reminders: [
+      { id: 570, days_before: 0, message_template: "Your turn: {{rota}}" },
+    ],
     active: true,
     draft: false,
     positions: [{ member_id: 1, name: "Alice", position: 0 }],

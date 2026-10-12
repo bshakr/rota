@@ -7,8 +7,21 @@ FactoryBot.define do
     interval_count { 1 }
     interval_unit { "week" }
     send_hour { 9 }
-    reminder_offsets { [ 3, 0 ] }
     active { true }
+
+    transient do
+      # Timings for the reminders built with the rota, each carrying `message_template`. Pass
+      # `reminders:` instead to build them yourself.
+      reminder_days { [ 3, 0 ] }
+    end
+
+    after(:build) do |rota, evaluator|
+      if rota.reminders.empty?
+        evaluator.reminder_days.each do |days|
+          rota.reminders.build(days_before: days, message_template: rota.message_template)
+        end
+      end
+    end
 
     # A rota with no roster is in draft, so the plain factory builds a draft rota. Use this when
     # the rota needs to be able to generate shifts.

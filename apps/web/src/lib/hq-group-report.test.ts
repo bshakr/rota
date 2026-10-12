@@ -71,12 +71,13 @@ function everyWarning(): DashboardWarning[] {
       {
         id: 1,
         name: "Recycling",
-        message_template: "{{name}}",
         starts_on: "2026-09-07",
         interval_count: 1,
         interval_unit: "week",
         send_hour: 9,
-        reminder_offsets: [0],
+        reminders: [
+          { id: 580, days_before: 0, message_template: "{{name}}" },
+        ],
         active: true,
         draft: true,
         positions: [],

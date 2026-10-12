@@ -1,7 +1,7 @@
 # One text, and what became of it.
 #
 # The reminder sweep does not call Twilio. It inserts a `pending` row — *claiming* that reminder
-# via the partial unique index on (shift_id, days_before) — and enqueues a SendSmsJob, which
+# via the partial unique index on (shift_id, rota_reminder_id) — and enqueues a SendSmsJob, which
 # renders the template, sends, and records the SID. A signature-validated Twilio status webhook
 # later moves the row to `delivered` or `failed`, so "I never got the text" is answerable with a
 # carrier status rather than a shrug.
@@ -23,7 +23,9 @@ class SmsMessage < ApplicationRecord
   # NOT_CONTACTABLE: the member was inactive or had opted out when the job ran. Nothing was sent.
   # INVALID_TEMPLATE: the rota's template carried a placeholder we have no value for, or a stray brace.
   # INTERNAL_ERROR: an unexpected exception on the send path (not the carrier's doing).
+  # REMINDER_REMOVED: the admin deleted the reminder between the claim and the send. Nothing was sent.
   NOT_CONTACTABLE = "not_contactable".freeze
+  REMINDER_REMOVED = "reminder_removed".freeze
   INVALID_TEMPLATE = "invalid_template".freeze
   INTERNAL_ERROR = "internal_error".freeze
 
@@ -32,6 +34,9 @@ class SmsMessage < ApplicationRecord
   validates :shift, absence: true, if: :member_login?
   validates :days_before, absence: true, if: :member_login?
   belongs_to :member
+  # Optional: the foreign key nullifies it when the admin deletes the reminder, and the log row stays.
+  belongs_to :rota_reminder, optional: true
+  validates :rota_reminder, absence: true, unless: :reminder?
 
   enum :kind, KINDS, validate: true
   enum :status, STATUSES, validate: true
@@ -39,15 +44,9 @@ class SmsMessage < ApplicationRecord
   validates :kind, presence: true
   validates :status, presence: true
 
-  # A reminder is *identified* by its offset — it is the second half of the idempotency key that
-  # makes double-texting impossible. Postgres treats NULLs as distinct inside a unique index, so a
-  # reminder with no offset would slip past that index every single time. The database refuses it
-  # too (see the sms_messages_reminder_has_days_before check constraint); this is here to say so
-  # in English before it gets that far.
-  validates :days_before,
-    presence: true,
-    numericality: { only_integer: true, greater_than_or_equal_to: 0 },
-    if: :reminder?
+  # The timing the reminder had when it was claimed; the SMS log labels the row by it. Negative is
+  # after the shift.
+  validates :days_before, presence: true, numericality: { only_integer: true }, if: :reminder?
   # A cover notice is not tied to an offset, and giving it one would silently enter it into the
   # reminder idempotency key's namespace.
   validates :days_before, absence: true, if: :cover_notice?

@@ -18,7 +18,7 @@ RSpec.describe ReminderSweepJob do
   end
 
   it "sweeps an active rota's due reminders" do
-    rota = create(:rota, group: group, send_hour: 9, reminder_offsets: [ 0 ])
+    rota = create(:rota, group: group, send_hour: 9, reminder_days: [ 0 ])
     shift = create(:shift, rota: rota, due_on: Date.new(2026, 7, 15))
 
     travel_to(Time.utc(2026, 7, 15, 8, 0)) do # 09:00 BST
@@ -28,7 +28,7 @@ RSpec.describe ReminderSweepJob do
   end
 
   it "leaves an inactive rota alone" do
-    rota = create(:rota, :inactive, group: group, send_hour: 9, reminder_offsets: [ 0 ])
+    rota = create(:rota, :inactive, group: group, send_hour: 9, reminder_days: [ 0 ])
     shift = create(:shift, rota: rota, due_on: Date.new(2026, 7, 15))
 
     travel_to(Time.utc(2026, 7, 15, 8, 0)) do
@@ -41,11 +41,11 @@ RSpec.describe ReminderSweepJob do
   # same day-of reminder is due for one group and not the other. Proof that each group's send hour is
   # read on its own zone rather than the server's.
   it "gives two groups in different timezones each their own send hour" do
-    london = create(:rota, group: group, send_hour: 9, reminder_offsets: [ 0 ])
+    london = create(:rota, group: group, send_hour: 9, reminder_days: [ 0 ])
     london_shift = create(:shift, rota: london, due_on: Date.new(2026, 7, 15))
 
     ny_group = create(:group, timezone: "America/New_York")
-    ny = create(:rota, group: ny_group, send_hour: 9, reminder_offsets: [ 0 ])
+    ny = create(:rota, group: ny_group, send_hour: 9, reminder_days: [ 0 ])
     ny_shift = create(:shift, rota: ny, due_on: Date.new(2026, 7, 15))
 
     travel_to(Time.utc(2026, 7, 15, 8, 30)) do # 09:30 BST in London, 04:30 EDT in New York
@@ -60,7 +60,7 @@ RSpec.describe ReminderSweepJob do
   # JobRun wrapper still writes a row — "the sweep ran and there was nothing to do" and "the sweep
   # stopped running" are the two things the operator's system health tile exists to tell apart.
   describe "a suspended house" do
-    let!(:rota) { create(:rota, group: group, send_hour: 9, reminder_offsets: [ 0 ]) }
+    let!(:rota) { create(:rota, group: group, send_hour: 9, reminder_days: [ 0 ]) }
     let!(:shift) { create(:shift, rota: rota, due_on: Date.new(2026, 7, 15)) }
 
     before { group.update!(suspended_at: 1.day.ago) }
@@ -74,7 +74,7 @@ RSpec.describe ReminderSweepJob do
     end
 
     it "does not stop the sweep from running, or from writing down that it ran" do
-      live = create(:rota, group: create(:group, timezone: "Europe/London"), send_hour: 9, reminder_offsets: [ 0 ])
+      live = create(:rota, group: create(:group, timezone: "Europe/London"), send_hour: 9, reminder_days: [ 0 ])
       live_shift = create(:shift, rota: live, due_on: Date.new(2026, 7, 15))
 
       travel_to(Time.utc(2026, 7, 15, 8, 0)) { described_class.perform_now }
@@ -94,7 +94,7 @@ RSpec.describe ReminderSweepJob do
     # offset 2 leaves the shift squarely inside the window on the day of the resume, which makes the
     # 24-hour guard the only thing standing between it and a text.
     it "fires no backlog when it is resumed two days later" do
-      advance = create(:rota, group: group, send_hour: 9, reminder_offsets: [ 2 ])
+      advance = create(:rota, group: group, send_hour: 9, reminder_days: [ 2 ])
       # Its "2 days to go" moment is 09:00 BST on 16 July — while the house is paused.
       missed = create(:shift, rota: advance, due_on: Date.new(2026, 7, 18))
       # And this one's is 09:00 BST on 18 July: the very moment the house comes back.
@@ -121,8 +121,8 @@ RSpec.describe ReminderSweepJob do
   # it — the same isolation TopUpShiftWindowsJob has, for the same reason.
   describe "when one rota's sweep blows up" do
     let(:boom) { RuntimeError.new("no") }
-    let(:broken) { create(:rota, group: group, send_hour: 9, reminder_offsets: [ 0 ]) }
-    let(:healthy) { create(:rota, group: create(:group), send_hour: 9, reminder_offsets: [ 0 ]) }
+    let(:broken) { create(:rota, group: group, send_hour: 9, reminder_days: [ 0 ]) }
+    let(:healthy) { create(:rota, group: create(:group), send_hour: 9, reminder_days: [ 0 ]) }
     let!(:broken_shift) { create(:shift, rota: broken, due_on: Date.new(2026, 7, 15)) }
     let!(:healthy_shift) { create(:shift, rota: healthy, due_on: Date.new(2026, 7, 15)) }
 
@@ -192,7 +192,7 @@ RSpec.describe ReminderSweepJob do
       allow(Rails.logger).to receive(:error)
       allow(Rails.error).to receive(:report)
       allow(ReminderSweep).to receive(:new).and_raise(RuntimeError, "no")
-      create(:rota, group: group, send_hour: 9, reminder_offsets: [ 0 ])
+      create(:rota, group: group, send_hour: 9, reminder_days: [ 0 ])
 
       travel_to(Time.utc(2026, 7, 15, 8, 0)) { described_class.perform_now }
 

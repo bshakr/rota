@@ -3,11 +3,11 @@ require "rails_helper"
 RSpec.describe Sms::Renderer do
   let(:group) { create(:group, timezone: "Europe/London") }
   let(:member) { create(:member, group: group, name: "Alice") }
-  let(:rota) { create(:rota, group: group, name: "Kitchen deep clean", message_template: template) }
+  let(:rota) { create(:rota, group: group, name: "Kitchen deep clean") }
   let(:template) { "Hi {{name}}! It's your turn for {{rota}} on {{date}} ({{days_until}}). Thanks" }
 
-  def render(due_on: Date.new(2026, 7, 5))
-    described_class.render(rota: rota, member: member, due_on: due_on)
+  def render(due_on: Date.new(2026, 7, 5), template: self.template, today: nil)
+    described_class.render(rota: rota, template: template, member: member, due_on: due_on, today: today)
   end
 
   describe "placeholders" do
@@ -33,15 +33,11 @@ RSpec.describe Sms::Renderer do
     end
 
     it "tolerates whitespace inside the braces" do
-      rota.update!(message_template: "Hi {{ name }}, {{  rota  }} is yours")
-
-      expect(render).to start_with("Hi Alice, Kitchen deep clean is yours")
+      expect(render(template: "Hi {{ name }}, {{  rota  }} is yours")).to start_with("Hi Alice, Kitchen deep clean is yours")
     end
 
     it "renders a template with no placeholders at all" do
-      rota.update!(message_template: "Bins out please")
-
-      expect(render).to start_with("Bins out please")
+      expect(render(template: "Bins out please")).to start_with("Bins out please")
     end
   end
 
@@ -73,13 +69,16 @@ RSpec.describe Sms::Renderer do
     it "says 1 day ago, not 1 days ago" do
       expect(render(due_on: Date.new(2026, 7, 4))).to start_with("1 day ago")
     end
+
+    it "counts from the day it is given instead, which is how the editor previews a reminder" do
+      expect(render(due_on: Date.new(2026, 7, 5), today: Date.new(2026, 7, 7))).to start_with("2 days ago")
+      expect(render(due_on: Date.new(2026, 7, 5), today: Date.new(2026, 7, 2))).to start_with("in 3 days")
+    end
   end
 
   describe "the magic link" do
     it "is always appended, even when the template never mentions it" do
-      rota.update!(message_template: "Bins out")
-
-      expect(render).to eq("Bins out\nManage: #{Rails.configuration.x.sms.app_url}/s/#{member.access_token}")
+      expect(render(template: "Bins out")).to eq("Bins out\nManage: #{Rails.configuration.x.sms.app_url}/s/#{member.access_token}")
     end
 
     it "is built from APP_URL config, never hardcoded" do
@@ -94,9 +93,7 @@ RSpec.describe Sms::Renderer do
 
   describe "unknown placeholders" do
     it "refuses to render one rather than texting it out verbatim" do
-      rota.update_column(:message_template, "Hi {{nmae}}")
-
-      expect { render }.to raise_error(Sms::UnknownPlaceholder, /nmae/)
+      expect { render(template: "Hi {{nmae}}") }.to raise_error(Sms::UnknownPlaceholder, /nmae/)
     end
 
     it "names every unknown placeholder in a template" do
@@ -116,9 +113,7 @@ RSpec.describe Sms::Renderer do
 
   describe "unbalanced braces" do
     it "refuses to render a template with a stray brace rather than texting it literally" do
-      rota.update_column(:message_template, "Hi {{name}")
-
-      expect { render }.to raise_error(Sms::MalformedTemplate)
+      expect { render(template: "Hi {{name}") }.to raise_error(Sms::MalformedTemplate)
     end
 
     it "flags an opening brace with no close" do
@@ -136,9 +131,7 @@ RSpec.describe Sms::Renderer do
 
   describe "an oversized body" do
     it "clamps the message under Twilio's limit while keeping the magic link intact" do
-      rota.update_column(:message_template, "x" * 5_000)
-
-      result = render
+      result = render(template: "x" * 5_000)
 
       expect(result.length).to be <= described_class::MAX_BODY_LENGTH
       expect(result).to end_with("/s/#{member.access_token}")
@@ -152,17 +145,17 @@ RSpec.describe Sms::Renderer do
       cover = create(:member, group: group, name: "Bob")
       shift.update!(covering_member: cover)
 
-      expect(described_class.for_shift(shift)).to include("Hi Bob!", "/s/#{cover.access_token}")
+      expect(described_class.for_shift(shift, template: template)).to include("Hi Bob!", "/s/#{cover.access_token}")
     end
 
     it "renders for the assignee when nobody is covering" do
-      expect(described_class.for_shift(shift)).to include("Hi Alice!")
+      expect(described_class.for_shift(shift, template: template)).to include("Hi Alice!")
     end
 
     it "renders for an explicitly named member, which is what a live preview wants" do
       other = create(:member, group: group, name: "Carol")
 
-      expect(described_class.for_shift(shift, member: other)).to include("Hi Carol!")
+      expect(described_class.for_shift(shift, template: template, member: other)).to include("Hi Carol!")
     end
   end
 end

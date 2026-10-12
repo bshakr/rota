@@ -168,6 +168,13 @@ const memberSchema = z.object({
   rotas: z.array(z.object({ id: z.number().int().positive(), name: z.string() })),
 });
 
+// days_before is signed: negative is after the shift.
+const reminderSchema = z.object({
+  id: z.number().int().positive(),
+  days_before: z.number().int(),
+  message_template: z.string(),
+});
+
 const rotaSchema = z.object({
   id: z.number().int().positive(),
   name: z.string(),
@@ -182,7 +189,7 @@ const rotaSchema = z.object({
   interval_count: z.number().int().positive(),
   interval_unit: z.enum(INTERVAL_UNITS),
   send_hour: z.number().int().min(0).max(23),
-  reminder_offsets: z.array(z.number().int().nonnegative()),
+  reminders: z.array(reminderSchema),
 });
 
 export type GroupRota = z.infer<typeof rotaSchema>;
@@ -216,7 +223,8 @@ const redactedSmsSchema = z.object({
    */
   status: z.string(),
   error_code: z.string().nullable(),
-  days_before: z.number().int().nonnegative().nullable(),
+  /** Negative for a text sent after the shift. */
+  days_before: z.number().int().nullable(),
   body: z.string().nullable(),
   twilio_sid: z.string().nullable(),
   sent_at: timestamp.nullable(),
@@ -285,12 +293,11 @@ const warningsInputSchema = z.object({
     z.object({
       id: z.number().int().positive(),
       name: z.string(),
-      message_template: z.string(),
       starts_on: day,
       interval_count: z.number().int().positive(),
       interval_unit: z.enum(INTERVAL_UNITS),
       send_hour: z.number().int().min(0).max(23),
-      reminder_offsets: z.array(z.number().int().nonnegative()),
+      reminders: z.array(reminderSchema),
       active: z.boolean(),
       draft: z.boolean(),
       positions: z.array(

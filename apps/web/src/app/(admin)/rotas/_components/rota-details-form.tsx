@@ -3,7 +3,7 @@
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CalendarIcon } from "lucide-react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, type Path, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -18,7 +18,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
@@ -38,11 +37,24 @@ import type {
 import { formatLongDate, TIME_ZONE } from "@/lib/date";
 
 import type { ActionResult } from "../action-result";
-import { dayStringToDisplayDate, displayDateToDayString, sendHourLabel } from "../rota-logic";
-import { MessagePreview } from "./message-preview";
-import { ReminderOffsetsField } from "./reminder-offsets-field";
+import {
+  dayStringToDisplayDate,
+  displayDateToDayString,
+  formErrorPath,
+  MAX_DAYS_AFTER,
+  MAX_DAYS_BEFORE,
+  MAX_REMINDERS,
+  reminderParams,
+  reminderRows,
+  sendHourLabel,
+} from "../rota-logic";
+import { RemindersField } from "./reminders-field";
 
-const PLACEHOLDERS = ["{{name}}", "{{rota}}", "{{date}}", "{{days_until}}"];
+// The house voice, out of the box: a greeting, the job, the day, and the way out.
+// One emoji, which is the only place in the product allowed one.
+const DEFAULT_TEMPLATE =
+  "Hi {{name}} 🌷 you're up for {{rota}} on {{date}} ({{days_until}}). Can't make it? Tap to hand it on.";
+
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 const rotaFormSchema = z.object({
@@ -60,28 +72,26 @@ const rotaFormSchema = z.object({
   interval_unit: z.enum(["day", "week", "month"]),
   send_hour: z.number().int().min(0).max(23),
   active: z.boolean(),
-  reminder_offsets: z.array(z.number().int().min(0)),
-  message_template: z
-    .string()
-    .trim()
-    .min(1, "Write the message people will get.")
-    .max(1000, "Keep the message under 1000 characters."),
+  reminders: z
+    .array(
+      z.object({
+        reminder_id: z.number().int().optional(),
+        days_before: z
+          .number({ error: "Enter a whole number of days, 1 or more." })
+          .int("Enter a whole number of days, 1 or more.")
+          .min(-MAX_DAYS_AFTER, `After the shift, a reminder can be up to ${MAX_DAYS_AFTER} days.`)
+          .max(MAX_DAYS_BEFORE, `Before the shift, a reminder can be up to ${MAX_DAYS_BEFORE} days.`),
+        message_template: z
+          .string()
+          .trim()
+          .min(1, "Write the message people will get.")
+          .max(1000, "Keep the message under 1000 characters."),
+      }),
+    )
+    .max(MAX_REMINDERS, `A rota can have up to ${MAX_REMINDERS} reminders.`),
 });
 
 export type RotaFormValues = z.infer<typeof rotaFormSchema>;
-
-// Field errors Rails returns key off the attribute name; they line up 1:1 with
-// the form fields, so a validation_failed can be put back beside its input.
-const FIELD_KEYS: (keyof RotaFormValues)[] = [
-  "name",
-  "starts_on",
-  "interval_count",
-  "interval_unit",
-  "send_hour",
-  "active",
-  "reminder_offsets",
-  "message_template",
-];
 
 function defaultsFrom(rota: Rota | undefined, defaultStartsOn: string): RotaFormValues {
   return {
@@ -91,18 +101,17 @@ function defaultsFrom(rota: Rota | undefined, defaultStartsOn: string): RotaForm
     interval_unit: rota?.interval_unit ?? "week",
     send_hour: rota?.send_hour ?? 9,
     active: rota?.active ?? true,
-    reminder_offsets: rota?.reminder_offsets ?? [3, 0],
-    // The house voice, out of the box: a greeting, the job, the day, and the way
-    // out. One emoji, which is the only place in the product allowed one.
-    message_template:
-      rota?.message_template ??
-      "Hi {{name}} 🌷 you're up for {{rota}} on {{date}} ({{days_until}}). Can't make it? Tap to hand it on.",
+    reminders: rota
+      ? reminderRows(rota.reminders)
+      : [
+          { days_before: 3, message_template: DEFAULT_TEMPLATE },
+          { days_before: 0, message_template: DEFAULT_TEMPLATE },
+        ],
   };
 }
 
 /**
- * The rota's details: name, schedule, send hour, active state, reminder offsets,
- * and the message template. Shared by the create and edit screens.
+ * The rota's details: name, schedule, send hour, active state, and its reminders. Shared by the create and edit screens.
  *
  * `save` is injected so this component stays ignorant of create-vs-edit. It always
  * submits WITHOUT confirmation first; if the API answers `confirmation_required`
@@ -145,16 +154,21 @@ export function RotaDetailsForm({
 
   function applyFieldErrors(fields?: Record<string, string[]>) {
     if (!fields) return;
-    for (const key of FIELD_KEYS) {
-      const messages = fields[key];
-      if (messages?.length) form.setError(key, { message: messages.join(" ") });
+    for (const [key, messages] of Object.entries(fields)) {
+      const path = formErrorPath(key);
+      if (path && messages.length) {
+        form.setError(path as Path<RotaFormValues>, { message: messages.join(" ") });
+      }
     }
   }
 
   async function submit(values: RotaFormValues, confirm: boolean) {
-    const result = await save(values, confirm);
+    const { reminders, ...details } = values;
+    const result = await save({ ...details, reminders: reminderParams(reminders) }, confirm);
     if (result.ok) {
       setPending(null);
+      // New reminders now have ids; without them the next save would replace them.
+      form.reset(defaultsFrom(result.data.rota, defaultStartsOn));
       onSaved(result.data.rota);
       return;
     }
@@ -285,51 +299,17 @@ export function RotaDetailsForm({
                 </Select>
               )}
             />
-            <FieldDescription>In the group&apos;s timezone.</FieldDescription>
-          </Field>
-
-          <Field>
-            <FieldLabel htmlFor="rota-reminders">Reminders</FieldLabel>
-            <Controller
-              control={form.control}
-              name="reminder_offsets"
-              render={({ field }) => (
-                <ReminderOffsetsField
-                  id="rota-reminders"
-                  value={field.value}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                />
-              )}
-            />
             <FieldDescription>
-              When to text before a shift. &ldquo;On the day&rdquo; is a reminder on the shift
-              date itself.
+              Every reminder goes out at this time, in the group&apos;s timezone.
             </FieldDescription>
           </Field>
 
-          <Field data-invalid={Boolean(errors.message_template)}>
-            <FieldLabel htmlFor="rota-message">Message</FieldLabel>
-            <Textarea
-              id="rota-message"
-              rows={3}
-              aria-invalid={Boolean(errors.message_template)}
-              {...form.register("message_template")}
-            />
-            <FieldDescription>
-              Placeholders:{" "}
-              {PLACEHOLDERS.map((p, i) => (
-                <React.Fragment key={p}>
-                  {i > 0 ? " " : null}
-                  <code className="bg-muted rounded-full px-2 py-0.5 font-mono text-xs">
-                    {p}
-                  </code>
-                </React.Fragment>
-              ))}
-              . The member&apos;s magic link is added automatically.
-            </FieldDescription>
-            <FieldError errors={[errors.message_template]} />
-          </Field>
+          <RemindersField
+            form={form}
+            defaultTemplate={DEFAULT_TEMPLATE}
+            rotaId={rota?.id}
+            members={members}
+          />
 
           <Field>
             <FieldLabel htmlFor="rota-active">Status</FieldLabel>
@@ -355,15 +335,6 @@ export function RotaDetailsForm({
               Paused rotas keep their history but send no reminders.
             </FieldDescription>
           </Field>
-
-          {rota && members ? (
-            <MessagePreview rotaId={rota.id} members={members} control={form.control} />
-          ) : (
-            <p className="border-border text-muted-foreground rounded-2xl border border-dashed px-4 py-3 text-sm">
-              Save the rota to see a live preview of the exact text, rendered against a real
-              person.
-            </p>
-          )}
 
           <div className="flex justify-end">
             <Button type="submit" size="lg" loading={isSubmitting}>

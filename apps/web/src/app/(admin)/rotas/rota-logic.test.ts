@@ -8,41 +8,146 @@ import {
   formatDayString,
   parseDayString,
   projectShifts,
-  reminderOffsetLabel,
+  daysBeforeFromTiming,
+  formErrorPath,
+  MAX_DAYS_AFTER,
+  reminderParams,
+  reminderRows,
+  remindersInWords,
+  reminderTimingLabel,
   scheduleLabel,
   sendHourLabel,
-  sortOffsetsDesc,
+  timingFromDaysBefore,
   todayDayString,
+  withTimingDirection,
 } from "./rota-logic";
 
 function member(id: number, name: string, position: number): RotaPositionEntry {
   return { member_id: id, name, position };
 }
 
-describe("reminderOffsetLabel", () => {
-  it("renders 0 as 'on the day', never '0 days before'", () => {
-    expect(reminderOffsetLabel(0)).toBe("on the day");
+describe("reminderTimingLabel", () => {
+  it("renders 0 as 'On the day', never '0 days before'", () => {
+    expect(reminderTimingLabel(0)).toBe("On the day");
   });
 
-  it("singularises one day", () => {
-    expect(reminderOffsetLabel(1)).toBe("1 day before");
+  it("says before for positive days, singular and plural", () => {
+    expect(reminderTimingLabel(1)).toBe("1 day before");
+    expect(reminderTimingLabel(3)).toBe("3 days before");
   });
 
-  it("pluralises the rest", () => {
-    expect(reminderOffsetLabel(3)).toBe("3 days before");
-    expect(reminderOffsetLabel(7)).toBe("7 days before");
+  it("says after for negative days and never shows the minus sign", () => {
+    expect(reminderTimingLabel(-1)).toBe("1 day after");
+    expect(reminderTimingLabel(-2)).toBe("2 days after");
+    expect(reminderTimingLabel(-14)).not.toContain("-");
   });
 });
 
-describe("sortOffsetsDesc", () => {
-  it("orders longest lead first, day-of last", () => {
-    expect(sortOffsetsDesc([0, 7, 3])).toEqual([7, 3, 0]);
+describe("remindersInWords", () => {
+  it("lists longest lead first, after-shift reminders last", () => {
+    expect(remindersInWords([0, -1, 3])).toBe("3 days before, on the day, 1 day after");
+  });
+
+  it("capitalises only the first item", () => {
+    expect(remindersInWords([0, 2])).toBe("2 days before, on the day");
+    expect(remindersInWords([0])).toBe("On the day");
+  });
+
+  it("keeps duplicates, since two messages may share a day", () => {
+    expect(remindersInWords([0, 0])).toBe("On the day, on the day");
+  });
+
+  it("says so when there are none", () => {
+    expect(remindersInWords([])).toBe("No reminders");
   });
 
   it("does not mutate the input", () => {
-    const input = [3, 0, 7];
-    sortOffsetsDesc(input);
-    expect(input).toEqual([3, 0, 7]);
+    const input = [0, 3];
+    remindersInWords(input);
+    expect(input).toEqual([0, 3]);
+  });
+});
+
+describe("timingFromDaysBefore / daysBeforeFromTiming", () => {
+  it("splits a signed day count into an amount and a direction", () => {
+    expect(timingFromDaysBefore(3)).toEqual({ amount: 3, direction: "before" });
+    expect(timingFromDaysBefore(0)).toEqual({ amount: 0, direction: "on" });
+    expect(timingFromDaysBefore(-1)).toEqual({ amount: 1, direction: "after" });
+    expect(timingFromDaysBefore(-14)).toEqual({ amount: 14, direction: "after" });
+  });
+
+  it("round-trips", () => {
+    for (const d of [365, 3, 1, 0, -1, -14]) {
+      expect(daysBeforeFromTiming(timingFromDaysBefore(d))).toBe(d);
+    }
+  });
+
+  it("ignores the amount on the day", () => {
+    expect(daysBeforeFromTiming({ amount: 5, direction: "on" })).toBe(0);
+  });
+});
+
+describe("withTimingDirection", () => {
+  it("starts at 1 when leaving 'on the day', so the label never lies", () => {
+    expect(withTimingDirection(0, "before")).toBe(1);
+    expect(withTimingDirection(0, "after")).toBe(-1);
+  });
+
+  it("keeps the amount when flipping between before and after", () => {
+    expect(withTimingDirection(3, "after")).toBe(-3);
+    expect(withTimingDirection(-2, "before")).toBe(2);
+  });
+
+  it("clamps to the after-shift limit", () => {
+    expect(withTimingDirection(30, "after")).toBe(-MAX_DAYS_AFTER);
+  });
+
+  it("goes to 0 for on the day", () => {
+    expect(withTimingDirection(-3, "on")).toBe(0);
+  });
+});
+
+describe("reminderRows / reminderParams", () => {
+  const saved = [
+    { id: 11, days_before: 3, message_template: "Soon, {{name}}" },
+    { id: 12, days_before: -1, message_template: "Thanks, {{name}}" },
+  ];
+
+  it("keeps each saved reminder's id through the form and back", () => {
+    const params = reminderParams(reminderRows(saved));
+    expect(params).toEqual(saved);
+  });
+
+  it("sends new rows without an id", () => {
+    expect(reminderParams([{ days_before: 0, message_template: "Hi" }])).toEqual([
+      { days_before: 0, message_template: "Hi" },
+    ]);
+  });
+});
+
+describe("formErrorPath", () => {
+  it("maps a nested reminder error onto its row", () => {
+    expect(formErrorPath("reminders[1].message_template")).toBe("reminders.1.message_template");
+    expect(formErrorPath("reminders[0].days_before")).toBe("reminders.0.days_before");
+  });
+
+  it("maps a stale reminder id onto its row", () => {
+    expect(formErrorPath("reminders[1].id")).toBe("reminders.1.reminder_id");
+  });
+
+  it("keeps the list-level reminders key", () => {
+    expect(formErrorPath("reminders")).toBe("reminders");
+  });
+
+  it("passes known top-level fields through", () => {
+    expect(formErrorPath("name")).toBe("name");
+    expect(formErrorPath("send_hour")).toBe("send_hour");
+  });
+
+  it("drops keys the form has no field for", () => {
+    expect(formErrorPath("reminder_offsets")).toBeNull();
+    expect(formErrorPath("reminders[0].rota")).toBeNull();
+    expect(formErrorPath("base")).toBeNull();
   });
 });
 

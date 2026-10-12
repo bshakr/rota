@@ -13,6 +13,7 @@ class RotaSerializer < ApplicationSerializer
       interval_unit: record.interval_unit,
       send_hour: record.send_hour,
       reminder_offsets: record.reminder_offsets,
+      reminders: RotaReminderSerializer.many(record.reminders),
       active: record.active,
       draft: record.draft?,
       positions: positions
