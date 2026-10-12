@@ -201,9 +201,31 @@ RSpec.describe SendSmsJob do
       # twilio-ruby discards a 5xx body and substitutes its own `{ code: <http status> }`, so the
       # only carrier code there is to record for a server error is the status itself.
       expect(sms_message.reload).to have_attributes(status: "failed", error_code: "500")
-      # Five attempts, per retry_on. Any more is money and rate limit spent on a message Twilio has
-      # already refused five times.
-      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).to have_been_made.times(5)
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).to have_been_made.times(9)
+    end
+
+    # The window has to outlast a home internet drop: about two and a half hours of backoff.
+    def attempt(number)
+      job = described_class.new(sms_message.id)
+      job.executions = number - 1
+      job.exception_executions = { "[Sms::TransientFailure]" => number - 1 }
+      job
+    end
+
+    (1..8).each do |number|
+      it "leaves the row claimable and tries again after attempt #{number}" do
+        stub_twilio_server_error
+
+        expect { attempt(number).perform_now }.to have_enqueued_job(described_class).with(sms_message.id)
+        expect(sms_message.reload).to have_attributes(status: "pending", error_code: nil)
+      end
+    end
+
+    it "marks the row failed after attempt 9 and stops" do
+      stub_twilio_server_error
+
+      expect { attempt(9).perform_now }.not_to have_enqueued_job(described_class)
+      expect(sms_message.reload).to have_attributes(status: "failed", error_code: "500")
     end
 
     it "treats a dropped connection as retryable" do
@@ -211,6 +233,123 @@ RSpec.describe SendSmsJob do
 
       expect { described_class.perform_now(sms_message.id) }.to have_enqueued_job(described_class)
       expect(sms_message.reload.status).to eq("pending")
+    end
+  end
+
+  describe "a send whose outcome is unknown" do
+    let(:posts) { a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN) }
+    let(:lookups) { a_request(:get, TwilioStubs::MESSAGES_LIST_URL_PATTERN) }
+
+    def stub_post_failing_with(error)
+      stub_request(:post, TwilioStubs::MESSAGES_URL_PATTERN).to_raise(error).then.to_return(
+        status: 201,
+        headers: { "Content-Type" => "application/json" },
+        body: { sid: "SM0000000000000000000000000000000b", status: "queued", num_segments: "1" }.to_json
+      )
+    end
+
+    it "records that the text may have gone out, and keeps the body it sent" do
+      stub_post_failing_with(Net::ReadTimeout)
+
+      expect { described_class.perform_now(sms_message.id) }.to have_enqueued_job(described_class)
+
+      expect(sms_message.reload).to have_attributes(status: "pending", body: be_present)
+      expect(sms_message.ambiguous_attempt_at).to be_present
+    end
+
+    it "records the message Twilio already has instead of sending a second one" do
+      stub_post_failing_with(Net::ReadTimeout)
+      described_class.perform_now(sms_message.id)
+      stub_twilio_list([ { sid: "SM0000000000000000000000000000000a", body: sms_message.reload.body,
+                           date_created: Time.current, status: "delivered" } ])
+
+      described_class.perform_now(sms_message.id)
+
+      expect(posts).to have_been_made.once
+      expect(sms_message.reload).to have_attributes(status: "sent", twilio_sid: "SM0000000000000000000000000000000a")
+    end
+
+    it "sends again when Twilio has no such message" do
+      stub_post_failing_with(Errno::ECONNRESET)
+      described_class.perform_now(sms_message.id)
+      stub_twilio_list([])
+
+      described_class.perform_now(sms_message.id)
+
+      expect(posts).to have_been_made.twice
+      expect(sms_message.reload).to have_attributes(status: "sent", twilio_sid: "SM0000000000000000000000000000000b")
+    end
+
+    it "does not take a message another row already owns" do
+      stub_post_failing_with(Net::ReadTimeout)
+      described_class.perform_now(sms_message.id)
+      create(:sms_message, :sent, :cover_notice, member: member, shift: shift,
+                                                  twilio_sid: "SM0000000000000000000000000000000a")
+      stub_twilio_list([ { sid: "SM0000000000000000000000000000000a", body: sms_message.reload.body,
+                           date_created: Time.current } ])
+
+      described_class.perform_now(sms_message.id)
+
+      expect(posts).to have_been_made.twice
+      expect(sms_message.reload.twilio_sid).to eq("SM0000000000000000000000000000000b")
+    end
+
+    it "retries a connection that was refused without looking anything up" do
+      stub_post_failing_with(Errno::ECONNREFUSED)
+
+      described_class.perform_now(sms_message.id)
+      expect(sms_message.reload.ambiguous_attempt_at).to be_nil
+      described_class.perform_now(sms_message.id)
+
+      expect(lookups).not_to have_been_made
+      expect(posts).to have_been_made.twice
+    end
+
+    it "does not send while the lookup itself is failing, and tries again later" do
+      stub_post_failing_with(Net::ReadTimeout)
+      described_class.perform_now(sms_message.id)
+      stub_request(:get, TwilioStubs::MESSAGES_LIST_URL_PATTERN).to_return(status: 503, body: "")
+
+      expect { described_class.perform_now(sms_message.id) }.to have_enqueued_job(described_class)
+
+      expect(lookups).to have_been_made.once
+      expect(posts).to have_been_made.once
+      expect(sms_message.reload.status).to eq("pending")
+    end
+
+    it "looks before any guard, so a text that did go out is never marked failed" do
+      login = create(:sms_message, member: member, kind: :member_login, shift: nil, days_before: nil)
+      stub_post_failing_with(Net::ReadTimeout)
+      described_class.perform_now(login.id)
+      stub_twilio_list([ { sid: "SM0000000000000000000000000000000a", body: login.reload.body,
+                           date_created: Time.current } ])
+
+      travel_to(1.hour.from_now) { described_class.perform_now(login.id) }
+
+      expect(login.reload).to have_attributes(status: "sent", twilio_sid: "SM0000000000000000000000000000000a")
+    end
+  end
+
+  describe "a personal link that could not be sent for a while" do
+    let(:login) { create(:sms_message, member: member, kind: :member_login, shift: nil, days_before: nil) }
+
+    it "is failed rather than sent once it is more than fifteen minutes old" do
+      login
+      stub_twilio_send
+
+      travel_to(16.minutes.from_now) { described_class.perform_now(login.id) }
+
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).not_to have_been_made
+      expect(login.reload).to have_attributes(status: "failed", error_code: SmsMessage::LOGIN_LINK_STALE)
+    end
+
+    it "still goes out inside the fifteen minutes" do
+      login
+      stub_twilio_send
+
+      travel_to(14.minutes.from_now) { described_class.perform_now(login.id) }
+
+      expect(login.reload.status).to eq("sent")
     end
   end
 
@@ -480,6 +619,80 @@ RSpec.describe SendSmsJob do
       described_class.perform_now(notice.id)
 
       expect(notice.reload.body).to start_with("Soon Alice")
+    end
+  end
+
+  # The sweep never sends a day-of or earlier reminder once the shift's day is over in the house's
+  # zone. A row claimed in time but still retrying past midnight gets the same rule.
+  describe "a reminder whose shift's day is over by the time it is sent" do
+    let(:rota) do
+      create(:rota, group: group, name: "Bins", reminders: [
+        build(:rota_reminder, days_before: 1, message_template: "Tomorrow {{name}}"),
+        build(:rota_reminder, days_before: 0, message_template: "Today {{name}}"),
+        build(:rota_reminder, days_before: -1, message_template: "Yesterday {{name}}")
+      ])
+    end
+    # 00:30 on 13 Oct in London is still 12 Oct in UTC.
+    let(:after_midnight) { Time.find_zone("Europe/London").local(2026, 10, 13, 0, 30) }
+    let(:shift) { create(:shift, rota: rota, assigned_member: member, due_on: Date.new(2026, 10, 12)) }
+
+    before { stub_twilio_send }
+
+    def row(days_before)
+      create(:sms_message, shift: shift, member: member, days_before: days_before)
+    end
+
+    it "fails a day-of reminder instead of sending it, judged on the house's calendar" do
+      message = row(0)
+
+      travel_to(after_midnight) { described_class.perform_now(message.id) }
+
+      expect(message.reload).to have_attributes(status: "failed", error_code: SmsMessage::SHIFT_DAY_OVER)
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).not_to have_been_made
+    end
+
+    it "fails a day-before reminder the same way" do
+      message = row(1)
+
+      travel_to(after_midnight) { described_class.perform_now(message.id) }
+
+      expect(message.reload).to have_attributes(status: "failed", error_code: SmsMessage::SHIFT_DAY_OVER)
+    end
+
+    it "fails a retry that runs past midnight, rather than texting late" do
+      message = row(0)
+      stub_twilio_server_error
+      travel_to(after_midnight - 1.hour) { described_class.perform_now(message.id) }
+      expect(message.reload.status).to eq("pending")
+
+      stub_twilio_send
+      travel_to(after_midnight) { described_class.perform_now(message.id) }
+
+      expect(message.reload).to have_attributes(status: "failed", error_code: SmsMessage::SHIFT_DAY_OVER)
+    end
+
+    it "still sends a day-of reminder on the day itself" do
+      message = row(0)
+
+      travel_to(after_midnight - 1.hour) { described_class.perform_now(message.id) }
+
+      expect(message.reload.status).to eq("sent")
+    end
+
+    it "still sends an after-shift reminder, which is meant to arrive after the day" do
+      message = row(-1)
+
+      travel_to(after_midnight) { described_class.perform_now(message.id) }
+
+      expect(message.reload.status).to eq("sent")
+    end
+
+    it "still sends a cover notice, which has no send moment of its own" do
+      message = create(:sms_message, :cover_notice, shift: shift, member: member)
+
+      travel_to(after_midnight) { described_class.perform_now(message.id) }
+
+      expect(message.reload.status).to eq("sent")
     end
   end
 end

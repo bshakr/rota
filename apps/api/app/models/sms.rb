@@ -28,6 +28,10 @@ module Sms
   # retries with backoff, and only a run of failures becomes a terminal one.
   class TransientFailure < DeliveryFailure; end
 
+  # The request may have reached Twilio before the connection failed, so the text may already be on
+  # its way. Retried like any transient failure, but only after asking Twilio whether it has it.
+  class AmbiguousFailure < TransientFailure; end
+
   # Twilio has no record of a SID we sent it: the message was deleted, or it aged out of Twilio's
   # roughly thirteen-month retention. Distinct from "not priced yet" on purpose — no price is ever
   # coming for this one, so the backfill marks the row asked and stops carrying it forever.
@@ -54,6 +58,12 @@ module Sms
   class << self
     def deliver(to:, body:)
       adapter.deliver(to: to, body: body, status_callback: status_callback_url)
+    end
+
+    # A Delivery for a message Twilio already holds, or nil. Raises TransientFailure when it cannot
+    # tell, which must never be read as "not sent".
+    def find_sent(to:, body:, since:, excluding_sids: [])
+      adapter.find_sent(to: to, body: body, since: since, excluding_sids: excluding_sids)
     end
 
     # The URL Twilio posts delivery receipts to — and, because Twilio signs the exact URL it was

@@ -57,6 +57,22 @@ describe("explainError", () => {
     });
   });
 
+  it("explains a reminder dropped because the shift's day ended before it could be sent", () => {
+    expect(explainError("shift_day_over")).toEqual({
+      summary:
+        "The text could not be sent before the shift's day was over, so it was dropped rather than sent late.",
+      detail: "Send-side error",
+    });
+  });
+
+  it("explains a personal link dropped because it could not be sent while it was still fresh", () => {
+    expect(explainError("login_link_stale")).toEqual({
+      summary:
+        "The personal link could not be sent within 15 minutes of being requested, so it was dropped rather than sent late.",
+      detail: "Send-side error",
+    });
+  });
+
   it("translates the common Twilio codes, keeping the raw code as the quiet detail", () => {
     const stop = explainError("21610");
     expect(stop.summary).toMatch(/unsubscribed|STOP/i);

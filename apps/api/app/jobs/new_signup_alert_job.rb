@@ -14,8 +14,8 @@
 #
 # Sending is fire and forget by design. An operator alert that cannot be delivered must never retry
 # forever and must never take a queue worker down with it, so a carrier refusal is discarded after
-# being reported, a wobble gets five attempts and then the same treatment, and anything unexpected
-# is reported and dropped rather than raised.
+# being reported, a wobble gets a reminder's two-hour retry window and then the same treatment, and
+# anything unexpected is reported and dropped rather than raised.
 class NewSignupAlertJob < ApplicationJob
   queue_as :default
 
@@ -41,7 +41,7 @@ class NewSignupAlertJob < ApplicationJob
 
   # Twilio wobbles are worth waiting out, exactly as they are for a housemate's reminder. Solid
   # Queue does the waiting.
-  retry_on Sms::TransientFailure, wait: :polynomially_longer, attempts: 5 do |job, error|
+  retry_on Sms::TransientFailure, wait: :polynomially_longer, attempts: 9 do |job, error|
     job.class.gave_up(job, error, "gave up after #{job.executions} attempts")
   end
 

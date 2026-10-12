@@ -124,5 +124,93 @@ RSpec.describe Sms::TwilioAdapter do
 
       expect { deliver }.to raise_error(Sms::TransientFailure)
     end
+
+    [
+      Net::OpenTimeout,
+      Errno::ECONNREFUSED,
+      SocketError,
+      Errno::EHOSTUNREACH.new("Failed to open TCP connection to api.twilio.com:443"),
+      Errno::ENETUNREACH.new("Failed to open TCP connection to api.twilio.com:443"),
+      OpenSSL::SSL::SSLError.new("SSL_connect returned=1 errno=0 state=error: certificate verify failed")
+    ].each do |error|
+      it "knows a #{error.inspect} means the request never reached Twilio" do
+        stub_request(:post, TwilioStubs::MESSAGES_URL_PATTERN).to_raise(error)
+
+        expect { deliver }.to raise_error(Sms::TransientFailure) { |failure|
+          expect(failure).not_to be_a(Sms::AmbiguousFailure)
+        }
+      end
+    end
+
+    [ Net::ReadTimeout, Net::WriteTimeout, Errno::ETIMEDOUT, Errno::ECONNRESET, Errno::EPIPE, EOFError,
+      Errno::EHOSTUNREACH, OpenSSL::SSL::SSLError.new("SSL_read: unexpected eof while reading") ].each do |error|
+      it "treats a #{error.inspect} as a send that may have gone through" do
+        stub_request(:post, TwilioStubs::MESSAGES_URL_PATTERN).to_raise(error)
+
+        expect { deliver }.to raise_error(Sms::AmbiguousFailure)
+      end
+    end
+
+    it "treats a 5xx as a refusal, not as a send of unknown outcome" do
+      stub_twilio_server_error
+
+      expect { deliver }.to raise_error(Sms::TransientFailure) { |failure|
+        expect(failure).not_to be_a(Sms::AmbiguousFailure)
+      }
+    end
+  end
+
+  it "gives up on connecting after 10 seconds and on an answer after 30" do
+    stub_twilio_send
+
+    deliver
+
+    options = adapter.send(:client).http_client.connection.options
+    expect(options).to have_attributes(open_timeout: 10, timeout: 30)
+  end
+
+  describe "#find_sent" do
+    let(:since) { Time.zone.parse("2026-10-12 10:00:00") }
+
+    def find_sent(body: "Bins tomorrow", excluding: [])
+      adapter.find_sent(to: "+15005550006", body: body, since: since, excluding_sids: excluding)
+    end
+
+    it "asks Twilio for messages from our number to this recipient" do
+      stub_twilio_list([])
+
+      find_sent
+
+      expect(
+        a_request(:get, TwilioStubs::MESSAGES_LIST_URL_PATTERN)
+          .with(query: hash_including("To" => "+15005550006", "From" => Rails.configuration.x.twilio.from_number))
+      ).to have_been_made
+    end
+
+    it "returns a message with the same body created after the attempt" do
+      stub_twilio_list([ { sid: "SM0000000000000000000000000000000a", body: "Bins tomorrow",
+                           date_created: since + 2.seconds, status: "sent" } ])
+
+      expect(find_sent).to have_attributes(sid: "SM0000000000000000000000000000000a", status: "sent")
+    end
+
+    it "ignores a different body, an older message, and a SID already recorded" do
+      stub_twilio_list([
+        { sid: "SM0000000000000000000000000000000a", body: "Bins today", date_created: since + 2.seconds },
+        { sid: "SM0000000000000000000000000000000b", body: "Bins tomorrow", date_created: since - 1.hour },
+        { sid: "SM0000000000000000000000000000000c", body: "Bins tomorrow", date_created: since + 5.seconds }
+      ])
+
+      expect(find_sent(excluding: [ "SM0000000000000000000000000000000c" ])).to be_nil
+    end
+
+    it "treats any refusal of the lookup as transient, so nothing is decided on it" do
+      stub_request(:get, TwilioStubs::MESSAGES_LIST_URL_PATTERN).to_return(
+        status: 400, headers: { "Content-Type" => "application/json" },
+        body: { code: 20_001, message: "Bad", status: 400 }.to_json
+      )
+
+      expect { find_sent }.to raise_error(Sms::TransientFailure)
+    end
   end
 end
