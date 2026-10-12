@@ -365,7 +365,7 @@ main() {
     failed=$(state_get failed)
     if [[ ${failed%% *} == "$sha" ]]; then
       log "skipping $sha: it failed at '${failed#* }'; waiting for main to move (to retry: rm $STATE_DIR/failed $STATE_DIR/alerted)"
-      heartbeat "main at $sha not deployed, failed at '${failed#* }'"
+      # No success ping: it would clear the /fail alert while main stays undeployed.
       fail_ping=0
       exit 1
     fi
@@ -383,9 +383,8 @@ main() {
         local pending since
         pending=$(state_get pending)
         if [[ ${pending%% *} == "$sha" ]]; then since=${pending#* }; else since=$(date +%s); state_set pending "$sha $since"; fi
-        if (($(date +%s) - since > PENDING_ALERT_HOURS * 3600)) &&
-          fail_once "$sha" pending "CI on main at $sha has been pending for over ${PENDING_ALERT_HOURS}h (never started, or [skip ci]); still running ${deployed:-nothing}"; then
-          :
+        if (($(date +%s) - since > PENDING_ALERT_HOURS * 3600)); then
+          fail_once "$sha" pending "CI on main at $sha has been pending for over ${PENDING_ALERT_HOURS}h (never started, or [skip ci]); still running ${deployed:-nothing}" || true
         else
           heartbeat "CI pending on $sha"
         fi
@@ -396,8 +395,7 @@ main() {
     *)
       log "REFUSED: CI on $sha is red; not deploying"
       if [[ $DRY_RUN != 1 ]]; then
-        fail_once "$sha" red "main at $sha has red CI; still running ${deployed:-nothing}" ||
-          heartbeat "main at $sha has red CI"
+        fail_once "$sha" red "main at $sha has red CI; still running ${deployed:-nothing}" || true
       fi
       fail_ping=0
       exit 1
