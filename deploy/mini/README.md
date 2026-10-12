@@ -73,14 +73,14 @@ Set by the scripts, not the files: `RAILS_ENV`, `TZ=UTC` (as the Dockerfile pinn
    # never from /opt/rota/repo: rota can write there, and a plist or sudoers file edited
    # between review and install would run as root.
    REVIEWED=<full sha of main you reviewed>
-   sudo git clone -q https://github.com/bshakr/rota.git /var/root/rota-install
-   sudo git -C /var/root/rota-install checkout -q --detach "$REVIEWED"
-   sudo git -C /var/root/rota-install rev-parse HEAD   # must print $REVIEWED
-   cd /var/root/rota-install/deploy/mini   # as root: sudo -s first if cd is refused
+   sudo git clone -q https://github.com/bshakr/rota.git /usr/local/rota-install
+   sudo git -C /usr/local/rota-install checkout -q --detach "$REVIEWED"
+   sudo git -C /usr/local/rota-install rev-parse HEAD   # must print $REVIEWED
+   cd /usr/local/rota-install/deploy/mini
    sudo visudo -cf sudoers-rota && sudo install -m 0440 -o root -g wheel sudoers-rota /etc/sudoers.d/rota
    for d in postgres api web deploy backup; do plutil -lint launchd/monster.rota.$d.plist && sudo install -m 0644 -o root -g wheel launchd/monster.rota.$d.plist /Library/LaunchDaemons/; done
    sudo install -m 0644 -o root -g wheel newsyslog-rota.conf /etc/newsyslog.d/rota.conf
-   cd / && sudo rm -rf /var/root/rota-install
+   cd / && sudo rm -rf /usr/local/rota-install
    sudo launchctl bootstrap system /Library/LaunchDaemons/monster.rota.postgres.plist
 
    sudo -u rota -H /opt/homebrew/opt/postgresql@16/bin/psql -d postgres -c 'CREATE ROLE houserota_api LOGIN' -c '\password houserota_api'
