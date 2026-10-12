@@ -266,14 +266,14 @@ RSpec.describe NewSignupAlertJob do
     end
 
     # Reported once, at exhaustion, rather than once per attempt: one Twilio wobble must not page
-    # anybody five times, and a wobble that heals is not news at all.
+    # anybody once per attempt, and a wobble that heals is not news at all.
     it "reports once when the retries run out, with the carrier code" do
       stub_twilio_server_error
       user
 
       perform_enqueued_jobs { described_class.perform_later(user.id) }
 
-      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).to have_been_made.times(5)
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).to have_been_made.times(9)
       expect(Rails.error).to have_received(:report).once.with(
         kind_of(Sms::TransientFailure),
         hash_including(
