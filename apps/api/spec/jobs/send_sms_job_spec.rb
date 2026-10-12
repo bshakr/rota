@@ -236,6 +236,100 @@ RSpec.describe SendSmsJob do
     end
   end
 
+  describe "a send whose outcome is unknown" do
+    let(:posts) { a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN) }
+    let(:lookups) { a_request(:get, TwilioStubs::MESSAGES_LIST_URL_PATTERN) }
+
+    def stub_post_failing_with(error)
+      stub_request(:post, TwilioStubs::MESSAGES_URL_PATTERN).to_raise(error).then.to_return(
+        status: 201,
+        headers: { "Content-Type" => "application/json" },
+        body: { sid: "SM0000000000000000000000000000000b", status: "queued", num_segments: "1" }.to_json
+      )
+    end
+
+    it "records that the text may have gone out, and keeps the body it sent" do
+      stub_post_failing_with(Net::ReadTimeout)
+
+      expect { described_class.perform_now(sms_message.id) }.to have_enqueued_job(described_class)
+
+      expect(sms_message.reload).to have_attributes(status: "pending", body: be_present)
+      expect(sms_message.ambiguous_attempt_at).to be_present
+    end
+
+    it "records the message Twilio already has instead of sending a second one" do
+      stub_post_failing_with(Net::ReadTimeout)
+      described_class.perform_now(sms_message.id)
+      stub_twilio_list([ { sid: "SM0000000000000000000000000000000a", body: sms_message.reload.body,
+                           date_created: Time.current, status: "delivered" } ])
+
+      described_class.perform_now(sms_message.id)
+
+      expect(posts).to have_been_made.once
+      expect(sms_message.reload).to have_attributes(status: "sent", twilio_sid: "SM0000000000000000000000000000000a")
+    end
+
+    it "sends again when Twilio has no such message" do
+      stub_post_failing_with(Errno::ECONNRESET)
+      described_class.perform_now(sms_message.id)
+      stub_twilio_list([])
+
+      described_class.perform_now(sms_message.id)
+
+      expect(posts).to have_been_made.twice
+      expect(sms_message.reload).to have_attributes(status: "sent", twilio_sid: "SM0000000000000000000000000000000b")
+    end
+
+    it "does not take a message another row already owns" do
+      stub_post_failing_with(Net::ReadTimeout)
+      described_class.perform_now(sms_message.id)
+      create(:sms_message, :sent, :cover_notice, member: member, shift: shift,
+                                                  twilio_sid: "SM0000000000000000000000000000000a")
+      stub_twilio_list([ { sid: "SM0000000000000000000000000000000a", body: sms_message.reload.body,
+                           date_created: Time.current } ])
+
+      described_class.perform_now(sms_message.id)
+
+      expect(posts).to have_been_made.twice
+      expect(sms_message.reload.twilio_sid).to eq("SM0000000000000000000000000000000b")
+    end
+
+    it "retries a connection that was refused without looking anything up" do
+      stub_post_failing_with(Errno::ECONNREFUSED)
+
+      described_class.perform_now(sms_message.id)
+      expect(sms_message.reload.ambiguous_attempt_at).to be_nil
+      described_class.perform_now(sms_message.id)
+
+      expect(lookups).not_to have_been_made
+      expect(posts).to have_been_made.twice
+    end
+
+    it "does not send while the lookup itself is failing, and tries again later" do
+      stub_post_failing_with(Net::ReadTimeout)
+      described_class.perform_now(sms_message.id)
+      stub_request(:get, TwilioStubs::MESSAGES_LIST_URL_PATTERN).to_return(status: 503, body: "")
+
+      expect { described_class.perform_now(sms_message.id) }.to have_enqueued_job(described_class)
+
+      expect(lookups).to have_been_made.once
+      expect(posts).to have_been_made.once
+      expect(sms_message.reload.status).to eq("pending")
+    end
+
+    it "looks before any guard, so a text that did go out is never marked failed" do
+      login = create(:sms_message, member: member, kind: :member_login, shift: nil, days_before: nil)
+      stub_post_failing_with(Net::ReadTimeout)
+      described_class.perform_now(login.id)
+      stub_twilio_list([ { sid: "SM0000000000000000000000000000000a", body: login.reload.body,
+                           date_created: Time.current } ])
+
+      travel_to(1.hour.from_now) { described_class.perform_now(login.id) }
+
+      expect(login.reload).to have_attributes(status: "sent", twilio_sid: "SM0000000000000000000000000000000a")
+    end
+  end
+
   describe "a row that must not be sent twice" do
     it "does nothing for a row that has already been sent" do
       sms_message.update!(status: :sent, twilio_sid: "SM00000000000000000000000000000009")

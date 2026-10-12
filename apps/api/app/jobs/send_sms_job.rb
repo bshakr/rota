@@ -64,6 +64,9 @@ class SendSmsJob < ApplicationJob
     # must never be re-sent). Either way, this run does nothing.
     return unless claim(message)
 
+    # Before every guard: a text that did go out must be recorded as sent, not failed.
+    return if message.ambiguous_attempt_at && record_earlier_send(message)
+
     body = nil
     return skip_uncontactable(message) unless message.member.contactable?
 
@@ -77,6 +80,7 @@ class SendSmsJob < ApplicationJob
     else
       Sms::Renderer.for_shift(message.shift, template: template, member: message.member)
     end
+    attempted_at = Time.current
     delivery = Sms.deliver(to: message.member.phone_e164, body: body)
 
     # The segment count is written with the SID, in the same statement, because it is the only cost
@@ -90,9 +94,13 @@ class SendSmsJob < ApplicationJob
       num_segments: delivery.num_segments,
       sent_at: Time.current
     )
+  rescue Sms::AmbiguousFailure
+    # Twilio may have the message. Keep what was sent and when, so the retry looks before posting.
+    release_claim(body: body, ambiguous_attempt_at: attempted_at)
+    raise
   rescue Sms::TransientFailure
-    # Twilio did not accept the message, so nothing was sent. Release the claim so the retry can
-    # re-claim, then re-raise for retry_on's backoff.
+    # Twilio did not accept the message, or the lookup could not answer. Release the claim so the
+    # retry can re-claim, then re-raise for retry_on's backoff.
     release_claim
     raise
   rescue Sms::PermanentFailure => e
@@ -142,11 +150,32 @@ class SendSmsJob < ApplicationJob
     true
   end
 
-  # Undo a claim so a retry can take it again. Only ever called when no text was sent (a transient
-  # Twilio failure), so releasing it cannot cause a double-send.
-  def release_claim
-    SmsMessage.where(id: @sms_message_id, status: :sending)
-      .update_all(status: "pending", updated_at: Time.current)
+  # Undo a claim so a retry can take it again. When the send's outcome is unknown, the body and the
+  # earliest such attempt are kept, and the retry asks Twilio before posting again.
+  def release_claim(body: nil, ambiguous_attempt_at: nil)
+    updates = { status: "pending", updated_at: Time.current }
+    if ambiguous_attempt_at
+      updates[:body] = body
+      updates[:ambiguous_attempt_at] = Arel.sql(
+        SmsMessage.sanitize_sql([ "COALESCE(ambiguous_attempt_at, ?)", ambiguous_attempt_at ])
+      )
+    end
+    SmsMessage.where(id: @sms_message_id, status: :sending).update_all(updates)
+  end
+
+  # True when Twilio already holds the text an earlier attempt may have sent; the row is then
+  # recorded as sent from Twilio's copy. SIDs other rows recorded are skipped because a personal
+  # link's body is the same every time it is requested.
+  def record_earlier_send(message)
+    taken = SmsMessage.where.not(id: message.id).where.not(twilio_sid: nil)
+      .where(sent_at: (message.ambiguous_attempt_at - 1.hour)..).pluck(:twilio_sid)
+    delivery = Sms.find_sent(
+      to: message.member.phone_e164, body: message.body, since: message.ambiguous_attempt_at, excluding_sids: taken
+    )
+    return false if delivery.nil?
+
+    message.update!(status: :sent, twilio_sid: delivery.sid, num_segments: delivery.num_segments, sent_at: Time.current)
+    true
   end
 
   # Inactive, or opted out. The sweep filters for `contactable?` too, but a member can opt out in

@@ -4,6 +4,8 @@ module TwilioStubs
   MESSAGES_URL_PATTERN = %r{\Ahttps://api\.twilio\.com/2010-04-01/Accounts/[^/]+/Messages\.json\z}
   # A GET on one message, which is how a settled price is read back after the text has gone out.
   MESSAGE_URL_PATTERN = %r{\Ahttps://api\.twilio\.com/2010-04-01/Accounts/[^/]+/Messages/[^/]+\.json\z}
+  # A GET on the collection, filtered by query string: how a send of unknown outcome is looked for.
+  MESSAGES_LIST_URL_PATTERN = %r{\Ahttps://api\.twilio\.com/2010-04-01/Accounts/[^/]+/Messages\.json\?}
 
   # Twilio's own shape for a freshly created message. Every number it returns is a string on the
   # wire, `num_segments` included; turning that into an integer is the adapter's job, so the stub
@@ -42,6 +44,25 @@ module TwilioStubs
       status: status,
       headers: { "Content-Type" => "application/json" },
       body: { code: code, message: message, status: status }.to_json
+    )
+  end
+
+  # The list of messages Twilio holds for one recipient, newest first. Each entry is a hash with
+  # :sid, :body, :date_created (a Time) and optionally :status.
+  def stub_twilio_list(messages)
+    payload = messages.map do |message|
+      {
+        sid: message.fetch(:sid),
+        body: message.fetch(:body),
+        status: message.fetch(:status, "delivered"),
+        num_segments: "1",
+        date_created: message.fetch(:date_created).utc.rfc2822
+      }
+    end
+    stub_request(:get, MESSAGES_LIST_URL_PATTERN).to_return(
+      status: 200,
+      headers: { "Content-Type" => "application/json" },
+      body: { messages: payload, next_page_uri: nil, page: 0, page_size: 50 }.to_json
     )
   end
 

@@ -28,6 +28,10 @@ module Sms
       nil
     end
 
+    def find_sent(to:, body:, since:, excluding_sids: [])
+      nil
+    end
+
     private
 
     # An estimate, and only ever a development one: Twilio counts segments by encoding, and this
