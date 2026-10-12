@@ -144,6 +144,8 @@ const SENTINELS: Record<string, string> = {
     "The reminder was deleted from the rota before this text went out, so nothing was sent.",
   shift_day_over:
     "The text could not be sent before the shift's day was over, so it was dropped rather than sent late.",
+  login_link_stale:
+    "The personal link could not be sent within 15 minutes of being requested, so it was dropped rather than sent late.",
   internal_error:
     "Something failed unexpectedly on our side while sending. That is us, not the carrier, so it is worth retrying.",
 };

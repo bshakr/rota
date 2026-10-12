@@ -330,6 +330,29 @@ RSpec.describe SendSmsJob do
     end
   end
 
+  describe "a personal link that could not be sent for a while" do
+    let(:login) { create(:sms_message, member: member, kind: :member_login, shift: nil, days_before: nil) }
+
+    it "is failed rather than sent once it is more than fifteen minutes old" do
+      login
+      stub_twilio_send
+
+      travel_to(16.minutes.from_now) { described_class.perform_now(login.id) }
+
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).not_to have_been_made
+      expect(login.reload).to have_attributes(status: "failed", error_code: SmsMessage::LOGIN_LINK_STALE)
+    end
+
+    it "still goes out inside the fifteen minutes" do
+      login
+      stub_twilio_send
+
+      travel_to(14.minutes.from_now) { described_class.perform_now(login.id) }
+
+      expect(login.reload.status).to eq("sent")
+    end
+  end
+
   describe "a row that must not be sent twice" do
     it "does nothing for a row that has already been sent" do
       sms_message.update!(status: :sent, twilio_sid: "SM00000000000000000000000000000009")

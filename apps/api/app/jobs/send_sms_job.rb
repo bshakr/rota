@@ -15,6 +15,8 @@
 class SendSmsJob < ApplicationJob
   queue_as :default
 
+  LOGIN_LINK_MAX_AGE = 15.minutes
+
   # Nine attempts wait about 2.4 hours (up to 2.7 with jitter), long enough to outlast a home
   # internet drop on the server's line. A late reminder is still a reminder; one whose shift's day
   # is over is not, see skip_shift_day_over.
@@ -69,6 +71,8 @@ class SendSmsJob < ApplicationJob
 
     body = nil
     return skip_uncontactable(message) unless message.member.contactable?
+
+    return skip_stale_login(message) if stale_login?(message)
 
     return skip_shift_day_over(message) if shift_day_over?(message)
 
@@ -176,6 +180,16 @@ class SendSmsJob < ApplicationJob
 
     message.update!(status: :sent, twilio_sid: delivery.sid, num_segments: delivery.num_segments, sent_at: Time.current)
     true
+  end
+
+  # A personal link is asked for by somebody waiting for it. Delivered late it lands among the newer
+  # ones they asked for since.
+  def stale_login?(message)
+    message.member_login? && message.created_at < LOGIN_LINK_MAX_AGE.ago
+  end
+
+  def skip_stale_login(message)
+    message.update!(status: :failed, error_code: SmsMessage::LOGIN_LINK_STALE)
   end
 
   # Inactive, or opted out. The sweep filters for `contactable?` too, but a member can opt out in

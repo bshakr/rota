@@ -65,6 +65,14 @@ describe("explainError", () => {
     });
   });
 
+  it("explains a personal link dropped because it could not be sent while it was still fresh", () => {
+    expect(explainError("login_link_stale")).toEqual({
+      summary:
+        "The personal link could not be sent within 15 minutes of being requested, so it was dropped rather than sent late.",
+      detail: "Send-side error",
+    });
+  });
+
   it("translates the common Twilio codes, keeping the raw code as the quiet detail", () => {
     const stop = explainError("21610");
     expect(stop.summary).toMatch(/unsubscribed|STOP/i);
