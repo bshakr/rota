@@ -201,9 +201,31 @@ RSpec.describe SendSmsJob do
       # twilio-ruby discards a 5xx body and substitutes its own `{ code: <http status> }`, so the
       # only carrier code there is to record for a server error is the status itself.
       expect(sms_message.reload).to have_attributes(status: "failed", error_code: "500")
-      # Five attempts, per retry_on. Any more is money and rate limit spent on a message Twilio has
-      # already refused five times.
-      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).to have_been_made.times(5)
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).to have_been_made.times(9)
+    end
+
+    # The window has to outlast a home internet drop: about two and a half hours of backoff.
+    def attempt(number)
+      job = described_class.new(sms_message.id)
+      job.executions = number - 1
+      job.exception_executions = { "[Sms::TransientFailure]" => number - 1 }
+      job
+    end
+
+    (1..8).each do |number|
+      it "leaves the row claimable and tries again after attempt #{number}" do
+        stub_twilio_server_error
+
+        expect { attempt(number).perform_now }.to have_enqueued_job(described_class).with(sms_message.id)
+        expect(sms_message.reload).to have_attributes(status: "pending", error_code: nil)
+      end
+    end
+
+    it "marks the row failed after attempt 9 and stops" do
+      stub_twilio_server_error
+
+      expect { attempt(9).perform_now }.not_to have_enqueued_job(described_class)
+      expect(sms_message.reload).to have_attributes(status: "failed", error_code: "500")
     end
 
     it "treats a dropped connection as retryable" do
@@ -480,6 +502,80 @@ RSpec.describe SendSmsJob do
       described_class.perform_now(notice.id)
 
       expect(notice.reload.body).to start_with("Soon Alice")
+    end
+  end
+
+  # The sweep never sends a day-of or earlier reminder once the shift's day is over in the house's
+  # zone. A row claimed in time but still retrying past midnight gets the same rule.
+  describe "a reminder whose shift's day is over by the time it is sent" do
+    let(:rota) do
+      create(:rota, group: group, name: "Bins", reminders: [
+        build(:rota_reminder, days_before: 1, message_template: "Tomorrow {{name}}"),
+        build(:rota_reminder, days_before: 0, message_template: "Today {{name}}"),
+        build(:rota_reminder, days_before: -1, message_template: "Yesterday {{name}}")
+      ])
+    end
+    # 00:30 on 13 Oct in London is still 12 Oct in UTC.
+    let(:after_midnight) { Time.find_zone("Europe/London").local(2026, 10, 13, 0, 30) }
+    let(:shift) { create(:shift, rota: rota, assigned_member: member, due_on: Date.new(2026, 10, 12)) }
+
+    before { stub_twilio_send }
+
+    def row(days_before)
+      create(:sms_message, shift: shift, member: member, days_before: days_before)
+    end
+
+    it "fails a day-of reminder instead of sending it, judged on the house's calendar" do
+      message = row(0)
+
+      travel_to(after_midnight) { described_class.perform_now(message.id) }
+
+      expect(message.reload).to have_attributes(status: "failed", error_code: SmsMessage::SHIFT_DAY_OVER)
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).not_to have_been_made
+    end
+
+    it "fails a day-before reminder the same way" do
+      message = row(1)
+
+      travel_to(after_midnight) { described_class.perform_now(message.id) }
+
+      expect(message.reload).to have_attributes(status: "failed", error_code: SmsMessage::SHIFT_DAY_OVER)
+    end
+
+    it "fails a retry that runs past midnight, rather than texting late" do
+      message = row(0)
+      stub_twilio_server_error
+      travel_to(after_midnight - 1.hour) { described_class.perform_now(message.id) }
+      expect(message.reload.status).to eq("pending")
+
+      stub_twilio_send
+      travel_to(after_midnight) { described_class.perform_now(message.id) }
+
+      expect(message.reload).to have_attributes(status: "failed", error_code: SmsMessage::SHIFT_DAY_OVER)
+    end
+
+    it "still sends a day-of reminder on the day itself" do
+      message = row(0)
+
+      travel_to(after_midnight - 1.hour) { described_class.perform_now(message.id) }
+
+      expect(message.reload.status).to eq("sent")
+    end
+
+    it "still sends an after-shift reminder, which is meant to arrive after the day" do
+      message = row(-1)
+
+      travel_to(after_midnight) { described_class.perform_now(message.id) }
+
+      expect(message.reload.status).to eq("sent")
+    end
+
+    it "still sends a cover notice, which has no send moment of its own" do
+      message = create(:sms_message, :cover_notice, shift: shift, member: member)
+
+      travel_to(after_midnight) { described_class.perform_now(message.id) }
+
+      expect(message.reload.status).to eq("sent")
     end
   end
 end

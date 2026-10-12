@@ -15,18 +15,19 @@
 class SendSmsJob < ApplicationJob
   queue_as :default
 
-  # Twilio wobbles are worth waiting out. Five attempts over a few minutes; a reminder that lands
-  # late is still a reminder, and Solid Queue is doing the waiting, not a worker thread.
-  retry_on Sms::TransientFailure, wait: :polynomially_longer, attempts: 5 do |job, error|
+  # Nine attempts wait about 2.4 hours (up to 2.7 with jitter), long enough to outlast a home
+  # internet drop on the server's line. A late reminder is still a reminder; one whose shift's day
+  # is over is not, see skip_shift_day_over.
+  retry_on Sms::TransientFailure, wait: :polynomially_longer, attempts: 9 do |job, error|
     # Out of retries. A silently failed text is worse than no rota at all: record it, so the SMS log
     # can answer "why didn't Alice get her text" with a carrier code rather than a shrug. A transient
     # failure released the claim back to `pending` before re-raising, so the row is claimable here.
     job.class.record_failure(job.arguments.first, error.error_code)
 
-    # Log and report, never one or the other. Five refused attempts at texting one person is a
+    # Log and report, never one or the other. Every attempt refused at texting one person is a
     # carrier problem or a bug, and the SMS log only answers it for somebody who already suspects
     # something is wrong. Reported here rather than per attempt (see active_job_report_on_retry_error
-    # in config/initializers/sentry.rb): one wobble should not page anybody five times.
+    # in config/initializers/sentry.rb): one wobble should not page anybody once per attempt.
     Rails.logger.error(
       "SendSmsJob(#{job.arguments.first}) gave up after #{job.executions} attempts: #{error.class}: #{error.error_code}"
     )
@@ -66,6 +67,8 @@ class SendSmsJob < ApplicationJob
     body = nil
     return skip_uncontactable(message) unless message.member.contactable?
 
+    return skip_shift_day_over(message) if shift_day_over?(message)
+
     template = message_template(message) unless message.member_login?
     return skip_removed_reminder(message) if message.reminder? && template.nil?
 
@@ -94,7 +97,7 @@ class SendSmsJob < ApplicationJob
     raise
   rescue Sms::PermanentFailure => e
     # A bad number, a blocked recipient, a template we cannot render. Retrying would ask Twilio the
-    # same question five times and get the same answer.
+    # same question again and get the same answer.
     self.class.record_failure(sms_message_id, e.error_code, body: body)
 
     # A template that cannot be rendered should have been refused when the rota was saved. Reaching
@@ -157,6 +160,16 @@ class SendSmsJob < ApplicationJob
   # another reminder's text in its place would be a message nobody wrote for this moment.
   def skip_removed_reminder(message)
     message.update!(status: :failed, error_code: SmsMessage::REMINDER_REMOVED)
+  end
+
+  # The sweep's own rule for a day-of or earlier reminder, applied again at send time because a
+  # retry can outlive the day: "it's your turn today" about yesterday is worse than silence.
+  def shift_day_over?(message)
+    message.reminder? && message.days_before >= 0 && message.shift.due_on < message.member.group.today
+  end
+
+  def skip_shift_day_over(message)
+    message.update!(status: :failed, error_code: SmsMessage::SHIFT_DAY_OVER)
   end
 
   # Nil when the reminder was deleted after this run claimed the row.

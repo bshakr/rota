@@ -24,10 +24,12 @@ class SmsMessage < ApplicationRecord
   # INVALID_TEMPLATE: the rota's template carried a placeholder we have no value for, or a stray brace.
   # INTERNAL_ERROR: an unexpected exception on the send path (not the carrier's doing).
   # REMINDER_REMOVED: the admin deleted the reminder between the claim and the send. Nothing was sent.
+  # SHIFT_DAY_OVER: a day-of or earlier reminder was still unsent when the shift's day ended.
   NOT_CONTACTABLE = "not_contactable".freeze
   REMINDER_REMOVED = "reminder_removed".freeze
   INVALID_TEMPLATE = "invalid_template".freeze
   INTERNAL_ERROR = "internal_error".freeze
+  SHIFT_DAY_OVER = "shift_day_over".freeze
 
   belongs_to :shift, optional: true
   validates :shift, presence: true, unless: :member_login?
