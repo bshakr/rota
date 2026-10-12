@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-12
+
+### Changed
+
+- **A failed text is retried for about two hours, not six minutes**, so a short internet drop no
+  longer loses a reminder. A day-of or earlier reminder is dropped rather than sent after its shift's
+  day, and a login link is dropped once it is 15 minutes old. When Twilio may already have taken a
+  text before the connection broke, the job asks Twilio before sending it again.
+  [#74](https://github.com/bshakr/rota/pull/74)
+
 ## 2026-10-08
 
 ### Added
