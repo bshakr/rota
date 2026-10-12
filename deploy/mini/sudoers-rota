@@ -1,0 +1,3 @@
+# Install: sudo visudo -cf sudoers-rota && sudo install -m 0440 -o root -g wheel sudoers-rota /etc/sudoers.d/rota
+# deploy.sh runs as rota and may restart exactly these two daemons, nothing else.
+rota ALL=(root) NOPASSWD: /bin/launchctl kickstart -k system/monster.rota.api, /bin/launchctl kickstart -k system/monster.rota.web

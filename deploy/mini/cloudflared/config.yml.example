@@ -1,0 +1,13 @@
+# /etc/cloudflared/config.yml for a locally managed tunnel. With a token-installed
+# (dashboard-managed) tunnel, enter the same three rules as public hostnames instead.
+tunnel: <TUNNEL_UUID>
+credentials-file: /etc/cloudflared/<TUNNEL_UUID>.json
+
+# 127.0.0.1, not localhost: api and web bind IPv4 loopback only, and localhost
+# may resolve to ::1 first.
+ingress:
+  - hostname: rota.monster
+    service: http://127.0.0.1:3001
+  - hostname: api.rota.monster
+    service: http://127.0.0.1:3000
+  - service: http_status:404
