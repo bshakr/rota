@@ -37,6 +37,23 @@ RSpec.describe "Solid Queue inside Puma" do
     configs.configs_for(env_name: env_name, name: name).configuration_hash.fetch(:max_connections).to_i
   end
 
+  # Each recurring task enqueues on its own thread, so tasks sharing a minute hold connections at once.
+  def most_recurring_tasks_in_one_minute(processes)
+    tasks = processes.select { |process| process.kind == :scheduler }.flat_map { |process| process.attributes.fetch(:recurring_tasks) }
+    week_start = Time.utc(2026, 1, 5)
+
+    tasks.flat_map { |task|
+      cron = Fugit.parse(task.schedule)
+      times = []
+      time = cron.next_time(week_start - 1).to_t.utc
+      while time < week_start + 7.days
+        times << time.strftime("%u %H:%M")
+        time = cron.next_time(time).to_t.utc
+      end
+      times
+    }.tally.values.max.to_i
+  end
+
   # Every thread in one process that can hold a queue-database connection at the same moment,
   # counted from the configuration Solid Queue itself will run.
   def solid_queue_connection_holders(env)
@@ -47,7 +64,7 @@ RSpec.describe "Solid Queue inside Puma" do
       pollers = processes.size
       heartbeats = processes.size + 1 # the supervisor heartbeats too
       supervisor_maintenance = 1
-      recurring_fires_at_once = 2 # reminder_sweep and top_up_shift_windows both fire at 3:00
+      recurring_fires_at_once = most_recurring_tasks_in_one_minute(processes)
 
       { job_threads:, solid_queue_own: pollers + heartbeats + supervisor_maintenance + dispatchers + recurring_fires_at_once }
     end
