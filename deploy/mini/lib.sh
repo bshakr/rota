@@ -1,5 +1,6 @@
 # shellcheck shell=bash
 # Shared by rota-run.sh, deploy.sh and backup.sh. Sourced, never executed.
+# macOS /bin/bash is 3.2: no associative arrays, mapfile or EPOCHSECONDS here.
 
 ROTA_ROOT="${ROTA_ROOT:-/opt/rota}"
 ROTA_ENV_DIR="${ROTA_ENV_DIR:-/usr/local/etc/rota}"
@@ -32,7 +33,19 @@ load_env_file() {
   done <"$file"
 }
 
-# Shared file first, then the optional per-service file, which wins.
+# One value from an env file, printed for the caller to keep unexported.
+env_value() {
+  local file=$ROTA_ENV_DIR/$1 want=$2 line
+  [[ -r $file ]] || return 0
+  while IFS= read -r line || [[ -n $line ]]; do
+    if [[ ${line%%=*} == "$want" && $line == *=* ]]; then
+      printf '%s' "${line#*=}"
+      return 0
+    fi
+  done <"$file"
+}
+
+# Runtime env for one app: the shared file, then the app's own file, which wins.
 load_env() {
   local scope=$1
   if ! load_env_file "$ROTA_ENV_DIR/env"; then
@@ -46,6 +59,31 @@ load_env() {
   if [[ -n $scope && -e $ROTA_ENV_DIR/$scope.env ]]; then
     load_env_file "$ROTA_ENV_DIR/$scope.env"
   fi
+}
+
+# Drops every exported variable except the few a build needs, then loads
+# build.env through an allowlist. Dependency install scripts and next build run
+# third-party code, so they never see the runtime secrets. Call in a subshell.
+build_env() {
+  local with_build_vars=$1 v
+  for v in $(compgen -e); do
+    case $v in
+      HOME | PATH | TMPDIR | LANG | LC_ALL | USER | LOGNAME | ROTA_ROOT | ROTA_ENV_DIR | NODE_VERSION) ;;
+      *) unset "$v" 2>/dev/null || true ;;
+    esac
+  done
+  [[ $with_build_vars == 1 ]] || return 0
+  load_env_file "$ROTA_ENV_DIR/build.env" || return 0
+  for v in $(compgen -e); do
+    case $v in
+      NEXT_PUBLIC_* | SENTRY_AUTH_TOKEN | SENTRY_ORG | SENTRY_PROJECT) ;;
+      HOME | PATH | TMPDIR | LANG | LC_ALL | USER | LOGNAME | ROTA_ROOT | ROTA_ENV_DIR | NODE_VERSION) ;;
+      *)
+        log "build.env: $v is not a build variable; not passed to the build"
+        unset "$v" 2>/dev/null || true
+        ;;
+    esac
+  done
 }
 
 # Absolute install paths, not mise shims or activation: a release dir carries the
@@ -64,12 +102,14 @@ use_runtimes() {
   fi
 }
 
-# Healthchecks.io: $1 is the env var holding the check URL, $2 "" or "/fail", $3 the log line.
+# Healthchecks.io: $1 is the variable holding the check URL, $2 "" or "/fail", $3 the log line.
+# The URL is the credential, so it goes to curl on stdin, never in argv where ps shows it.
 hc_ping() {
   local url=${!1:-} suffix=$2 body=${3:-}
   if [[ -z $url ]]; then
     log "$1 not set, skipping ping"
     return 0
   fi
-  curl -fsS -m 10 --retry 3 -o /dev/null --data-raw "$body" "$url$suffix" || log "healthchecks ping failed"
+  printf 'url = "%s%s"\n' "$url" "$suffix" |
+    curl -K - -fsS -m 10 --retry 3 -o /dev/null --data-raw "$body" || log "healthchecks ping failed"
 }
