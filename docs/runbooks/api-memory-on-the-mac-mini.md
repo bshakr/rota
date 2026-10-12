@@ -10,7 +10,8 @@ Set `SOLID_QUEUE_IN_PUMA=1` and do not run `bin/jobs`. `config/puma.rb` then loa
 plugin in async mode: the supervisor, worker, dispatcher and scheduler run as threads in the Puma
 process. Recurring tasks from `config/recurring.yml` fire as before.
 
-- Leave `WEB_CONCURRENCY` unset. Puma cluster mode would run a scheduler in every worker.
+- Leave `WEB_CONCURRENCY` unset. In Puma cluster mode the plugin starts in the master process,
+  not in the workers that load the app.
 - `JOB_THREADS` (default 3) sets the job threads; `JOB_CONCURRENCY` is ignored in async mode.
 - The pools in `config/database.yml` grow with `RAILS_MAX_THREADS` and `JOB_THREADS`, so change
   those two variables, never the pool numbers.
