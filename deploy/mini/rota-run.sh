@@ -13,6 +13,13 @@ release=$(cd "$ROTA_ROOT/current" && pwd -P)
 case $service in
   api)
     load_env api
+    # Parallel run beside Railway: Railway still texts everyone, so the mini must
+    # not run jobs or hold credentials that deliver. Refuse to start rather than double-text.
+    if [[ ${ROTA_MODE:-} == parallel ]] &&
+      [[ -n ${SOLID_QUEUE_IN_PUMA:-} || -n ${SIGNUP_ALERT_PHONE:-} || ${TWILIO_FROM_NUMBER:-} != +15005550006 ]]; then
+      echo "ROTA_MODE=parallel needs SOLID_QUEUE_IN_PUMA and SIGNUP_ALERT_PHONE unset and Twilio test credentials (TWILIO_FROM_NUMBER=+15005550006)" >&2
+      exit 78
+    fi
     use_runtimes "$release"
     # Exported here, not in the plist: SIP strips DYLD_* from /bin/bash's
     # environment, and the exec chain below to ruby must not pass through
