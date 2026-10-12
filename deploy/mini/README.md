@@ -65,8 +65,8 @@ Names only, never values:
    sudo -u rota -H /opt/homebrew/opt/postgresql@16/bin/psql -d postgres -c 'CREATE ROLE houserota_api LOGIN' -c '\password houserota_api'
    for db in houserota_api_production houserota_api_production_cache houserota_api_production_queue; do sudo -u rota -H /opt/homebrew/opt/postgresql@16/bin/createdb -O houserota_api $db; done
 
-   # First release by hand; it skips restarting daemons that are not loaded yet.
-   sudo -u rota -H /bin/bash /opt/rota/repo/deploy/mini/deploy.sh
+   # First release by hand: builds, prepares the databases and points current at it, without restarting anything.
+   sudo -u rota -H BOOTSTRAP=1 /bin/bash /opt/rota/repo/deploy/mini/deploy.sh
    for d in api web deploy backup; do sudo launchctl bootstrap system /Library/LaunchDaemons/monster.rota.$d.plist; done
    ```
    Then the tunnel: put the config at `/etc/cloudflared/config.yml` and `sudo cloudflared service install`.

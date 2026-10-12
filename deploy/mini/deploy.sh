@@ -3,12 +3,14 @@
 # Pull deploy, run as rota every 5 minutes by monster.rota.deploy.
 # Exit codes: 0 deployed or nothing to do, 1 failed or CI red, 75 CI pending.
 # DRY_RUN=1 fetches and checks CI for real, then prints the build steps instead of running them.
+# BOOTSTRAP=1 is the first, by-hand run: no daemons to restart or health-check yet.
 set -euo pipefail
 
 # shellcheck source=lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 DRY_RUN=${DRY_RUN:-0}
+BOOTSTRAP=${BOOTSTRAP:-0}
 DEPLOY_REF=${DEPLOY_REF:-origin/main}
 GITHUB_API=${GITHUB_API:-https://api.github.com}
 GITHUB_REPO=${GITHUB_REPO:-bshakr/rota}
@@ -91,15 +93,9 @@ wait_healthy() {
   return 1
 }
 
-loaded() { launchctl print "system/$1" >/dev/null 2>&1; }
-
 restart() {
   local label
   for label in "$@"; do
-    if [[ $DRY_RUN != 1 ]] && ! loaded "$label"; then
-      log "$label is not loaded yet, not restarting it"
-      continue
-    fi
     run sudo -n /bin/launchctl kickstart -k "system/$label"
   done
 }
@@ -226,20 +222,24 @@ main() {
 
   step="switch"
   switch_to "releases/$sha"
-  step="restart"
-  restart "$API_LABEL" "$WEB_LABEL"
 
   if [[ $DRY_RUN == 1 ]]; then
+    restart "$API_LABEL" "$WEB_LABEL"
     log "dry run: would deploy $sha"
     return 0
   fi
 
-  step="health after restart"
-  if loaded "$API_LABEL" && ! wait_healthy; then
+  if [[ $BOOTSTRAP == 1 ]]; then
+    log "bootstrap: $sha is current; load the api and web daemons next"
+    return 0
+  fi
+
+  step="restart and health check"
+  if ! restart "$API_LABEL" "$WEB_LABEL" || ! wait_healthy; then
     if [[ -n $previous ]]; then
       log "rolling back to $previous"
       switch_to "$previous"
-      restart "$API_LABEL" "$WEB_LABEL"
+      restart "$API_LABEL" "$WEB_LABEL" || true
     fi
     exit 1
   fi
