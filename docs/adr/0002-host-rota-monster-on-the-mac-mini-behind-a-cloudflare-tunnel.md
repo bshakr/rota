@@ -48,3 +48,14 @@ Missed sweeps still catch up on their own. The sweep runs hourly and texts anyth
 - **Northflank sandbox.** Lost because it is not meant for production.
 - **Railway, tuned and sleeping.** Lost because it still costs about £35 to 60 a year.
 - **The cheapest VPS.** Lost because it is about £24 a year with the domain, above budget.
+
+## As built
+
+Corrections from [BLO-2002](https://linear.app/bloombase/issue/BLO-2002) (`deploy/mini/`); the decision stands.
+
+- The env files are owned by `root`, group `rota`, mode `0640`, not `0600`: the daemons run as `rota` and could not read a root-only file. They are split by reader (`env`, `api.env`, `web.env`, `build.env`, `deploy.env`, `backup.env`), and builds see none of the runtime secrets.
+- On macOS, `MALLOC_ARENA_MAX` is glibc-only and does nothing; the api uses `MALLOC_CONF=narenas:2`. jemalloc is loaded by `rota-run.sh` exporting `DYLD_INSERT_LIBRARIES`, not by the plist, because SIP strips `DYLD_*` when `/bin/bash` starts.
+- The deploy runs `bin/rails db:prepare`, not `db:migrate`: the cache and queue databases have schema files but no migrations, and only `db:prepare` creates and loads them.
+- `TZ=UTC` and `RAILS_ENV=production` are set by the wrapper, not the env file.
+- The tunnel ingress targets `127.0.0.1:3000` and `127.0.0.1:3001`, not `localhost`: api and web bind IPv4 loopback only, and `localhost` may resolve to `::1` first.
+- The parallel run loads a `pg_dump` taken from Railway, since R2 holds only the mini's own backups, and runs dark: no jobs and Twilio test credentials. Cutover freezes Railway and restores a final dump before DNS moves.
