@@ -62,7 +62,7 @@ module RotamonsterApi
     # Please, add to the `ignore` list any other `lib` subdirectories that do
     # not contain `.rb` files, or that should not be reloaded or eager loaded.
     # Common ones are `templates`, `generators`, or `middleware`, for example.
-    config.autoload_lib(ignore: %w[assets tasks])
+    config.autoload_lib(ignore: %w[assets puma tasks])
 
     # Configuration for the application, engines, and railties goes here.
     #
@@ -83,6 +83,9 @@ module RotamonsterApi
     # Solid Queue's tables live in their own database in every environment, so that
     # db/schema.rb only ever describes the domain. See config/database.yml.
     config.solid_queue.connects_to = { database: { writing: :queue } }
+    # Longer than the gem's 5 s so an ordinary job finishes on a deploy; past it, async mode exit!s
+    # the whole process. Sized with force_shutdown_after in config/puma.rb.
+    config.solid_queue.shutdown_timeout = 10.seconds
 
     # Active Job logs its arguments at info. The reminder and cover-notice jobs will carry
     # member magic-link tokens and phone numbers as arguments, and a token is a permanent

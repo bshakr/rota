@@ -25,12 +25,22 @@
 #
 # In production, DATABASE_URL configures `primary` and QUEUE_DATABASE_URL configures
 # `queue`. Rails derives that variable name from the connection name.
+# POOL SIZES. With SOLID_QUEUE_IN_PUMA, Solid Queue runs as threads inside the Puma process
+# (config/puma.rb), so one pool per database serves Puma's request threads AND the job threads
+# (JOB_THREADS, config/queue.yml). The queue pool also serves Solid Queue's own threads: 3 pollers
+# (worker, dispatcher, scheduler), 4 heartbeats (those plus the supervisor), the supervisor's
+# maintenance task, the dispatcher's concurrency maintenance, and 2 recurring tasks firing at once.
+# Connections open lazily, so a high ceiling costs nothing until it is used.
+# spec/config/solid_queue_in_puma_spec.rb recounts this from the live configuration.
+<% web_threads = ENV.fetch("RAILS_MAX_THREADS", 5).to_i %>
+<% job_threads = ENV.fetch("JOB_THREADS", 3).to_i %>
+<% solid_queue_own_threads = 11 %>
 default: &default
   adapter: postgresql
   encoding: unicode
   # For details on connection pooling, see Rails configuration guide
   # https://guides.rubyonrails.org/configuring.html#database-pooling
-  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  max_connections: <%= web_threads + job_threads %>
 
 development:
   primary:
@@ -40,6 +50,7 @@ development:
     <<: *default
     database: houserota_api_development_queue
     migrations_paths: db/queue_migrate
+    max_connections: <%= web_threads + job_threads + solid_queue_own_threads %>
 
 # Warning: The database defined as "test" will be erased and
 # re-generated from your development database when you run "rake".
@@ -52,6 +63,7 @@ test:
     <<: *default
     database: houserota_api_test_queue
     migrations_paths: db/queue_migrate
+    max_connections: <%= web_threads + job_threads + solid_queue_own_threads %>
 
 production:
   primary: &primary_production
@@ -67,3 +79,4 @@ production:
     <<: *primary_production
     database: houserota_api_production_queue
     migrations_paths: db/queue_migrate
+    max_connections: <%= web_threads + job_threads + solid_queue_own_threads %>

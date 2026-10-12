@@ -34,8 +34,19 @@ port ENV.fetch("PORT", 3000)
 # Allow puma to be restarted by `bin/rails restart` command.
 plugin :tmp_restart
 
-# Run the Solid Queue supervisor inside of Puma for single-server deployments.
-plugin :solid_queue if ENV["SOLID_QUEUE_IN_PUMA"]
+# Run Solid Queue inside Puma for single-server deployments, as threads rather than forked
+# processes: each fork is a full copy of the app. The pools in database.yml are sized for this.
+# Keep Puma in single mode: in cluster mode (WEB_CONCURRENCY > 1) the plugin starts in the master.
+# Our plugin, not the gem's: see lib/puma/plugin/solid_queue_async.rb.
+if ENV["SOLID_QUEUE_IN_PUMA"]
+  require_relative "../lib/puma/plugin/solid_queue_async"
+  plugin :solid_queue_async
+end
+
+# On TERM, Puma stops Solid Queue first (up to SolidQueue.shutdown_timeout, config/application.rb)
+# and only then drains requests, for at most this long. Both together must fit inside the host's
+# kill timeout; docs/runbooks/api-memory-on-the-mac-mini.md has the numbers.
+force_shutdown_after 8
 
 # Specify the PID file. Defaults to tmp/pids/server.pid in development.
 # In other environments, only set the PID file if requested.

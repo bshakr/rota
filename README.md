@@ -65,6 +65,8 @@ bin/jobs                      # Solid Queue worker + recurring scheduler
 
 `bin/jobs` is not optional in development. Reminders, SMS sends and the daily shift
 top-up are all background jobs, so without a worker they queue up and silently never run.
+Or run one process, as production does: `SOLID_QUEUE_IN_PUMA=1 bin/rails s` runs Solid Queue
+as threads inside Puma, with no `bin/jobs` (see `docs/runbooks/api-memory-on-the-mac-mini.md`).
 
 Check it came up:
 

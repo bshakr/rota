@@ -297,6 +297,34 @@ RSpec.describe NewSignupAlertJob do
     end
   end
 
+  # Solid Queue can run a job again after it finished: in async mode a job that completes while
+  # Puma is shutting down has already been put back on the queue.
+  describe "running twice for the same signup" do
+    let(:user) { create(:user, name: "Jane Doe", email: "jane@example.com") }
+
+    it "texts the operator once" do
+      stub_twilio_send
+
+      2.times { described_class.perform_now(user.id) }
+
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).to have_been_made.once
+      expect(user.reload.signup_alert_sent_at).to be_present
+    end
+
+    it "still lets a retry after a wobble send it" do
+      allow(Rails.error).to receive(:report)
+      stub_request(:post, TwilioStubs::MESSAGES_URL_PATTERN).to_return(
+        { status: 500, headers: { "Content-Type" => "application/json" }, body: { code: 20_500 }.to_json },
+        { status: 201, headers: { "Content-Type" => "application/json" }, body: { sid: "SM1", status: "queued" }.to_json }
+      )
+
+      perform_enqueued_jobs { described_class.perform_later(user.id) }
+      described_class.perform_now(user.id)
+
+      expect(a_request(:post, TwilioStubs::MESSAGES_URL_PATTERN)).to have_been_made.twice
+    end
+  end
+
   # Not a carrier problem: a bug on this path, or the database having a bad moment. The worst
   # outcome already available here is an operator not hearing about a signup, and raising would only
   # add a failed queue job to it.

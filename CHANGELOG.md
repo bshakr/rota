@@ -9,6 +9,10 @@
   day, and a login link is dropped once it is 15 minutes old. When Twilio may already have taken a
   text before the connection broke, the job asks Twilio before sending it again.
   [#74](https://github.com/bshakr/rota/pull/74)
+- **The api runs its background jobs as threads in the web process**, one process instead of five,
+  cutting its idle memory by about three quarters. A watchdog restarts the api if the job runner
+  dies, shutdown gives jobs and requests time to finish, and the new-signup alert can no longer
+  text the operator twice. [#75](https://github.com/bshakr/rota/pull/75)
 
 ## 2026-10-08
 
