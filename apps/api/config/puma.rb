@@ -37,10 +37,10 @@ plugin :tmp_restart
 # Run Solid Queue inside Puma for single-server deployments, as threads rather than forked
 # processes: each fork is a full copy of the app. The pools in database.yml are sized for this.
 # Keep Puma in single mode: in cluster mode (WEB_CONCURRENCY > 1) the plugin starts in the master.
-# solid_queue_mode is defined by the plugin, so it must follow the plugin line.
+# Our plugin, not the gem's: see lib/puma/plugin/solid_queue_async.rb.
 if ENV["SOLID_QUEUE_IN_PUMA"]
-  plugin :solid_queue
-  solid_queue_mode :async
+  require_relative "../lib/puma/plugin/solid_queue_async"
+  plugin :solid_queue_async
 end
 
 # Specify the PID file. Defaults to tmp/pids/server.pid in development.

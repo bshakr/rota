@@ -1,6 +1,7 @@
 require "rails_helper"
 require "puma"
 require "puma/configuration"
+require Rails.root.join("lib/puma/plugin/solid_queue_async").to_s
 
 RSpec.describe "Solid Queue inside Puma" do
   def with_env(vars)
@@ -11,12 +12,18 @@ RSpec.describe "Solid Queue inside Puma" do
     saved.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
   end
 
-  def puma_options(env)
+  def puma_config(env)
     with_env(env) do
-      config = Puma::Configuration.new({}, { config_files: [ Rails.root.join("config/puma.rb").to_s ] })
-      config.clamp
-      config.options
+      Puma::Configuration.new({}, { config_files: [ Rails.root.join("config/puma.rb").to_s ] }).tap(&:clamp)
     end
+  end
+
+  def puma_options(env)
+    puma_config(env).options
+  end
+
+  def queue_plugins(env)
+    puma_config(env).plugins.instance_variable_get(:@instances).select { |plugin| plugin.class == Puma::Plugins.find("solid_queue_async") }
   end
 
   def database_configs(env)
@@ -46,12 +53,54 @@ RSpec.describe "Solid Queue inside Puma" do
     end
   end
 
-  it "runs the supervisor as threads in the Puma process when SOLID_QUEUE_IN_PUMA is set" do
-    expect(puma_options("SOLID_QUEUE_IN_PUMA" => "1")[:solid_queue_mode]).to eq(:async)
+  it "loads the in-process Solid Queue plugin when SOLID_QUEUE_IN_PUMA is set" do
+    expect(queue_plugins("SOLID_QUEUE_IN_PUMA" => "1").size).to eq(1)
   end
 
   it "loads no Solid Queue plugin without SOLID_QUEUE_IN_PUMA" do
-    expect(puma_options("SOLID_QUEUE_IN_PUMA" => nil)[:solid_queue_mode]).to be_nil
+    expect(queue_plugins("SOLID_QUEUE_IN_PUMA" => nil)).to be_empty
+  end
+
+  describe "the plugin's lifecycle" do
+    let(:events) { Puma::Events.new }
+    let(:launcher) { Struct.new(:events, :log_writer).new(events, Puma::LogWriter.null) }
+    let(:supervisor) { instance_double(SolidQueue::AsyncSupervisor, stop: nil) }
+    let(:watchdog) { instance_double(SolidQueueWatchdog, start: nil, stop: nil) }
+
+    before do
+      allow(SolidQueue::Supervisor).to receive(:start).and_return(supervisor)
+      allow(SolidQueueWatchdog).to receive(:new).and_return(watchdog)
+      queue_plugins("SOLID_QUEUE_IN_PUMA" => "1").first.start(launcher)
+      events.fire_after_booted!
+    end
+
+    it "starts one async supervisor, watched, once Puma has booted" do
+      expect(SolidQueue::Supervisor).to have_received(:start).with(mode: :async, standalone: false).once
+      expect(SolidQueueWatchdog).to have_received(:new).with(supervisor, log: anything)
+      expect(watchdog).to have_received(:start)
+    end
+
+    # A supervisor started here would be killed mid-job by the exec that follows.
+    it "stops the supervisor on a hot restart and starts no replacement" do
+      events.fire_before_restart!
+
+      expect(watchdog).to have_received(:stop).ordered
+      expect(supervisor).to have_received(:stop).ordered
+      expect(SolidQueue::Supervisor).to have_received(:start).once
+    end
+
+    it "stops the watchdog before the supervisor on a normal stop" do
+      events.fire_after_stopped!
+
+      expect(watchdog).to have_received(:stop).ordered
+      expect(supervisor).to have_received(:stop).ordered
+    end
+
+    it "carries on stopping when the dead supervisor's thread re-raises its error" do
+      allow(supervisor).to receive(:stop).and_raise(ActiveRecord::ConnectionNotEstablished)
+
+      expect { events.fire_after_stopped! }.not_to raise_error
+    end
   end
 
   [ nil, "3", "10" ].each do |rails_max_threads|
