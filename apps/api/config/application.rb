@@ -83,6 +83,9 @@ module RotamonsterApi
     # Solid Queue's tables live in their own database in every environment, so that
     # db/schema.rb only ever describes the domain. See config/database.yml.
     config.solid_queue.connects_to = { database: { writing: :queue } }
+    # Longer than the gem's 5 s so an ordinary job finishes on a deploy; past it, async mode exit!s
+    # the whole process. Sized with force_shutdown_after in config/puma.rb.
+    config.solid_queue.shutdown_timeout = 10.seconds
 
     # Active Job logs its arguments at info. The reminder and cover-notice jobs will carry
     # member magic-link tokens and phone numbers as arguments, and a token is a permanent

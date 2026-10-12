@@ -10,6 +10,12 @@ Set `SOLID_QUEUE_IN_PUMA=1` and do not run `bin/jobs`. `config/puma.rb` then loa
 plugin in async mode: the supervisor, worker, dispatcher and scheduler run as threads in the Puma
 process. Recurring tasks from `config/recurring.yml` fire as before.
 
+- `config/puma.rb` loads our plugin (`lib/puma/plugin/solid_queue_async.rb`), not the gem's. A
+  watchdog thread checks every 2 s that the Solid Queue supervisor thread is alive (and that its
+  worker, dispatcher and scheduler threads are, over 3 checks). If not, it logs, reports to
+  Sentry (source `rotamonster.queue`) and sends the process TERM, so launchd's `KeepAlive` or
+  Railway's restart policy brings it back; the exit status is 143. Without it, a queue-database
+  blip could stop every job while `/up` stayed 200.
 - Leave `WEB_CONCURRENCY` unset. In Puma cluster mode the plugin starts in the master process,
   not in the workers that load the app.
 - `JOB_THREADS` (default 3) sets the job threads; `JOB_CONCURRENCY` is ignored in async mode.
@@ -18,6 +24,29 @@ process. Recurring tasks from `config/recurring.yml` fire as before.
 
 Measured on a MacBook (development, after boot and one job, 2026-10-12): fork mode was 5 Ruby
 processes at 548,032 KB RSS in total; async mode is 1 process at 148,368 KB.
+
+## Stopping and restarting
+
+On TERM, Puma first stops Solid Queue and only then drains web requests. The numbers:
+
+| Setting | Value | Where |
+| --- | --- | --- |
+| `SolidQueue.shutdown_timeout`: running jobs get this long to finish | 10 s | `config/application.rb` |
+| Puma `force_shutdown_after`: in-flight requests get this long after that | 8 s | `config/puma.rb` |
+| launchd `ExitTimeOut`: SIGKILL after | 30 s | `deploy/mini/launchd/monster.rota.api.plist` |
+| Railway `RAILWAY_DEPLOYMENT_DRAINING_SECONDS`: SIGKILL after | set to 30 (Railway's default is 0) | Railway api service variables |
+
+A normal stop takes at most about 19 s (10 + 8, plus deregistration), inside 30. A job still
+running at 10 s is cut: in async mode Solid Queue then calls `exit!` on the whole process, which
+also cuts any request in flight. The job is released and runs again after the restart, so jobs
+must be safe to run twice (they are; see `app/jobs`). A text cut mid-send stays `sending` and is
+not retried, as in fork mode. Railway's default draining of 0 s means SIGKILL straight after TERM,
+so until that variable is set none of this runs there.
+
+Restart with a full stop: `launchctl kickstart -k system/monster.rota.api` on the mini, a
+redeploy on Railway. Do not hot-restart Puma (SIGUSR2, SIGUSR1, `pumactl restart`): our plugin
+stops the queue and starts no replacement before the exec, so nothing is lost, but it gains
+nothing over a full restart and is not what the deploy scripts exercise.
 
 ## Allocator settings
 

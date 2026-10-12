@@ -61,6 +61,17 @@ RSpec.describe "Solid Queue inside Puma" do
     expect(queue_plugins("SOLID_QUEUE_IN_PUMA" => nil)).to be_empty
   end
 
+  # On TERM the queue stops first (SolidQueue.shutdown_timeout, then exit! if exceeded) and Puma
+  # drains requests after it (force_shutdown_after). launchd's ExitTimeOut in deploy/mini is 30 s,
+  # and Railway needs RAILWAY_DEPLOYMENT_DRAINING_SECONDS at least as long.
+  it "bounds a graceful stop well inside the host's 30 second kill timeout" do
+    drain = puma_options("SOLID_QUEUE_IN_PUMA" => "1")[:force_shutdown_after]
+
+    expect(SolidQueue.shutdown_timeout).to eq(10.seconds)
+    expect(drain).to eq(8)
+    expect(SolidQueue.shutdown_timeout + drain).to be < 30 - 5
+  end
+
   describe "the plugin's lifecycle" do
     let(:events) { Puma::Events.new }
     let(:launcher) { Struct.new(:events, :log_writer).new(events, Puma::LogWriter.null) }

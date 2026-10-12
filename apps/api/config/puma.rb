@@ -43,6 +43,11 @@ if ENV["SOLID_QUEUE_IN_PUMA"]
   plugin :solid_queue_async
 end
 
+# On TERM, Puma stops Solid Queue first (up to SolidQueue.shutdown_timeout, config/application.rb)
+# and only then drains requests, for at most this long. Both together must fit inside the host's
+# kill timeout; docs/runbooks/api-memory-on-the-mac-mini.md has the numbers.
+force_shutdown_after 8
+
 # Specify the PID file. Defaults to tmp/pids/server.pid in development.
 # In other environments, only set the PID file if requested.
 pidfile ENV["PIDFILE"] if ENV["PIDFILE"]
