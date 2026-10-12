@@ -121,3 +121,36 @@ jobs:
           fi
 
           exit "$SMOKE_STATUS"
+
+      # Production runs Solid Queue as threads inside Puma (SOLID_QUEUE_IN_PUMA), not bin/jobs.
+      # A clean TERM exits 143; Solid Queue's exit! on a blown shutdown timeout would exit 1.
+      - name: Solid Queue inside Puma processes a job
+        env:
+          RAILS_ENV: development
+          SOLID_QUEUE_IN_PUMA: "1"
+          SMOKE_TIMEOUT_SECONDS: 60
+          PORT: 3001
+        run: |
+          bin/rails server > /tmp/puma.log 2>&1 &
+          PUMA_PID=$!
+
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null "http://127.0.0.1:$PORT/up" && break
+            sleep 1
+          done
+
+          set +e
+          bin/rails runner script/solid_queue_smoke.rb
+          SMOKE_STATUS=$?
+          kill -TERM "$PUMA_PID"
+          wait "$PUMA_PID"
+          PUMA_STATUS=$?
+          set -e
+
+          if [ "$SMOKE_STATUS" -ne 0 ] || [ "$PUMA_STATUS" -ne 143 ]; then
+            echo "smoke exited $SMOKE_STATUS, puma exited $PUMA_STATUS (expected 0 and 143)"
+            echo "::group::Puma log"
+            cat /tmp/puma.log || true
+            echo "::endgroup::"
+            exit 1
+          fi
