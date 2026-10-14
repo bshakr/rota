@@ -4,7 +4,7 @@ How [ADR 0002](../../docs/adr/0002-host-rota-monster-on-the-mac-mini-behind-a-cl
 
 | Daemon | Runs | When |
 | --- | --- | --- |
-| `monster.rota.postgres` | Homebrew `postgresql@16` (CI's major), data in `/opt/rota/pgdata` | always |
+| `monster.rota.postgres` | Homebrew `postgresql@16` (CI's major), data in `/opt/rota/pgdata`, with `LC_ALL=C` as Homebrew's own service sets it: with no locale it exits with "postmaster became multithreaded during startup" | always |
 | `monster.rota.api` | `rota-run.sh api`: Puma, `127.0.0.1:3000`, with Solid Queue inside once live (`SOLID_QUEUE_IN_PUMA=1`) | always |
 | `monster.rota.web` | `rota-run.sh web`: `next start`, `127.0.0.1:3001` | always |
 | `monster.rota.deploy` | `deploy.sh` | every 5 minutes |
@@ -14,6 +14,7 @@ Layout: `/opt/rota/repo` (clone, fetch only), `/opt/rota/releases/<sha>` (one bu
 
 ## How it behaves
 
+- **Locale**: launchd starts jobs with none, so the other four plists set `LANG=en_US.UTF-8`; without it Ruby reads files as US-ASCII until Rails loads, so `bundle install` and native gem builds can fail with "invalid byte sequence in US-ASCII".
 - **Runtimes** come from mise: one tool for Ruby and Node, reading the `apps/api/.ruby-version` of the release being run. Node is 22, the version CI builds with. The wrapper execs the absolute install path, never a shim.
 - **Deploy** fetches `origin/main` and deploys only its tip; there is no way to point the job at another ref. If the tip differs from `current/REVISION`, it asks the public GitHub API for the commit's check-runs and goes on only when `apps/api` and `apps/web` are both present, completed and successful. It then builds a fresh `releases/<sha>` (`bundle install`, `npm ci`, `npm run build` with `SENTRY_RELEASE=<sha>`), runs `bin/rails db:prepare`, swaps the `current` symlink and kickstarts api and web. It waits until launchd reports a new pid for both (launchd never runs two copies of a job, so from then on the old processes are gone), then needs exactly `200` from `127.0.0.1:3000/up` and `127.0.0.1:3001/`, and the pids must not change again while it checks. Anything else, including a failed kickstart, swaps back to the previous release and restarts it. Migrations are not rolled back, so they must stay compatible with the previous release. `DRY_RUN=1` does the fetch and the CI check for real and prints everything after.
 - **Failures alert once.** A sha that fails to build, migrate, restart or pass the health check is written to `/opt/rota/state/failed`, its release directory is deleted, and `/fail` is pinged once. Later runs skip that sha until `main` moves; to retry it, `rm /opt/rota/state/failed /opt/rota/state/alerted`. Red CI pings `/fail` once per sha. Pending CI retries every run (exit 75), and pings `/fail` once if `main`'s tip is still pending after 6 hours (`PENDING_ALERT_HOURS`), which is what a `[skip ci]` commit or a run that never started looks like. Every run that is not deploying health-checks the running release and pings success, so the deploy check is also the mini's heartbeat. For the first 10 minutes after boot the health check waits up to 5 minutes instead of 90 seconds.
