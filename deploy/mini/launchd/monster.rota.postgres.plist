@@ -20,6 +20,8 @@
 		<string>/Users/rota</string>
 		<key>PATH</key>
 		<string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>LC_ALL</key>
+		<string>C</string>
 	</dict>
 	<key>RunAtLoad</key>
 	<true/>
